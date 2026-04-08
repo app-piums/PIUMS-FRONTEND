@@ -1,0 +1,15 @@
+{
+  "name": "piums-platform",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "dev": "pnpm -r dev",
+    "build": "pnpm --filter './apps/**' --filter './packages/**' -r build",
+    "lint": "pnpm -r lint"
+  },
+  "dependencies": {
+    "@types/express": "4.17.21",
+    "@types/express-session": "1.17.5"
+  }
+}

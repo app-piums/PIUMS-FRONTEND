@@ -1,0 +1,302 @@
+'use client';
+
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Loading } from '@/components/Loading';
+import { ArtistCard } from '@/components/ArtistCard';
+import ClientSidebar from '@/components/ClientSidebar';
+import { useAuth } from '@/contexts/AuthContext';
+import { CurrencyToggle, useCurrency } from '@/contexts/CurrencyContext';
+import { ThemeToggle } from '@/contexts/ThemeContext';
+import { sdk } from '@piums/sdk';
+import type { Artist, Service } from '@piums/sdk';
+import { TalentPicker } from '@/components/TalentPicker';
+
+type TabType = 'all' | 'artists' | 'services';
+type SortOption = 'relevance' | 'rating' | 'price_asc' | 'price_desc';
+
+const CATEGORIES = [
+  { value: '', label: 'Todas las categorías' },
+  { value: 'musica', label: 'Música' },
+  { value: 'fotografia', label: 'Fotografía' },
+  { value: 'catering', label: 'Catering' },
+  { value: 'decoracion', label: 'Decoración' },
+  { value: 'animacion', label: 'Animación' },
+];
+const CITIES = [
+  { value: '', label: 'Todas las ciudades' },
+  { value: 'guatemala', label: 'Ciudad de Guatemala' },
+  { value: 'quetzaltenango', label: 'Quetzaltenango' },
+  { value: 'escuintla', label: 'Escuintla' },
+  { value: 'antigua', label: 'Antigua Guatemala' },
+  { value: 'mixco', label: 'Mixco' },
+];
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'relevance',  label: 'Relevancia' },
+  { value: 'rating',     label: 'Mejor calificados' },
+  { value: 'price_asc',  label: 'Precio: menor a mayor' },
+  { value: 'price_desc', label: 'Precio: mayor a menor' },
+];
+const POPULAR = ['DJ', 'Fotografía', 'Catering', 'Banda en vivo', 'Decoración'];
+
+function SearchContent() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const { formatPrice } = useCurrency();
+
+  const [query, setQuery] = useState(searchParams.get('q') || '');
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [expandedTerms, setExpandedTerms] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>((searchParams.get('tab') as TabType) || 'all');
+  const [sortBy, setSortBy] = useState<SortOption>((searchParams.get('sort') as SortOption) || 'relevance');
+  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
+  const [selectedCity, setSelectedCity] = useState(searchParams.get('location') || '');
+  const [selectedTalentId, setSelectedTalentId] = useState<string | undefined>(undefined);
+
+  const performSearch = async () => {
+    if (!query && !selectedCategory && !selectedCity) return;
+    try {
+      setLoading(true);
+      setSearchError(null);
+
+      if (query) {
+        // Smart search — returns matchedService with the specific service price that matched
+        const results = await sdk.smartSearch({
+          q: query,
+          city: selectedCity || undefined,
+        });
+        setArtists(results.artists ?? []);
+        setExpandedTerms(results.expandedTerms ?? []);
+      } else {
+        // Filter-only search (category/city without text query)
+        const results = await sdk.searchArtists({
+          categoria: selectedCategory || undefined,
+          ciudad: selectedCity || undefined,
+        });
+        setArtists((results as any).artists ?? []);
+        setExpandedTerms([]);
+      }
+      setServices([]);
+    } catch (err) {
+      console.error('Error searching:', err);
+      setSearchError('Error al buscar. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    performSearch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, activeTab, sortBy, selectedCategory, selectedCity]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (selectedCategory) params.set('category', selectedCategory);
+    if (selectedCity) params.set('location', selectedCity);
+    router.push(`/search${params.toString() ? `?${params}` : ''}`);
+    // Note: useEffect watches query/category/city changes and will trigger performSearch
+  };
+
+  const totalResults = artists.length + services.length;
+  const visibleArtists = activeTab === 'services' ? [] : artists;
+  const visibleServices = activeTab === 'artists' ? [] : services;
+
+  return (
+    <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
+      <ClientSidebar userName={user?.nombre ?? 'Usuario'} />
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Desktop header */}
+        <header className="hidden lg:flex bg-white border-b border-gray-100 px-8 py-4 items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Buscar</h1>
+            <p className="text-sm text-gray-400">Encuentra el profesional perfecto para tu evento</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <CurrencyToggle />
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-4 pt-20 lg:p-8 lg:pt-8">
+          {/* Mobile title */}
+          <div className="lg:hidden mb-4 flex items-center justify-between">
+            <h1 className="text-xl font-bold text-gray-900">Buscar</h1>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <CurrencyToggle />
+            </div>
+          </div>
+
+          {/* Search form */}
+          <form onSubmit={handleSearch} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
+            <div className="flex flex-col sm:flex-row gap-3 mb-3">
+              <div className="relative flex-1">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="¿Qué estás buscando?"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] transition"
+                />
+              </div>
+              <button type="submit" className="px-6 py-2.5 bg-[#FF6A00] text-white text-sm font-semibold rounded-xl hover:bg-[#e05e00] transition-colors">
+                Buscar
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] text-gray-700">
+                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] text-gray-700">
+                {CITIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value as SortOption)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] text-gray-700">
+                {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </form>
+
+          {/* No query state — talent picker */}
+          {!query && !loading && (
+            <div>
+              <div className="mb-5">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-[#F1F5F9] mb-1">¿Cuál es tu superpoder creativo?</h3>
+                <p className="text-sm text-gray-400 dark:text-[#94A3B8]">Elige un talento para encontrar al profesional perfecto</p>
+              </div>
+              <TalentPicker
+                selectedTalentId={selectedTalentId}
+                onSelect={(id, label, category) => {
+                  setSelectedTalentId(id);
+                  setQuery(label);
+                  setSelectedCategory(category.toLowerCase());
+                }}
+                onClear={() => {
+                  setSelectedTalentId(undefined);
+                  setQuery('');
+                  setSelectedCategory('');
+                }}
+              />
+            </div>
+          )}
+
+          {/* Search error */}
+          {searchError && !loading && (
+            <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-4 text-sm text-red-700 text-center">
+              {searchError}
+            </div>
+          )}
+
+          {/* Loading */}
+          {loading && (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-[#FF6A00]" />
+            </div>
+          )}
+
+          {/* No results */}
+          {!loading && query && totalResults === 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 flex flex-col items-center gap-3 text-center">
+              <div className="h-14 w-14 rounded-2xl bg-gray-50 flex items-center justify-center">
+                <SearchIcon className="h-7 w-7 text-gray-400" />
+              </div>
+              <p className="font-medium text-gray-900">No se encontraron resultados para &quot;{query}&quot;</p>
+              <p className="text-sm text-gray-400">Intenta con otros términos o ajusta los filtros</p>
+            </div>
+          )}
+
+          {/* Results */}
+          {!loading && query && totalResults > 0 && (
+            <div className="space-y-6">
+              {/* Tabs + count */}
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                  {([['all','Todos'], ['artists','Artistas'], ['services','Servicios']] as const).map(([key, lbl]) => (
+                    <button key={key} onClick={() => setActiveTab(key)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      {lbl} ({key === 'all' ? totalResults : key === 'artists' ? artists.length : services.length})
+                    </button>
+                  ))}
+                </div>
+                <p className="text-sm text-gray-400">{totalResults} resultados</p>
+              </div>
+
+              {/* Expanded terms hint (smart search) */}
+              {expandedTerms.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-gray-400">También buscamos:</span>
+                  {expandedTerms.map(term => (
+                    <span key={term} className="px-2 py-0.5 bg-orange-50 text-[#FF6A00] text-xs rounded-full border border-orange-100">{term}</span>
+                  ))}
+                </div>
+              )}
+
+              {/* Artist results */}
+              {visibleArtists.length > 0 && (
+                <div>
+                  {activeTab === 'all' && <h2 className="font-semibold text-gray-900 mb-3">Artistas ({artists.length})</h2>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {visibleArtists.map(artist => <ArtistCard key={artist.id} artist={artist} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Service results */}
+              {visibleServices.length > 0 && (
+                <div>
+                  {activeTab === 'all' && <h2 className="font-semibold text-gray-900 mb-3">Servicios ({services.length})</h2>}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {visibleServices.map(service => (
+                      <div key={service.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 truncate">{service.name}</h3>
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">{service.description}</p>
+                            <p className="text-xs text-gray-400 mt-2">{Math.floor((service.duration ?? 0) / 60)} horas</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-lg font-bold text-[#FF6A00]">{formatPrice(service.basePrice / 100)}</p>
+                            <button
+                              onClick={() => router.push(`/artists/${service.artistId}`)}
+                              className="mt-2 text-xs font-medium text-[#FF6A00] border border-[#FF6A00]/30 px-3 py-1.5 rounded-lg hover:bg-orange-50 transition-colors"
+                            >
+                              Ver detalles
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<Loading fullScreen />}>
+      <SearchContent />
+    </Suspense>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
+}
