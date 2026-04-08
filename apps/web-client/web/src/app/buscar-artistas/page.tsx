@@ -281,9 +281,11 @@ function CalendarSelector({ selectedDate, onSelectDate }: CalendarSelectorProps)
 function ArtistResultCard({
   artist,
   selectedDate,
+  matchedServicePrice,
 }: {
   artist: ArtistWithMeta;
   selectedDate: string;
+  matchedServicePrice?: { name: string; price: number; currency: string };
 }) {
   const { formatPrice } = useCurrency();
   const href = `/artists/${artist.slug || artist.id}`;
@@ -372,12 +374,25 @@ function ArtistResultCard({
           )}
         </div>
 
-        {/* Price */}
-        {artist.precioDesde !== undefined && (
-          <p className="text-xs text-gray-400">
-            Desde <span className="font-semibold text-gray-700">{formatPrice(artist.precioDesde / 100)}</span>
-          </p>
-        )}
+        {/* Price — matched service (smart search) > main service (fetched) > precioDesde */}
+        {(() => {
+          const price = matchedServicePrice ?? (
+            (artist.mainServicePrice != null && artist.mainServicePrice > 0)
+              ? { name: (artist.mainServiceName as string | undefined) ?? 'Servicio principal', price: artist.mainServicePrice, currency: 'GTQ' }
+              : (artist.precioDesde != null && artist.precioDesde > 0)
+              ? { name: 'Servicio principal', price: artist.precioDesde, currency: 'GTQ' }
+              : null
+          );
+          if (!price) return null;
+          return (
+            <div className="flex items-center justify-between gap-2 bg-orange-50 rounded-lg px-2.5 py-1.5">
+              <span className="text-xs text-gray-500 truncate">{price.name}</span>
+              <span className="text-xs font-bold text-[#FF6A00] shrink-0">
+                {formatPrice(price.price)}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* Bio snippet */}
         {artist.bio && (
@@ -441,11 +456,54 @@ function BuscarArtistasContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showOnlyAvailable, setShowOnlyAvailable] = useState(true);
+  const [smartPriceMap, setSmartPriceMap] = useState<Record<string, { name: string; price: number; currency: string }>>({});
+  const [smartArtists, setSmartArtists] = useState<ArtistWithMeta[]>([]);
+  const [smartSearchLoading, setSmartSearchLoading] = useState(false);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push('/login');
   }, [isLoading, isAuthenticated, router]);
+
+  // ── Debounced smart-search: builds price map AND ordered artist list ────────
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSmartPriceMap({});
+      setSmartArtists([]);
+      return;
+    }
+    setSmartSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await sdk.smartSearch({ q: searchQuery, limit: 40 });
+        const map: Record<string, { name: string; price: number; currency: string }> = {};
+        const smartList: ArtistWithMeta[] = [];
+        for (const a of results.artists) {
+          if (a.matchedService && a.id) {
+            map[a.id] = {
+              name: a.matchedService.name,
+              price: a.matchedService.price,
+              currency: a.matchedService.currency,
+            };
+          }
+          smartList.push({
+            ...a,
+            distance: null,
+            available: (a as any).isAvailable ?? (a as any).available ?? true,
+          } as ArtistWithMeta);
+        }
+        // Enrich with calendar/distance data already loaded for the selected date
+        setArtists(prev => {
+          const byId = new Map(prev.map(p => [p.id, p]));
+          setSmartArtists(smartList.map(sa => byId.get(sa.id) ?? sa));
+          return prev;
+        });
+        setSmartPriceMap(map);
+      } catch { /* ignore */ }
+      finally { setSmartSearchLoading(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // ── Load available artists when date changes ──────────────────────────────
   const loadArtists = useCallback(async (dateStr: string, loc: { lat: number; lng: number } | null) => {
@@ -458,10 +516,11 @@ function BuscarArtistasContent() {
       const res = await sdk.searchArtists({ limit: 40 });
       const rawArtists = res.artists ?? [];
 
-      // Batch-check calendars
-      const calendarResults = await Promise.allSettled(
-        rawArtists.map(a => sdk.getCalendar(a.id, year, month))
-      );
+      // Batch-check calendars + services in parallel
+      const [calendarResults, serviceResults] = await Promise.all([
+        Promise.allSettled(rawArtists.map(a => sdk.getCalendar(a.id, year, month))),
+        Promise.allSettled(rawArtists.map(a => sdk.getArtistServices(a.id))),
+      ]);
 
       const enriched: ArtistWithMeta[] = rawArtists.map((a, idx) => {
         const artistAny = a as Artist & { baseLocationLat?: number; baseLocationLng?: number };
@@ -474,6 +533,16 @@ function BuscarArtistasContent() {
         if (calRes.status === 'fulfilled') {
           const { occupiedDates, blockedDates } = calRes.value;
           available = !occupiedDates.includes(dateStr) && !blockedDates.includes(dateStr);
+        }
+
+        // Main service price
+        let mainServicePrice: number | undefined;
+        let mainServiceName: string | undefined;
+        const svcRes = serviceResults[idx];
+        if (svcRes.status === 'fulfilled' && svcRes.value.length > 0) {
+          const main = svcRes.value.find(s => (s as any).isMainService) ?? svcRes.value[0];
+          mainServicePrice = main.basePrice / 100; // convert cents → display units (GTQ)
+          mainServiceName = main.name;
         }
 
         // Distance — use exact coords if available, fall back to city-center coords
@@ -492,6 +561,8 @@ function BuscarArtistasContent() {
           baseLocationLng: artistLng ?? undefined,
           available,
           distance,
+          mainServicePrice: mainServicePrice ?? a.mainServicePrice,
+          mainServiceName: mainServiceName ?? a.mainServiceName,
         };
       });
 
@@ -560,37 +631,35 @@ function BuscarArtistasContent() {
   };
 
   // ── Filtered artists ──────────────────────────────────────────────────────
-  const displayed = artists.filter(a => {
-    if (showOnlyAvailable && !a.available) return false;
-    if (categoryFilter) {
-      const cat = (a.category || a.categoria || '').toUpperCase();
-      if (cat !== categoryFilter.toUpperCase()) return false;
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const name = a.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const bio = (a.bio || (a as any).descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const city = ((a as any).city || a.ciudad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const catEnum = (a.category || a.categoria || '').toUpperCase();
-      const catLabel = (CATEGORY_LABEL[catEnum] || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const specialties = ((a as any).specialties as string[] || []).join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // When search is active, use smartSearch results (correct service matching).
+  // Fall back to client-side filter only while smartSearch is still loading.
+  const displayed = (() => {
+    const useSmartResults = searchQuery.trim() && smartArtists.length > 0;
+    const base = useSmartResults ? smartArtists : artists;
 
-      // Synonym expansion: check if query matches any synonym → matches that category
-      const synonymMatched = Object.entries(CATEGORY_SYNONYMS).some(([term, cats]) =>
-        q.includes(term.normalize('NFD').replace(/[\u0300-\u036f]/g, '')) && cats.includes(catEnum)
-      );
-
-      if (
-        !name.includes(q) &&
-        !bio.includes(q) &&
-        !city.includes(q) &&
-        !catLabel.includes(q) &&
-        !specialties.includes(q) &&
-        !synonymMatched
-      ) return false;
-    }
-    return true;
-  });
+    return base.filter(a => {
+      if (showOnlyAvailable && !a.available) return false;
+      if (categoryFilter) {
+        const cat = (a.category || a.categoria || '').toUpperCase();
+        if (cat !== categoryFilter.toUpperCase()) return false;
+      }
+      // Client-side text filter only as fallback while smartSearch hasn't returned yet
+      if (searchQuery.trim() && !useSmartResults) {
+        const q = searchQuery.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const name = a.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const bio = (a.bio || (a as any).descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const city = ((a as any).city || a.ciudad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const catEnum = (a.category || a.categoria || '').toUpperCase();
+        const catLabel = (CATEGORY_LABEL[catEnum] || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const specialties = ((a as any).specialties as string[] || []).join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const synonymMatched = Object.entries(CATEGORY_SYNONYMS).some(([term, cats]) =>
+          q.includes(term.normalize('NFD').replace(/[\u0300-\u036f]/g, '')) && cats.includes(catEnum)
+        );
+        if (!name.includes(q) && !bio.includes(q) && !city.includes(q) && !catLabel.includes(q) && !specialties.includes(q) && !synonymMatched) return false;
+      }
+      return true;
+    });
+  })();
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading || !isAuthenticated) return <Loading fullScreen />;
@@ -832,7 +901,7 @@ function BuscarArtistasContent() {
                   </div>
 
                   {/* Loading skeleton */}
-                  {loadingArtists && (
+                  {(loadingArtists || smartSearchLoading) && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {Array.from({ length: 6 }).map((_, i) => (
                         <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-pulse">
@@ -880,6 +949,7 @@ function BuscarArtistasContent() {
                           key={artist.id}
                           artist={artist}
                           selectedDate={selectedDate}
+                          matchedServicePrice={smartPriceMap[artist.id]}
                         />
                       ))}
                     </div>
