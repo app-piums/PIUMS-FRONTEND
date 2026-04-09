@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint web-client
+        run: pnpm --filter web-client lint
+
+      - name: Lint web-artist
+        run: pnpm --filter web-artist lint
+
+      - name: Build web-client
+        run: pnpm --filter web-client build
+
+      - name: Build web-artist
+        run: pnpm --filter web-artist build
