@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { toast } from '@/lib/toast';
+import { ThemeToggle } from '@/contexts/ThemeContext';
 
 // Disciplinas creativas disponibles
 const creativeDisciplines = [
@@ -234,6 +235,7 @@ export default function ArtistOnboardingPage() {
 
   // Step 4: Portfolio & Profile (was step 4)
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [shortBio, setShortBio] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [instagramHandle, setInstagramHandle] = useState('');
@@ -334,6 +336,7 @@ export default function ArtistOnboardingPage() {
   const handleProfilePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setProfilePhotoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setProfilePhotoPreview(reader.result as string);
       reader.readAsDataURL(file);
@@ -442,6 +445,13 @@ export default function ArtistOnboardingPage() {
         });
       }
 
+      // Upload avatar if selected
+      if (profilePhotoFile) {
+        const fd = new FormData();
+        fd.append('avatar', profilePhotoFile);
+        await fetch('/api/users/avatar', { method: 'POST', body: fd, credentials: 'include' }).catch(() => {});
+      }
+
       document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
       router.push('/artist/dashboard');
     } catch (error) {
@@ -457,22 +467,23 @@ export default function ArtistOnboardingPage() {
   const canContinueStep6 = serviceName.trim().length > 0 && serviceCategory && serviceDescription.trim().length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 dark:from-[#0F172A] dark:via-[#1E293B]/30 dark:to-[#0F172A]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white dark:bg-[#1E293B] border-b border-gray-200 dark:border-[#334155]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center">
             <Image src="/logo.png" alt="PIUMS" width={96} height={96} className="h-10 w-auto" unoptimized priority />
           </div>
           {currentStep < 8 && (
             <div className="flex items-center gap-4">
+              <ThemeToggle />
               <button
                 onClick={handleSkip}
-                className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm font-medium transition-colors"
               >
                 Omitir
               </button>
-              <button className="text-gray-600 hover:text-gray-900 text-sm font-medium">
+              <button className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm font-medium">
                 Centro de Ayuda
               </button>
             </div>
@@ -509,7 +520,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 1: Welcome ───────────────────────────────────── */}
         {currentStep === 1 && (
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid md:grid-cols-2 gap-12 items-center piums-fade-in">
             <div>
               <div className="inline-block px-4 py-1.5 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full mb-6">
                 BIENVENIDA AL ECOSISTEMA
@@ -579,7 +590,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 2: Creative Superpower ───────────────────────── */}
         {currentStep === 2 && (
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto piums-fade-in">
             <h2 className="text-4xl font-bold text-gray-900 mb-3">
               ¿Cuál es tu <span className="text-orange-600">superpoder creativo</span>?
             </h2>
@@ -650,7 +661,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 3: Equipment (NEW) ────────────────────────────── */}
         {currentStep === 3 && (
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto piums-fade-in">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
                 <svg className="h-5 w-5 text-orange-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -744,7 +755,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 4: Identity Verification (OAuth users only) ─────── */}
         {currentStep === 4 && isOAuthUser && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto piums-fade-in">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
                 <svg className="h-5 w-5 text-orange-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -864,7 +875,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 5: Portfolio & Profile ───────────────────────── */}
         {currentStep === 5 && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto piums-fade-in">
             <h2 className="text-4xl font-bold text-gray-900 mb-3">Muestra tu mejor trabajo</h2>
             <p className="text-gray-600 mb-8">
               Conecta tus perfiles profesionales y súbe una foto para que los clientes sepan quién eres.
@@ -984,7 +995,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 6: Service Setup ──────────────────────────────── */}
         {currentStep === 6 && (
-          <div className="grid md:grid-cols-2 gap-12">
+          <div className="grid md:grid-cols-2 gap-12 piums-fade-in">
             {/* Left side */}
             <div>
               <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -1163,7 +1174,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 7: Tu Tarifa Base ─────────────────────────────── */}
         {currentStep === 7 && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto piums-fade-in">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
                 <svg className="h-5 w-5 text-orange-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1297,7 +1308,7 @@ export default function ArtistOnboardingPage() {
 
         {/* ── Step 8: Disponibilidad Semanal ────────────────────── */}
         {currentStep === 8 && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto piums-fade-in">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
                 <svg className="h-5 w-5 text-orange-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">

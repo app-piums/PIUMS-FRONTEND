@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import React, { useState } from 'react';
+import { ThemeToggle } from '@/contexts/ThemeContext';
 
 /* ─── Categorías de interés ─────────────────────────────────────────────── */
 const CATEGORIES = [
@@ -66,7 +67,7 @@ export default function ClientOnboardingPage() {
     });
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     // Guardar preferencias en localStorage para uso futuro
     localStorage.setItem('piums_onboarding_done', '1');
     localStorage.setItem('piums_interests', JSON.stringify({
@@ -77,18 +78,35 @@ export default function ClientOnboardingPage() {
     }));
     // Marcar onboarding como completado en cookie para el middleware
     document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
+    // Persistir fecha de onboarding en la base de datos
+    try {
+      await fetch('/api/auth/complete-onboarding', { method: 'PATCH', credentials: 'include' });
+    } catch {
+      // No bloquear la navegación si falla el registro
+    }
+    window.location.href = '/dashboard';
+  };
+
+  const handleSkip = async () => {
+    document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
+    try {
+      await fetch('/api/auth/complete-onboarding', { method: 'PATCH', credentials: 'include' });
+    } catch {
+      // No bloquear la navegación si falla el registro
+    }
     window.location.href = '/dashboard';
   };
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      {step === 1 && <StepWelcome onStart={() => setStep(2)} />}
+      {step === 1 && <StepWelcome onStart={() => setStep(2)} onSkip={handleSkip} />}
       {step === 2 && (
         <StepInterests
           selected={selectedCategories}
           onToggle={toggleCategory}
           onContinue={() => setStep(3)}
           onBack={() => setStep(1)}
+          onSkip={handleSkip}
         />
       )}
       {step === 3 && (
@@ -98,6 +116,7 @@ export default function ClientOnboardingPage() {
           onToggleTag={toggleTag}
           onFinish={handleFinish}
           onBack={() => setStep(2)}
+          onSkip={handleSkip}
         />
       )}
     </div>
@@ -107,13 +126,13 @@ export default function ClientOnboardingPage() {
 /* ════════════════════════════════════════════════════════════════════════════
    STEP 1 — Welcome
    ════════════════════════════════════════════════════════════════════════════ */
-function StepWelcome({ onStart }: { onStart: () => void }) {
+function StepWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => void }) {
   return (
-    <div className="flex-1 flex flex-col min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-orange-50/30 to-white">
+    <div className="flex-1 flex flex-col min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-orange-50/30 to-white dark:from-[#0F172A] dark:via-[#1E293B]/40 dark:to-[#0F172A] piums-fade-in">
       {/* Top bar */}
       <header className="flex items-center justify-between px-8 pt-8">
         <PiumsLogo />
-        <MoonIcon className="h-6 w-6 text-gray-300" />
+        <ThemeToggle />
       </header>
 
       {/* Content */}
@@ -142,10 +161,7 @@ function StepWelcome({ onStart }: { onStart: () => void }) {
                 <ArrowRightIcon className="h-4 w-4" />
               </button>
               <button
-                onClick={() => {
-                  document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
-                  window.location.href = '/dashboard';
-                }}
+                onClick={onSkip}
                 className="text-gray-500 hover:text-gray-800 font-medium transition-colors"
               >
                 Omitir
@@ -158,7 +174,7 @@ function StepWelcome({ onStart }: { onStart: () => void }) {
                 {['from-rose-400 to-pink-600', 'from-violet-400 to-purple-600', 'from-amber-400 to-orange-500'].map((g, i) => (
                   <div
                     key={i}
-                    className={`h-9 w-9 rounded-full bg-gradient-to-br ${g} border-2 border-white flex items-center justify-center text-white text-xs font-bold`}
+                    className={`h-9 w-9 rounded-full bg-gradient-to-br ${g} border-2 border-white dark:border-[#1E293B] flex items-center justify-center text-white text-xs font-bold`}
                   >
                     {['A', 'B', 'C'][i]}
                   </div>
@@ -224,14 +240,16 @@ function StepInterests({
   onToggle,
   onContinue,
   onBack,
+  onSkip,
 }: {
   selected: Set<string>;
   onToggle: (id: string) => void;
   onContinue: () => void;
   onBack: () => void;
+  onSkip: () => void;
 }) {
   return (
-    <div className="flex-1 flex flex-col px-6 py-8 max-w-2xl mx-auto w-full">
+    <div className="flex-1 flex flex-col px-6 py-8 max-w-2xl mx-auto w-full piums-fade-in">
       {/* Top */}
       <div className="flex items-center justify-between mb-8">
         <PiumsLogo />
@@ -291,10 +309,7 @@ function StepInterests({
         Continuar →
       </button>
       <button
-        onClick={() => {
-          document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
-          window.location.href = '/dashboard';
-        }}
+        onClick={onSkip}
         className="mt-3 text-sm text-gray-400 hover:text-gray-600 text-center w-full transition-colors"
       >
         Omitir por ahora
@@ -319,18 +334,20 @@ function StepRefine({
   onToggleTag,
   onFinish,
   onBack,
+  onSkip,
 }: {
   categories: string[];
   selectedTags: Record<string, Set<string>>;
   onToggleTag: (catId: string, tag: string) => void;
   onFinish: () => void;
   onBack: () => void;
+  onSkip: () => void;
 }) {
   // Si no seleccionó categorías, mostrar todas
   const toShow = categories.length > 0 ? categories : CATEGORIES.map(c => c.id);
 
   return (
-    <div className="flex-1 flex flex-col px-6 py-8 max-w-2xl mx-auto w-full">
+    <div className="flex-1 flex flex-col px-6 py-8 max-w-2xl mx-auto w-full piums-fade-in">
       {/* Top */}
       <div className="flex items-center justify-between mb-8">
         <PiumsLogo />
@@ -412,10 +429,7 @@ function StepRefine({
         Ir a mi Dashboard →
       </button>
       <button
-        onClick={() => {
-          document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
-          window.location.href = '/dashboard';
-        }}
+        onClick={onSkip}
         className="mt-3 text-sm text-gray-400 hover:text-gray-600 text-center w-full transition-colors"
       >
         Omitir por ahora
@@ -503,13 +517,6 @@ function ChevronLeftIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-    </svg>
-  );
-}
-function MoonIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
     </svg>
   );
 }
