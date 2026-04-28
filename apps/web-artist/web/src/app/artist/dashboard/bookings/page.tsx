@@ -9,8 +9,9 @@ import { sdk, Booking } from '@piums/sdk';
 import { getErrorMessage, isUnauthorizedError } from '@/lib/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
+import { cImg } from '@/lib/cloudinaryImg';
 
-type BookingStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'REJECTED' | 'ALL';
+type BookingStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'REJECTED' | 'RESCHEDULE_PENDING_ARTIST' | 'ALL';
 
 type ArtistBookingsFilters = {
   status?: BookingStatus;
@@ -96,6 +97,7 @@ export default function ArtistBookingsPage() {
     void loadStatusCounts();
   }, [loadStatusCounts]);
 
+
   const handleAccept = async (bookingId: string) => {
     if (!confirm('¿Confirmar aceptar esta reserva?')) return;
 
@@ -167,12 +169,37 @@ export default function ArtistBookingsPage() {
     }
   };
 
+  const handleRespondReschedule = async (requestId: string, accept: boolean, bookingId: string) => {
+    const rejectionReason = !accept ? prompt('¿Por qué rechazas el cambio de fecha? (opcional)') ?? undefined : undefined;
+    if (!accept && rejectionReason === null) return;
+
+    try {
+      setProcessingBookingId(bookingId);
+      const res = await fetch(`/api/reschedule-requests/${requestId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accept, rejectionReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Error al responder');
+      toast.success(accept ? 'Aceptado. Se enviará enlace al cliente.' : 'Solicitud rechazada.');
+      await loadBookings();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error al responder');
+    } finally {
+      setProcessingBookingId(null);
+    }
+  };
+
   const STATUS_ES: Record<string, string> = {
     PENDING: 'Pendiente',
     CONFIRMED: 'Confirmada',
     COMPLETED: 'Completada',
     CANCELLED: 'Cancelada',
     REJECTED: 'Rechazada',
+    RESCHEDULE_PENDING_ARTIST: 'Cambio de fecha',
+    RESCHEDULE_PENDING_CLIENT: 'Esperando cliente',
+    RESCHEDULED: 'Reprogramada',
   };
 
   const STATUS_STYLES: Record<string, string> = {
@@ -189,6 +216,9 @@ export default function ArtistBookingsPage() {
     COMPLETED: 'border-l-blue-500',
     CANCELLED: 'border-l-gray-400',
     REJECTED:  'border-l-red-400',
+    RESCHEDULE_PENDING_ARTIST: 'border-l-purple-400',
+    RESCHEDULE_PENDING_CLIENT: 'border-l-purple-300',
+    RESCHEDULED: 'border-l-teal-400',
   };
 
   const statusCountValues = Object.values(statusCounts);
@@ -202,12 +232,13 @@ export default function ArtistBookingsPage() {
     : null;
 
   const TABS: Array<{ value: BookingStatus; label: string }> = [
-    { value: 'PENDING',   label: 'Pendientes'  },
-    { value: 'CONFIRMED', label: 'Confirmadas' },
-    { value: 'COMPLETED', label: 'Completadas' },
-    { value: 'CANCELLED', label: 'Canceladas'  },
-    { value: 'REJECTED',  label: 'Rechazadas'  },
-    { value: 'ALL',       label: 'Todas'        },
+    { value: 'PENDING',                  label: 'Pendientes'    },
+    { value: 'RESCHEDULE_PENDING_ARTIST', label: 'Cambio fecha' },
+    { value: 'CONFIRMED',                label: 'Confirmadas'   },
+    { value: 'COMPLETED',                label: 'Completadas'   },
+    { value: 'CANCELLED',                label: 'Canceladas'    },
+    { value: 'REJECTED',                 label: 'Rechazadas'    },
+    { value: 'ALL',                      label: 'Todas'          },
   ];
 
   const STATS = [
@@ -326,6 +357,25 @@ export default function ArtistBookingsPage() {
 
                       {/* Card Body */}
                       <div className="px-4 py-3 space-y-2.5">
+                        {/* Client */}
+                        {(booking as any).clientName && (
+                          <div className="flex items-center gap-2">
+                            <div className="relative h-7 w-7 rounded-full overflow-hidden bg-orange-100 shrink-0">
+                              {(booking as any).clientAvatar ? (
+                                <img src={cImg((booking as any).clientAvatar)} alt={(booking as any).clientName} className="absolute inset-0 w-full h-full object-cover" />
+                              ) : (
+                                <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-orange-600">
+                                  {((booking as any).clientName as string).charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs text-gray-400 leading-none">Cliente</p>
+                              <p className="text-sm font-semibold text-gray-900 truncate">{(booking as any).clientName}</p>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Date */}
                         <div className="flex items-start gap-2.5">
                           <svg className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -380,6 +430,51 @@ export default function ArtistBookingsPage() {
                       </div>
 
                       {/* Actions — full width on mobile */}
+                      {booking.status === 'RESCHEDULE_PENDING_ARTIST' && (
+                        <div className="px-4 pb-4 pt-1 space-y-2">
+                          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+                            <p className="text-xs font-semibold text-purple-800 mb-0.5">Solicitud de cambio de fecha</p>
+                            <p className="text-xs text-purple-700">El cliente solicita cambiar la fecha de esta reserva. Acepta si tienes disponibilidad, o rechaza para mantener la fecha original.</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // requestId comes from rescheduleRequests — fetch inline
+                                fetch(`/api/bookings/${booking.id}/reschedule-requests`)
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    const pending = (d.requests || []).find((r: any) => r.status === 'PENDING_ARTIST');
+                                    if (pending) void handleRespondReschedule(pending.id, true, booking.id);
+                                  });
+                              }}
+                              disabled={processingBookingId === booking.id}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 active:scale-95 transition-all disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            >
+                              {processingBookingId === booking.id ? (
+                                <span className="flex items-center gap-1.5"><span className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />Procesando</span>
+                              ) : (
+                                <>✓ Aceptar cambio</>
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                fetch(`/api/bookings/${booking.id}/reschedule-requests`)
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    const pending = (d.requests || []).find((r: any) => r.status === 'PENDING_ARTIST');
+                                    if (pending) void handleRespondReschedule(pending.id, false, booking.id);
+                                  });
+                              }}
+                              disabled={processingBookingId === booking.id}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border-2 border-red-500 hover:bg-red-50 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                              ✗ Rechazar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {booking.status === 'PENDING' && (
                         <div className="flex gap-2 px-4 pb-4 pt-1">
                           <button
@@ -540,6 +635,56 @@ export default function ArtistBookingsPage() {
 
             {/* Modal Body */}
             <div className="px-5 py-4 space-y-4">
+
+              {/* Participantes */}
+              {(() => {
+                const b = selectedBooking as any;
+                const clientName: string = b.clientName || b.clientEmail || 'Cliente';
+                const clientAvatar: string | undefined = b.clientAvatar;
+                const clientEmail: string | undefined = b.clientEmail;
+                const artistAvatar: string | undefined = (user as any)?.avatar;
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Artista (tú) */}
+                    <div className="flex flex-col items-center gap-2 bg-purple-50 rounded-xl px-3 py-3 text-center">
+                      <div className="relative h-12 w-12 rounded-full overflow-hidden bg-purple-200 shrink-0">
+                        {artistAvatar ? (
+                          <img src={cImg(artistAvatar)} alt={userName} className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-purple-700">
+                            {userName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 w-full">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-500 mb-0.5">Artista</p>
+                        <p className="text-xs font-semibold text-gray-900 truncate">{userName}</p>
+                      </div>
+                    </div>
+
+                    {/* Cliente */}
+                    <div className="flex flex-col items-center gap-2 bg-orange-50 rounded-xl px-3 py-3 text-center">
+                      <div className="relative h-12 w-12 rounded-full overflow-hidden bg-orange-200 shrink-0">
+                        {clientAvatar ? (
+                          <img src={cImg(clientAvatar)} alt={clientName} className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-orange-700">
+                            {clientName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 w-full">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-500 mb-0.5">Cliente</p>
+                        <p className="text-xs font-semibold text-gray-900 truncate">{clientName}</p>
+                        {clientEmail && clientEmail !== clientName && (
+                          <p className="text-[10px] text-gray-400 truncate">{clientEmail}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Price */}
               <div className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-3">
                 <span className="text-sm text-gray-600">Total</span>

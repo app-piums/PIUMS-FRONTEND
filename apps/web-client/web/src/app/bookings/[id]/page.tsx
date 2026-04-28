@@ -7,9 +7,11 @@ import ClientSidebar from '@/components/ClientSidebar';
 import { Loading } from '@/components/Loading';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { ReviewModal } from '@/components/bookings/ReviewModal';
+import { ModifyDateModal } from '@/components/bookings/ModifyDateModal';
 import { sdk, type Service, type ArtistProfile, type Booking } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
+import { cImg } from '@/lib/cloudinaryImg';
 
 // Icons
 const ClockIcon = ({ className }: { className?: string }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
@@ -49,6 +51,8 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
   const [error, setError] = useState<string | null>(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewed, setReviewed] = useState(false);
+  const [isModifyDateOpen, setIsModifyDateOpen] = useState(false);
+  const [rescheduleRequestSent, setRescheduleRequestSent] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -130,6 +134,8 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
   const cancelReason = booking.cancellationReason || booking.cancelReason;
   const canReview = booking.status?.toLowerCase() === 'completed' && !reviewed && !booking.reviewId;
   const canAddToEvent = booking.status?.toUpperCase() === 'PENDING' && !booking.eventId;
+  const canRequestReschedule = ['PENDING', 'CONFIRMED', 'PAYMENT_PENDING', 'PAYMENT_COMPLETED'].includes(booking.status?.toUpperCase() || '') && !rescheduleRequestSent;
+  const hasPendingReschedule = ['RESCHEDULE_PENDING_ARTIST', 'RESCHEDULE_PENDING_CLIENT'].includes(booking.status?.toUpperCase() || '');
 
   const handleReviewSubmit = async (rating: number, comment: string) => {
     try {
@@ -294,6 +300,20 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
 
                 {/* Acciones del Dashboard Widget */}
                 <div className="bg-gray-50 p-5 px-5 flex flex-col gap-3">
+                   {canRequestReschedule && (
+                     <button
+                       onClick={() => setIsModifyDateOpen(true)}
+                       className="w-full py-2.5 bg-white border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition flex items-center justify-center gap-2"
+                     >
+                       <CalendarIcon className="h-4 w-4" />
+                       Cambiar Fecha
+                     </button>
+                   )}
+                   {hasPendingReschedule && (
+                     <div className="w-full py-2.5 bg-yellow-50 border border-yellow-200 text-yellow-800 font-semibold rounded-xl text-sm text-center">
+                       ⏳ Solicitud de cambio de fecha en proceso
+                     </div>
+                   )}
                    {canReview && (
                      <button
                        onClick={() => setIsReviewModalOpen(true)}
@@ -332,6 +352,55 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
                 </div>
               </div>
 
+              {/* Participantes */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Participantes
+                </h3>
+                <div className="space-y-3">
+                  {/* Cliente (yo) */}
+                  <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl">
+                    <div className="relative h-10 w-10 rounded-full overflow-hidden bg-orange-200 shrink-0">
+                      {user?.avatar ? (
+                        <img src={cImg(user.avatar)} alt={userName} className="absolute inset-0 w-full h-full object-cover" />
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-orange-700">
+                          {userName.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-500">Cliente</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
+                      {user?.email && <p className="text-xs text-gray-400 truncate">{user.email}</p>}
+                    </div>
+                  </div>
+
+                  {/* Artista */}
+                  {artist && (
+                    <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl">
+                      <div className="relative h-10 w-10 rounded-full overflow-hidden bg-purple-200 shrink-0">
+                        {artist.avatar ? (
+                          <img src={cImg(artist.avatar)} alt={artist.nombre} className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-purple-700">
+                            {artist.nombre?.charAt(0).toUpperCase() ?? 'A'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-500">Artista</p>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{artist.nombre}</p>
+                        {artist.category && <p className="text-xs text-gray-400 truncate">{artist.category}</p>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Tips de Seguridad */}
               <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                 <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
@@ -358,6 +427,15 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
         artistName={artist?.nombre || booking.artistName || 'el Artista'}
         bookingCode={booking.code || booking.id.substring(0, 8).toUpperCase()}
         onSubmit={handleReviewSubmit}
+      />
+
+      <ModifyDateModal
+        isOpen={isModifyDateOpen}
+        onClose={() => setIsModifyDateOpen(false)}
+        bookingId={booking.id}
+        bookingCode={booking.code || booking.id.substring(0, 8).toUpperCase()}
+        currentDate={booking.scheduledDate || booking.startAt || new Date().toISOString()}
+        onRequested={() => setRescheduleRequestSent(true)}
       />
     </div>
   );
