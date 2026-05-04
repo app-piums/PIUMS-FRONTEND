@@ -98,6 +98,7 @@ export interface AdminUserRow {
   nombre: string;
   email: string;
   role: string;
+  provider?: string;
   isBlocked: boolean;
   createdAt: string;
   pais?: string;
@@ -116,7 +117,7 @@ export interface AdminUserDetail extends AdminUserRow {
 }
 
 export const usersApi = {
-  list: (params: { page?: number; limit?: number; search?: string; role?: string }) => {
+  list: (params: { page?: number; limit?: number; search?: string; role?: string; provider?: string; category?: string }) => {
     const qs = new URLSearchParams(
       Object.entries(params)
         .filter(([, v]) => v !== undefined && v !== "")
@@ -136,6 +137,36 @@ export const usersApi = {
     request<{ message: string; id: string }>(`/admin/users/${id}`, {
       method: "DELETE",
     }),
+
+  exportCSV: async (params: { role?: string; provider?: string; search?: string; category?: string }) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("admin_token") : null;
+    const res = await fetch(`${API_BASE}/admin/users/export${qs ? `?${qs}` : ""}`, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, body?.message ?? `HTTP ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `usuarios-piums-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Artists ─────────────────────────────────────────────────────────────────
