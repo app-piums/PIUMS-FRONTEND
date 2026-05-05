@@ -267,6 +267,9 @@ function UsersContent() {
                   Registrado
                 </th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Último acceso
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   Acción
                 </th>
               </tr>
@@ -290,6 +293,11 @@ function UsersContent() {
                   </td>
                   <td className="px-5 py-3.5 text-xs text-zinc-400">
                     {new Date(u.createdAt).toLocaleDateString("es-MX")}
+                  </td>
+                  <td className="px-5 py-3.5 text-xs text-zinc-400">
+                    {u.lastLoginAt
+                      ? new Date(u.lastLoginAt).toLocaleDateString("es-MX")
+                      : <span className="text-zinc-300 dark:text-zinc-600">—</span>}
                   </td>
                   <td className="px-5 py-3.5">
                     {u.role !== "admin" && (
@@ -317,7 +325,7 @@ function UsersContent() {
               ))}
               {data?.users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={6} className="py-12 text-center text-sm text-zinc-400">
                     No se encontraron usuarios
                   </td>
                 </tr>

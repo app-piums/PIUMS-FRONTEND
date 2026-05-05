@@ -11,6 +11,23 @@ const FILTER_OPTIONS = [
   { value: "true", label: "Verificados" },
 ];
 
+const ARTIST_CATEGORIES = [
+  { value: "", label: "Todas las categorías" },
+  { value: "MUSICO", label: "Músico" },
+  { value: "FOTOGRAFO", label: "Fotógrafo" },
+  { value: "TATUADOR", label: "Tatuador" },
+  { value: "MAQUILLADOR", label: "Maquillador" },
+  { value: "DJ", label: "DJ" },
+  { value: "PINTOR", label: "Pintor" },
+  { value: "BAILARIN", label: "Bailarín" },
+  { value: "VIDEOGRAFO", label: "Videógrafo" },
+  { value: "DISENADOR", label: "Diseñador" },
+  { value: "ANIMADOR", label: "Animador" },
+  { value: "MAGO", label: "Mago" },
+  { value: "ACROBATA", label: "Acróbata" },
+  { value: "OTRO", label: "Otro" },
+];
+
 function VerifiedBadge({ verified }: { verified: boolean }) {
   return (
     <span
@@ -568,6 +585,9 @@ function ArtistsContent() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [verified, setVerified] = useState("");
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [category, setCategory] = useState("");
   const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     artist: AdminArtistRow;
@@ -577,8 +597,8 @@ function ArtistsContent() {
   } | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-artists", page, verified],
-    queryFn: () => artistsApi.list({ page, limit: 20, verified }),
+    queryKey: ["admin-artists", page, verified, search, category],
+    queryFn: () => artistsApi.list({ page, limit: 20, verified, search, category }),
   });
 
   const verifyMutation = useMutation({
@@ -617,20 +637,43 @@ function ArtistsContent() {
       </div>
 
       {/* Filter tabs */}
-      <div className="mb-5 flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900 sm:w-fit">
-        {FILTER_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => { setVerified(opt.value); setPage(1); }}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-              verified === opt.value
-                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50"
-                : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-            }`}
-          >
-            {opt.label}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
+          {FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { setVerified(opt.value); setPage(1); }}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                verified === opt.value
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); setSearch(searchInput); setPage(1); }} className="flex gap-2">
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar por nombre o email…"
+            className="w-64 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-[#FF6A00] focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+          />
+          <button type="submit" className="rounded-lg bg-[#FF6A00] px-4 py-2 text-sm font-medium text-white hover:bg-[#E65F00]">
+            Buscar
           </button>
-        ))}
+        </form>
+        <select
+          value={category}
+          onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 focus:border-[#FF6A00] focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+        >
+          {ARTIST_CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Mobile cards */}

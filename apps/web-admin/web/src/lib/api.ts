@@ -85,10 +85,16 @@ export interface AdminStats {
   revenueThisMonth: number;
   pendingReports: number;
   bookingsByMonth: { month: string; count: number }[];
+  revenueByMonth: { month: string; amount: number }[];
+  usersByMonth: { month: string; count: number }[];
+  artistsByCategory: { category: string; count: number }[];
+  topArtists: { artistId: string; nombre: string; bookings: number; revenue: number }[];
+  conversionFunnel: { totalUsers: number; totalArtists: number; verifiedArtists: number };
 }
 
 export const statsApi = {
-  get: () => request<AdminStats>("/admin/stats"),
+  get: (period?: string) =>
+    request<AdminStats>(`/admin/stats${period ? `?period=${period}` : ""}`),
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -101,6 +107,7 @@ export interface AdminUserRow {
   provider?: string;
   isBlocked: boolean;
   createdAt: string;
+  lastLoginAt?: string | null;
   pais?: string;
 }
 
@@ -221,7 +228,7 @@ export interface PaginatedArtists {
 }
 
 export const artistsApi = {
-  list: (params: { page?: number; limit?: number; verified?: string }) => {
+  list: (params: { page?: number; limit?: number; verified?: string; search?: string; category?: string }) => {
     const qs = new URLSearchParams(
       Object.entries(params)
         .filter(([, v]) => v !== undefined && v !== "")
@@ -290,7 +297,7 @@ export interface PaginatedBookings {
 }
 
 export const bookingsApi = {
-  list: (params: { page?: number; limit?: number; estado?: string; search?: string }) => {
+  list: (params: { page?: number; limit?: number; estado?: string; search?: string; dateFrom?: string; dateTo?: string }) => {
     const qs = new URLSearchParams(
       Object.entries(params)
         .filter(([, v]) => v !== undefined && v !== "")
