@@ -257,6 +257,210 @@ async function runPaymentEscalation() {
   }
 }
 
+// ==================== RECORDATORIOS MULTI-ETAPA ====================
+// Cada hora: envía recordatorios a cliente y artista en múltiples intervalos
+// (7 días, 3 días, mismo día para cliente; 7d, 3d, 24h, mismodia para artista)
+
+async function buildReminderPayload(booking: {
+  id: string;
+  code: string | null;
+  clientId: string;
+  artistId: string;
+  serviceId: string;
+  scheduledDate: Date;
+  durationMinutes: number;
+  location: string | null;
+}) {
+  const [clientUser, artistProfile, service] = await Promise.all([
+    usersClient.getUser(booking.clientId).catch(() => null),
+    artistsClient.getArtist(booking.artistId).catch(() => null),
+    catalogClient.getService(booking.serviceId).catch(() => null),
+  ]);
+
+  return {
+    bookingId: booking.id,
+    bookingCode: booking.code || booking.id,
+    clientId: booking.clientId,
+    clientName: (clientUser as any)?.fullName || (clientUser as any)?.firstName || 'Cliente',
+    clientEmail: (clientUser as any)?.email || '',
+    artistId: booking.artistId,
+    artistName: (artistProfile as any)?.artistName || 'el artista',
+    artistEmail: (artistProfile as any)?.email || (artistProfile as any)?.user?.email || '',
+    artistCategory: (artistProfile as any)?.category || '',
+    artistImage: (artistProfile as any)?.profileImage || '',
+    serviceName: (service as any)?.name || (service as any)?.title || `Reserva #${booking.code || booking.id}`,
+    scheduledDate: booking.scheduledDate.toISOString(),
+    durationMinutes: booking.durationMinutes,
+    location: booking.location || '',
+    servicePrice: 0,
+    totalPrice: 0,
+    currency: 'GTQ',
+    depositRequired: false,
+  };
+}
+
+async function runReminder7d() {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() + (7 * 24 * 60 - 60) * 60 * 1000); // 7d - 1h
+  const windowEnd = new Date(now.getTime() + (7 * 24 * 60 + 60) * 60 * 1000);   // 7d + 1h
+
+  try {
+    const bookings = await (prisma as any).booking.findMany({
+      where: {
+        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        scheduledDate: { gte: windowStart, lte: windowEnd },
+        reminderSent7d: false,
+        deletedAt: null,
+      },
+      select: { id: true, code: true, clientId: true, artistId: true, serviceId: true, scheduledDate: true, durationMinutes: true, location: true },
+    });
+
+    for (const booking of bookings) {
+      try {
+        const payload = await buildReminderPayload(booking);
+        if (payload.clientEmail) {
+          await notificationsClient.sendReminder7d(payload);
+        }
+        await (prisma as any).booking.update({ where: { id: booking.id }, data: { reminderSent7d: true } });
+        logger.info('7d reminder enviado', 'CRON_REMINDER', { bookingId: booking.id });
+      } catch (err: any) {
+        logger.error('Error enviando 7d reminder', 'CRON_REMINDER', { bookingId: booking.id, error: err.message });
+      }
+    }
+  } catch (err: any) {
+    logger.error('Error en cron reminder 7d', 'CRON_REMINDER', { error: err.message });
+  }
+}
+
+async function runReminder3d() {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() + (3 * 24 * 60 - 60) * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + (3 * 24 * 60 + 60) * 60 * 1000);
+
+  try {
+    const bookings = await (prisma as any).booking.findMany({
+      where: {
+        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        scheduledDate: { gte: windowStart, lte: windowEnd },
+        reminderSent3d: false,
+        deletedAt: null,
+      },
+      select: { id: true, code: true, clientId: true, artistId: true, serviceId: true, scheduledDate: true, durationMinutes: true, location: true },
+    });
+
+    for (const booking of bookings) {
+      try {
+        const payload = await buildReminderPayload(booking);
+        if (payload.clientEmail) {
+          await notificationsClient.sendReminder3d(payload);
+        }
+        await (prisma as any).booking.update({ where: { id: booking.id }, data: { reminderSent3d: true } });
+        logger.info('3d reminder enviado', 'CRON_REMINDER', { bookingId: booking.id });
+      } catch (err: any) {
+        logger.error('Error enviando 3d reminder', 'CRON_REMINDER', { bookingId: booking.id, error: err.message });
+      }
+    }
+  } catch (err: any) {
+    logger.error('Error en cron reminder 3d', 'CRON_REMINDER', { error: err.message });
+  }
+}
+
+async function runReminderSameDay() {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+  try {
+    const bookings = await (prisma as any).booking.findMany({
+      where: {
+        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        scheduledDate: { gte: todayStart, lte: todayEnd },
+        reminderSentSameDay: false,
+        deletedAt: null,
+      },
+      select: { id: true, code: true, clientId: true, artistId: true, serviceId: true, scheduledDate: true, durationMinutes: true, location: true },
+    });
+
+    for (const booking of bookings) {
+      try {
+        const payload = await buildReminderPayload(booking);
+        if (payload.clientEmail) {
+          await notificationsClient.sendReminderSameDay(payload);
+        }
+        await (prisma as any).booking.update({ where: { id: booking.id }, data: { reminderSentSameDay: true } });
+        logger.info('Same-day reminder enviado', 'CRON_REMINDER', { bookingId: booking.id });
+      } catch (err: any) {
+        logger.error('Error enviando same-day reminder', 'CRON_REMINDER', { bookingId: booking.id, error: err.message });
+      }
+    }
+  } catch (err: any) {
+    logger.error('Error en cron reminder same-day', 'CRON_REMINDER', { error: err.message });
+  }
+}
+
+async function runArtistReminders() {
+  const now = new Date();
+
+  // Ventanas de tiempo para cada nivel
+  const windows = [
+    {
+      flag: 'artistReminderSent7d' as const,
+      daysLabel: 'en 7 dias',
+      start: new Date(now.getTime() + (7 * 24 * 60 - 60) * 60 * 1000),
+      end: new Date(now.getTime() + (7 * 24 * 60 + 60) * 60 * 1000),
+    },
+    {
+      flag: 'artistReminderSent3d' as const,
+      daysLabel: 'en 3 dias',
+      start: new Date(now.getTime() + (3 * 24 * 60 - 60) * 60 * 1000),
+      end: new Date(now.getTime() + (3 * 24 * 60 + 60) * 60 * 1000),
+    },
+    {
+      flag: 'artistReminderSent24h' as const,
+      daysLabel: 'manana',
+      start: new Date(now.getTime() + (24 * 60 - 60) * 60 * 1000),
+      end: new Date(now.getTime() + (24 * 60 + 60) * 60 * 1000),
+    },
+    {
+      flag: 'artistReminderSentSameDay' as const,
+      daysLabel: 'hoy',
+      start: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0),
+      end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59),
+    },
+  ];
+
+  for (const { flag, daysLabel, start, end } of windows) {
+    try {
+      const where: Record<string, any> = {
+        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        scheduledDate: { gte: start, lte: end },
+        deletedAt: null,
+      };
+      where[flag] = false;
+
+      const bookings = await (prisma as any).booking.findMany({
+        where,
+        select: { id: true, code: true, clientId: true, artistId: true, serviceId: true, scheduledDate: true, durationMinutes: true, location: true },
+      });
+
+      for (const booking of bookings) {
+        try {
+          const payload = await buildReminderPayload(booking);
+          if (payload.artistEmail) {
+            await notificationsClient.sendArtistReminder(payload, daysLabel);
+          }
+          await (prisma as any).booking.update({ where: { id: booking.id }, data: { [flag]: true } });
+          logger.info(`Artist reminder (${daysLabel}) enviado`, 'CRON_REMINDER', { bookingId: booking.id });
+        } catch (err: any) {
+          logger.error(`Error enviando artist reminder (${daysLabel})`, 'CRON_REMINDER', { bookingId: booking.id, error: err.message });
+        }
+      }
+    } catch (err: any) {
+      logger.error(`Error en cron artist reminder (${daysLabel})`, 'CRON_REMINDER', { error: err.message });
+    }
+  }
+}
+
 // ==================== AUTO-COMPLETE ====================
 // Cada hora: si el artista no marcó el servicio como entregado
 // transcurridas (durationMinutes + 4h) desde scheduledDate, se
@@ -425,6 +629,12 @@ export function startCronJobs() {
   // Liberacion automatica de payout hold tras 24h sin confirmacion: cada hora
   setInterval(runPayoutHoldRelease, 60 * 60 * 1000);
 
+  // Recordatorios multi-etapa (cliente 7d/3d/sameday + artista 7d/3d/24h/sameday): cada hora
+  setInterval(runReminder7d, 60 * 60 * 1000);
+  setInterval(runReminder3d, 60 * 60 * 1000);
+  setInterval(runReminderSameDay, 60 * 60 * 1000);
+  setInterval(runArtistReminders, 60 * 60 * 1000);
+
   // Ejecutar inmediatamente al iniciar (con delay para que el servidor arranque)
   setTimeout(() => {
     runNoShowAutoActions().catch(() => {});
@@ -432,7 +642,11 @@ export function startCronJobs() {
     runPaymentEscalation().catch(() => {});
     runAutoComplete().catch(() => {});
     runPayoutHoldRelease().catch(() => {});
+    runReminder7d().catch(() => {});
+    runReminder3d().catch(() => {});
+    runReminderSameDay().catch(() => {});
+    runArtistReminders().catch(() => {});
   }, 30 * 1000); // 30s después del boot
 
-  logger.info("Cron jobs iniciados (no-show 24h + cobro 72h + escalacion pagos + auto-complete + payout hold release)", "CRON");
+  logger.info("Cron jobs iniciados (no-show + cobro 72h + escalacion pagos + auto-complete + payout hold release + recordatorios multi-etapa)", "CRON");
 }

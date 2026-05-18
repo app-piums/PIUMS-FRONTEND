@@ -15,6 +15,7 @@ import { apiLimiter } from "./middleware/rateLimiter";
 import { logger } from "./utils/logger";
 import { configureGoogleStrategy } from "./strategies/google.strategy";
 import { configureFacebookStrategy } from "./strategies/facebook.strategy";
+import { googleCalendarService } from "./services/google-calendar.service";
 
 const prismaInternal = new PrismaClient();
 
@@ -138,6 +139,51 @@ app.get("/internal/users/:authId/info", async (req, res, next) => {
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ id: user.id, authId: user.id, email: user.email, nombre: user.nombre, fullName: user.nombre });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================================
+// Internal calendar routes — called by booking-service, not exposed via gateway
+// ============================================================================
+
+const internalAuth = (req: any, res: any, next: any) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
+
+app.post('/internal/calendar/event', internalAuth, async (req, res, next) => {
+  try {
+    const { userId, event } = req.body;
+    if (!userId || !event) return res.status(400).json({ error: 'userId and event are required' });
+    const eventId = await googleCalendarService.createEvent(userId, event);
+    res.json({ eventId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.put('/internal/calendar/event/:eventId', internalAuth, async (req, res, next) => {
+  try {
+    const { userId, updates } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    await googleCalendarService.updateEvent(userId, req.params.eventId, updates || {});
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete('/internal/calendar/event/:eventId', internalAuth, async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    await googleCalendarService.deleteEvent(userId, req.params.eventId);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

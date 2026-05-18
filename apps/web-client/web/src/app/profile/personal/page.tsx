@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUnsavedChangesPrompt } from '@/hooks/useUnsavedChangesPrompt';
 import { toast } from '@/lib/toast';
+import { sdk } from '@piums/sdk';
 
 type PersonalInfoTabProps = {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -28,6 +29,23 @@ export default function PersonalInfoTab(props: PersonalInfoTabProps = {}) {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
+
+  const [calendarEnabled, setCalendarEnabled] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+
+  useEffect(() => {
+    sdk.getCalendarStatus().then(({ enabled }) => setCalendarEnabled(enabled));
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendarConnected') === 'true') {
+      setCalendarEnabled(true);
+      toast.success('Google Calendar conectado correctamente');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('error') === 'calendar_denied') {
+      toast.error('Conexion con Google Calendar cancelada');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
   const [formData, setFormData] = useState<ProfileFormData>({
     nombre: '',
     email: '',
@@ -333,6 +351,61 @@ export default function PersonalInfoTab(props: PersonalInfoTabProps = {}) {
           </div>
         )}
       </form>
+
+      {/* Google Calendar integration */}
+      <div className="mt-6 border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+        <div className="shrink-0 w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
+            <path d="M6 2v6l2.5 2.5L6 13v6l6-3 6 3v-6l-2.5-2.5L18 8V2l-6 3-6-3z" fill="#4285F4" fillOpacity=".15" stroke="#4285F4" strokeWidth="1.5" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-gray-900 text-sm">Google Calendar</h3>
+          <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+            Sincroniza tus reservas automaticamente. Cuando se confirme una reserva, el evento aparecera en tu Google Calendar. Las reprogramaciones y cancelaciones tambien se sincronizan.
+          </p>
+          {calendarEnabled ? (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Conectado
+              </span>
+              <button
+                type="button"
+                disabled={calendarLoading}
+                onClick={async () => {
+                  setCalendarLoading(true);
+                  try {
+                    await sdk.disconnectGoogleCalendar();
+                    setCalendarEnabled(false);
+                    toast.success('Google Calendar desconectado');
+                  } catch {
+                    toast.error('Error al desconectar');
+                  } finally {
+                    setCalendarLoading(false);
+                  }
+                }}
+                className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+              >
+                Desconectar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={calendarLoading}
+              onClick={() => {
+                if (!user?.token) return;
+                window.location.href = `/api/auth/google/calendar-connect?token=${user.token}`;
+              }}
+              className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-white bg-[#4285F4] hover:bg-[#3367D6] px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white"><path d="M6 2v6l2.5 2.5L6 13v6l6-3 6 3v-6l-2.5-2.5L18 8V2l-6 3-6-3z"/></svg>
+              Conectar Google Calendar
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

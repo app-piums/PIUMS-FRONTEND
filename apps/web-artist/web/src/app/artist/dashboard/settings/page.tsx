@@ -79,6 +79,25 @@ export default function ArtistSettingsPage() {
   const [artist, setArtist] = useState<ArtistProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Google Calendar integration state
+  const [calendarEnabled, setCalendarEnabled] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+
+  useEffect(() => {
+    sdk.getCalendarStatus().then(({ enabled }) => setCalendarEnabled(enabled));
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendarConnected') === 'true') {
+      setCalendarEnabled(true);
+      toast.success('Google Calendar conectado correctamente');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('error') === 'calendar_denied') {
+      toast.error('Conexion con Google Calendar cancelada');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   // Verification form state
   const [verifyData, setVerifyData] = useState({
     ciudad: '',
@@ -590,6 +609,7 @@ export default function ArtistSettingsPage() {
     { id: 'portfolio',     label: 'Portafolio',          icon: <ArtistPhotoIcon className="h-4 w-4" /> },
     { id: 'notifications', label: 'Notificaciones',      icon: <ArtistBellIcon className="h-4 w-4" /> },
     { id: 'payments',      label: 'Pagos',               icon: <ArtistCardIcon className="h-4 w-4" /> },
+    { id: 'integraciones', label: 'Integraciones',       icon: <ArtistLinkIcon className="h-4 w-4" /> },
     { id: 'legal',         label: 'Legal',               icon: <ArtistScaleIcon className="h-4 w-4" /> },
   ];
 
@@ -1673,6 +1693,70 @@ export default function ArtistSettingsPage() {
               </div>
             )}
 
+            {currentTab === 'integraciones' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">Integraciones</h2>
+                  <p className="text-sm text-gray-500">Conecta tu cuenta con servicios externos.</p>
+                </div>
+
+                <div className="border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+                  <div className="shrink-0 w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
+                      <path d="M6 2v6l2.5 2.5L6 13v6l6-3 6 3v-6l-2.5-2.5L18 8V2l-6 3-6-3z" fill="#4285F4" fillOpacity=".15" stroke="#4285F4" strokeWidth="1.5" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 text-sm">Google Calendar</h3>
+                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                      Sincroniza tus reservas automaticamente. Cuando un cliente confirme una reserva contigo, el evento se creara en tu Google Calendar. Las reprogramaciones y cancelaciones tambien se actualizan automaticamente.
+                    </p>
+                    {calendarEnabled ? (
+                      <div className="mt-3 flex items-center gap-3">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          Conectado
+                        </span>
+                        <button
+                          type="button"
+                          disabled={calendarLoading}
+                          onClick={async () => {
+                            setCalendarLoading(true);
+                            try {
+                              await sdk.disconnectGoogleCalendar();
+                              setCalendarEnabled(false);
+                              toast.success('Google Calendar desconectado');
+                            } catch {
+                              toast.error('Error al desconectar');
+                            } finally {
+                              setCalendarLoading(false);
+                            }
+                          }}
+                          className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                        >
+                          Desconectar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={calendarLoading}
+                        onClick={() => {
+                          const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+                          if (!token) return;
+                          window.location.href = `/api/auth/google/calendar-connect?token=${token}`;
+                        }}
+                        className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-white bg-[#4285F4] hover:bg-[#3367D6] px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white"><path d="M6 2v6l2.5 2.5L6 13v6l6-3 6 3v-6l-2.5-2.5L18 8V2l-6 3-6-3z"/></svg>
+                        Conectar Google Calendar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {currentTab === 'legal' && (
               <div className="space-y-4">
                 <div>
@@ -1814,6 +1898,9 @@ function ArtistCardIcon({ className }: { className?: string }) {
 }
 function ArtistScaleIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" /></svg>;
+}
+function ArtistLinkIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>;
 }
 function ArtistPhotoIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;

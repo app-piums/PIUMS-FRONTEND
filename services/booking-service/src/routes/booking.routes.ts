@@ -153,12 +153,12 @@ router.patch(
 
 /**
  * PATCH /api/bookings/:id/status
- * Cambiar estado de reserva — solo admin
+ * Cambiar estado — artista puede poner IN_PROGRESS / COMPLETED / NO_SHOW
+ * El service valida internamente que booking.artistId === userId
  */
 router.patch(
   "/bookings/:id/status",
   authenticateToken,
-  requireAdmin,
   bookingController.changeStatus.bind(bookingController)
 );
 

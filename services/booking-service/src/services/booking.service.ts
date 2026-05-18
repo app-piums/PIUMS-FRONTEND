@@ -11,6 +11,7 @@ import { usersClient } from "../clients/users.client";
 import { artistsClient } from "../clients/artists.client";
 import { notifyBookingCreated, notifyBookingConfirmed, notifyNoShowReported, notifyNoShowResolved } from "../utils/notifications";
 import { createAvailabilityReservation, removeAvailabilityReservation } from "./availability.service";
+import { googleCalendarClient } from "../clients/google-calendar.client";
 
 const prisma = new PrismaClient();
 
@@ -677,6 +678,40 @@ export class BookingService {
       })
       .catch(err => logger.error("Error creando conversación de chat", "BOOKING_SERVICE", { error: err.message }));
 
+    // Sync Google Calendar (best-effort, non-blocking — silently skips if user has no tokens)
+    ;(async () => {
+      try {
+        const [user, artist, service] = await Promise.all([
+          usersClient.getUser(booking.clientId).catch(() => null),
+          artistsClient.getArtist(booking.artistId).catch(() => null),
+          catalogClient.getService(booking.serviceId).catch(() => null),
+        ]);
+        const endDateTime = new Date(booking.scheduledDate.getTime() + booking.durationMinutes * 60000).toISOString();
+        const calEvent = {
+          summary: `${(service as any)?.name || 'Servicio'} con ${(artist as any)?.artistName || 'artista'}`,
+          description: `Reserva #${booking.code || id} — ${process.env.CLIENT_APP_URL || 'https://client.piums.io'}/bookings/${id}`,
+          location: booking.location || '',
+          startDateTime: booking.scheduledDate.toISOString(),
+          endDateTime,
+        };
+        const [clientEventId, artistEventId] = await Promise.all([
+          googleCalendarClient.createEvent(booking.clientId, calEvent),
+          googleCalendarClient.createEvent(booking.artistId, calEvent),
+        ]);
+        if (clientEventId || artistEventId) {
+          await (prisma as any).booking.update({
+            where: { id },
+            data: {
+              ...(clientEventId && { clientCalendarEventId: clientEventId }),
+              ...(artistEventId && { artistCalendarEventId: artistEventId }),
+            },
+          });
+        }
+      } catch (err: any) {
+        logger.error('Error syncing Google Calendar on confirm', 'BOOKING_SERVICE', { bookingId: id, error: err.message });
+      }
+    })();
+
     return updated;
   }
 
@@ -890,6 +925,24 @@ export class BookingService {
         category: 'booking',
       }).catch(() => {});
     }
+
+    // Remove Google Calendar events (best-effort)
+    ;(async () => {
+      try {
+        const calData = await (prisma as any).booking.findUnique({
+          where: { id },
+          select: { clientCalendarEventId: true, artistCalendarEventId: true },
+        });
+        if (calData?.clientCalendarEventId) {
+          googleCalendarClient.deleteEvent(booking.clientId, calData.clientCalendarEventId).catch(() => {});
+        }
+        if (calData?.artistCalendarEventId) {
+          googleCalendarClient.deleteEvent(booking.artistId, calData.artistCalendarEventId).catch(() => {});
+        }
+      } catch {
+        // Silently skip — calendar sync is best-effort
+      }
+    })();
 
     return updated;
   }
@@ -1266,6 +1319,28 @@ export class BookingService {
       });
     }
 
+    // Update Google Calendar events with new date/time (best-effort)
+    ;(async () => {
+      try {
+        const calData = await (prisma as any).booking.findUnique({
+          where: { id },
+          select: { clientCalendarEventId: true, artistCalendarEventId: true },
+        });
+        const calUpdates = {
+          startDateTime: newScheduledDate.toISOString(),
+          endDateTime: new Date(newScheduledDate.getTime() + booking.durationMinutes * 60000).toISOString(),
+        };
+        if (calData?.clientCalendarEventId) {
+          googleCalendarClient.updateEvent(booking.clientId, calData.clientCalendarEventId, calUpdates).catch(() => {});
+        }
+        if (calData?.artistCalendarEventId) {
+          googleCalendarClient.updateEvent(booking.artistId, calData.artistCalendarEventId, calUpdates).catch(() => {});
+        }
+      } catch {
+        // Silently skip — calendar sync is best-effort
+      }
+    })();
+
     return updated;
   }
 
@@ -1289,6 +1364,74 @@ export class BookingService {
       if (booking.artistId !== userId) {
         throw new AppError(403, "Solo el artista puede cambiar a este estado");
       }
+    }
+
+    // Artista marca como completado → transición a DELIVERED para iniciar ventana de confirmación
+    if (newStatus === "COMPLETED") {
+      const now = new Date();
+      const updated = await (prisma as any).booking.update({
+        where: { id },
+        data: { status: "DELIVERED", deliveredAt: now },
+      });
+
+      await this.recordStatusChange(id, booking.status, "DELIVERED", userId, reason || "Artista marcó el servicio como completado");
+
+      logger.info("Booking marcado DELIVERED por artista", "BOOKING_SERVICE", { bookingId: id });
+
+      // Notificaciones y payout hold en background (no bloquea la respuesta)
+      ;(async () => {
+        try {
+          const holdUntil = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+          await paymentsClient.schedulePayoutHold(id, holdUntil.toISOString());
+
+          const [clientUser, artistProfile, service] = await Promise.all([
+            usersClient.getUser(booking.clientId).catch(() => null),
+            artistsClient.getArtist(booking.artistId).catch(() => null),
+            catalogClient.getService(booking.serviceId).catch(() => null),
+          ]);
+
+          const clientEmail = (clientUser as any)?.email;
+          const clientName = (clientUser as any)?.fullName || (clientUser as any)?.firstName || 'Cliente';
+          const artistName = (artistProfile as any)?.artistName || 'el artista';
+          const serviceName = (service as any)?.name || (service as any)?.title || `Reserva #${booking.code || id}`;
+          const clientAppUrl = process.env.CLIENT_APP_URL || 'http://localhost:3000';
+          const confirmUrl = `${clientAppUrl}/bookings/${id}/confirm-delivery`;
+          const disputeUrl = `${clientAppUrl}/bookings/${id}/report-problem`;
+          const autoReleaseTime = holdUntil.toLocaleString('es-GT', { timeZone: 'America/Guatemala', dateStyle: 'full', timeStyle: 'short' });
+          const helpUrl = `${clientAppUrl}/soporte`;
+
+          // IN_APP: notificar al cliente
+          notificationsClient.sendNotification({
+            userId: booking.clientId,
+            type: "SERVICE_COMPLETED",
+            channel: "IN_APP",
+            title: "Servicio completado",
+            message: `El artista marcó el servicio como completado. Confirma la entrega para liberar el pago o reporta un problema en las próximas 24 horas.`,
+            data: { bookingId: id },
+            priority: "high",
+            category: "booking",
+          }).catch(err => logger.error("Error enviando notif IN_APP completado", "BOOKING_SERVICE", { error: err.message }));
+
+          // Email al cliente para que confirme entrega
+          if (clientEmail) {
+            await notificationsClient.sendDeliveryConfirmationEmail({
+              clientEmail,
+              clientName,
+              artistName,
+              serviceName,
+              bookingCode: (booking as any).code || id,
+              confirmUrl,
+              disputeUrl,
+              autoReleaseTime,
+              helpUrl,
+            });
+          }
+        } catch (err: any) {
+          logger.error("Error en post-completado (payout hold / email)", "BOOKING_SERVICE", { bookingId: id, error: err.message });
+        }
+      })();
+
+      return updated;
     }
 
     const updated = await prisma.booking.update({
@@ -1464,6 +1607,47 @@ export class BookingService {
     paymentsClient.schedulePayoutHold(bookingId, null).catch(err =>
       logger.error('Error liberando payout hold', 'BOOKING_SERVICE', { bookingId, error: err.message })
     );
+
+    // Notificar al artista en background
+    ;(async () => {
+      try {
+        const [clientUser, artistProfile, service] = await Promise.all([
+          usersClient.getUser(clientId).catch(() => null),
+          artistsClient.getArtist((booking as any).artistId).catch(() => null),
+          catalogClient.getService((booking as any).serviceId).catch(() => null),
+        ]);
+
+        const artistEmail = (artistProfile as any)?.email || (artistProfile as any)?.user?.email;
+        const artistName = (artistProfile as any)?.artistName || 'Artista';
+        const clientName = (clientUser as any)?.fullName || (clientUser as any)?.firstName || 'El cliente';
+        const serviceName = (service as any)?.name || (service as any)?.title || `Reserva #${(booking as any).code || bookingId}`;
+        const artistAppUrl = process.env.ARTIST_APP_URL || 'http://localhost:3002';
+
+        notificationsClient.sendNotification({
+          userId: (booking as any).artistId,
+          type: "DELIVERY_CONFIRMED",
+          channel: "IN_APP",
+          title: "Entrega confirmada",
+          message: "El cliente confirmó la entrega del servicio. El pago será liberado a tu cuenta.",
+          data: { bookingId },
+          priority: "high",
+          category: "booking",
+        }).catch(err => logger.error("Error enviando notif IN_APP artista delivery confirmed", "BOOKING_SERVICE", { error: err.message }));
+
+        if (artistEmail) {
+          await notificationsClient.sendDeliveryConfirmedArtistEmail({
+            artistEmail,
+            artistName,
+            clientName,
+            serviceName,
+            bookingCode: (booking as any).code || bookingId,
+            dashboardUrl: `${artistAppUrl}/artist/dashboard/bookings/${bookingId}`,
+          });
+        }
+      } catch (err: any) {
+        logger.error("Error notificando artista tras confirmacion entrega", "BOOKING_SERVICE", { bookingId, error: err.message });
+      }
+    })();
 
     logger.info('Entrega confirmada por cliente', 'BOOKING_SERVICE', { bookingId, clientId });
     return updated;
