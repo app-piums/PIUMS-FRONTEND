@@ -14,7 +14,7 @@ import { PricingBreakdown } from '@/components/booking/PricingBreakdown';
 import { ConfirmModal } from '@/components/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { sdk } from '@piums/sdk';
-import type { ArtistProfile, Service, TimeSlot, PriceQuote, CalculateServicePricePayload, CouponValidation } from '@piums/sdk';
+import type { ArtistProfile, Service, TimeSlot, PriceQuote, CalculateServicePricePayload, CouponValidation, ServiceDayOffer } from '@piums/sdk';
 import { LocationPickerMap } from '@/components/LocationPickerMap';
 import { toast } from '@/lib/toast';
 import { formatArtistCategory } from '@/lib/artistCategory';
@@ -275,6 +275,7 @@ function BookingContent() {
   const [clientEvents, setClientEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(eventId);
+  const [publicDayOffers, setPublicDayOffers] = useState<ServiceDayOffer[]>([]);
 
   useEffect(() => {
     if (locationError && (location || clientCoords)) {
@@ -509,7 +510,8 @@ function BookingContent() {
       service: Service,
       addonIds: string[],
       coords?: Coordinates | null,
-      distanceKm?: number | null
+      distanceKm?: number | null,
+      scheduledDate?: string
     ) => {
       setPriceLoading(true);
       setPriceError(null);
@@ -530,6 +532,10 @@ function BookingContent() {
 
         if (typeof distanceKm === 'number' && Number.isFinite(distanceKm)) {
           payload.distanceKm = Number(distanceKm.toFixed(2));
+        }
+
+        if (scheduledDate) {
+          payload.scheduledDate = scheduledDate;
         }
 
         const quote = await sdk.calculateServicePrice(payload);
@@ -608,14 +614,23 @@ function BookingContent() {
 
   useEffect(() => {
     if (!selectedService) {
+      setPublicDayOffers([]);
+      return;
+    }
+    sdk.getPublicDayOffers(selectedService.id).then(setPublicDayOffers).catch(() => setPublicDayOffers([]));
+  }, [selectedService]);
+
+  useEffect(() => {
+    if (!selectedService) {
       setPriceQuote(null);
       return;
     }
     // National artists (coverageRadius === null) never charge travel — don't send distanceKm
     // so the backend calculates travelCostCents = 0.
     const effectiveDistanceKm = artist?.coverageRadius === null ? null : travelDistanceKm;
-    calculatePriceQuote(selectedService, selectedAddons, clientCoords, effectiveDistanceKm);
-  }, [selectedService, selectedAddons, clientCoords, travelDistanceKm, artist?.coverageRadius, calculatePriceQuote]);
+    const scheduledDateStr = selectedDate ? selectedDate.toISOString().split('T')[0] : undefined;
+    calculatePriceQuote(selectedService, selectedAddons, clientCoords, effectiveDistanceKm, scheduledDateStr);
+  }, [selectedService, selectedAddons, clientCoords, travelDistanceKm, artist?.coverageRadius, selectedDate, calculatePriceQuote]);
 
   const addons = useMemo(() => selectedService?.addons ?? [], [selectedService]);
   const { currency, formatPrice } = useCurrency();
@@ -1178,6 +1193,18 @@ function BookingContent() {
                         )}
                       </div>
 
+                      {publicDayOffers.length > 0 && !selectedDate && (
+                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          <span className="font-semibold">Dias con oferta especial: </span>
+                          {publicDayOffers.map((o, i) => {
+                            const d = new Date(o.offerDate);
+                            const label = d.toLocaleDateString('es-GT', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+                            const disc = o.discountType === 'PERCENTAGE' ? `${o.discountValue}% off` : `$${(o.discountValue / 100).toFixed(0)} off`;
+                            return <span key={o.id}>{i > 0 ? ', ' : ''}{label} ({disc})</span>;
+                          })}
+                        </div>
+                      )}
+
                       <CalendarPicker
                         availability={availability}
                         selectedDate={selectedDate}
@@ -1198,6 +1225,21 @@ function BookingContent() {
                         isMonthLoading={calendarLoading}
                         minAdvanceHours={minAdvanceHours}
                       />
+
+                      {selectedDate && (() => {
+                        const selStr = selectedDate.toISOString().split('T')[0];
+                        const offer = publicDayOffers.find((o) => {
+                          const od = new Date(o.offerDate).toISOString().split('T')[0];
+                          return od === selStr;
+                        });
+                        if (!offer) return null;
+                        const disc = offer.discountType === 'PERCENTAGE' ? `${offer.discountValue}%` : `$${(offer.discountValue / 100).toFixed(2)}`;
+                        return (
+                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 font-medium">
+                            Dia con oferta: {disc} de descuento aplicado automaticamente{offer.label ? ` · ${offer.label}` : ''}
+                          </div>
+                        );
+                      })()}
 
                       {/* Selected range summary for multi-day */}
                       {isMultiDay && selectedDate && selectedTime && (

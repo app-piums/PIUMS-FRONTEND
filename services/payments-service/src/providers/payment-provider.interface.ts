@@ -7,6 +7,7 @@ export interface CheckoutParams {
   userId: string;
   userEmail?: string;   // requerido por Tilopay (billToEmail)
   returnUrl?: string;
+  ticketMode?: boolean; // si true, orderNumber = piums_ticket_{bookingId}_{ts}
 }
 
 export interface CheckoutResult {

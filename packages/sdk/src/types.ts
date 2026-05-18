@@ -72,7 +72,10 @@ export interface PortfolioItem {
   artistId: string;
   title: string;
   description?: string;
-  imageUrl: string;
+  type?: string;         // "image" | "video" | "audio"
+  url?: string;          // campo real en DB
+  imageUrl?: string;     // alias legacy
+  thumbnailUrl?: string; // thumbnail para videos
   category?: string;
   order: number;
   createdAt: string;

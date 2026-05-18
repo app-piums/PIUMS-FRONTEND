@@ -235,8 +235,14 @@ export class BookingController {
     try {
       const id = req.params.id as string;
       const { status, reason } = changeStatusSchema.parse(req.body);
-      
-      const userId = req.user!.id;
+
+      const authId = req.user!.id;
+      const artistStatuses = ['IN_PROGRESS', 'COMPLETED', 'NO_SHOW'] as const;
+      let userId = authId;
+      if ((artistStatuses as readonly string[]).includes(status)) {
+        const artistId = await this.resolveArtistId(authId);
+        if (artistId) userId = artistId;
+      }
 
       const booking = await bookingService.changeStatus(id, userId, status, reason);
       res.json(booking);
@@ -653,6 +659,29 @@ export class BookingController {
         paymentType
       );
       res.json(booking);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async confirmDelivery(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.id as string;
+      const clientId = req.user!.id;
+      const booking = await bookingService.confirmDelivery(bookingId, clientId);
+      res.json(booking);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async reportDeliveryProblem(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.id as string;
+      const clientId = req.user!.id;
+      const { reason } = req.body as { reason?: string };
+      const result = await bookingService.reportDeliveryProblem(bookingId, clientId, reason);
+      res.json(result);
     } catch (error) {
       next(error);
     }

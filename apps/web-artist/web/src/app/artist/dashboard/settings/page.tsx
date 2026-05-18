@@ -64,6 +64,11 @@ type ArtistFormData = {
   secondaryCategory: string;
 };
 
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 export default function ArtistSettingsPage() {
   const router = useRouter();
   const { user: authUser, updateUser } = useAuth();
@@ -133,6 +138,9 @@ export default function ArtistSettingsPage() {
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [portfolioUploading, setPortfolioUploading] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [youtubeTitle, setYoutubeTitle] = useState('');
+  const [youtubeAdding, setYoutubeAdding] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -536,9 +544,41 @@ export default function ArtistSettingsPage() {
       const res = await fetch(`/api/portafolio/items/${itemId}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) throw new Error();
       setPortfolioItems(prev => prev.filter((i: any) => i.id !== itemId));
-      toast.success('Foto eliminada');
+      toast.success('Elemento eliminado');
     } catch {
       toast.error('Error al eliminar');
+    }
+  };
+
+  const handleAddYouTubeVideo = async () => {
+    const videoId = extractYouTubeId(youtubeUrl.trim());
+    if (!videoId) {
+      toast.error('URL de YouTube no válida');
+      return;
+    }
+    setYoutubeAdding(true);
+    try {
+      const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      const res = await fetch('/api/portafolio/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          url: youtubeUrl.trim(),
+          title: youtubeTitle.trim() || 'Video',
+          type: 'video',
+          thumbnailUrl,
+        }),
+      });
+      if (!res.ok) throw new Error('Error al guardar video');
+      toast.success('Video añadido al portafolio');
+      setYoutubeUrl('');
+      setYoutubeTitle('');
+      await loadPortfolio();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al añadir video');
+    } finally {
+      setYoutubeAdding(false);
     }
   };
 
@@ -1425,6 +1465,49 @@ export default function ArtistSettingsPage() {
                   />
                 </label>
 
+                {/* YouTube section */}
+                <div className="border border-gray-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5 text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                    <h3 className="text-sm font-semibold text-gray-800">Agregar video de YouTube</h3>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={e => setYoutubeUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-[#FF6B35] bg-gray-50"
+                    />
+                    {extractYouTubeId(youtubeUrl) && (
+                      <img
+                        src={`https://img.youtube.com/vi/${extractYouTubeId(youtubeUrl)}/default.jpg`}
+                        alt="preview"
+                        className="h-10 w-16 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                      />
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={youtubeTitle}
+                      onChange={e => setYoutubeTitle(e.target.value)}
+                      placeholder="Titulo del video"
+                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-[#FF6B35] bg-gray-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddYouTubeVideo}
+                      disabled={!extractYouTubeId(youtubeUrl) || youtubeAdding}
+                      className="px-4 py-2 bg-[#FF6B35] text-white text-sm font-semibold rounded-xl hover:bg-[#e55a24] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      {youtubeAdding ? 'Agregando...' : 'Agregar'}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Grid */}
                 {portfolioLoading ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1445,16 +1528,25 @@ export default function ArtistSettingsPage() {
                     {portfolioItems.map((item: any) => (
                       <div key={item.id} className="relative group aspect-square rounded-xl overflow-hidden bg-gray-100">
                         <img
-                          src={item.url ?? item.imageUrl}
+                          src={item.type === 'video' ? (item.thumbnailUrl ?? item.url) : (item.url ?? item.imageUrl)}
                           alt={item.title ?? 'Portfolio'}
                           className="w-full h-full object-cover"
                         />
+                        {item.type === 'video' && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="bg-black/50 rounded-full p-2">
+                              <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z"/>
+                              </svg>
+                            </div>
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                           <button
                             type="button"
                             onClick={() => handlePortfolioDelete(item.id)}
                             className="p-2 bg-red-500 rounded-full text-white hover:bg-red-600 transition-colors"
-                            aria-label="Eliminar foto"
+                            aria-label="Eliminar"
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1472,7 +1564,7 @@ export default function ArtistSettingsPage() {
                 )}
 
                 <p className="text-xs text-gray-400">
-                  {portfolioItems.length} foto{portfolioItems.length !== 1 ? 's' : ''} en tu portafolio
+                  {portfolioItems.length} elemento{portfolioItems.length !== 1 ? 's' : ''} en tu portafolio
                 </p>
               </div>
             )}

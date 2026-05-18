@@ -315,6 +315,28 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
+  // Ticket Events & Purchases — booking-service, auth applied per route
+  // ============================================================================
+  app.use(
+    "/api/ticket-events",
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/ticket-events" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+  app.use(
+    "/api/ticket-purchases",
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/ticket-purchases" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
   // Payments Service (PROTEGIDO)
   // ============================================================================
 

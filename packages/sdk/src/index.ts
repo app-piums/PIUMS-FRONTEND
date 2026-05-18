@@ -39,7 +39,11 @@ export interface PortfolioItem {
   artistId: string;
   title: string;
   description?: string;
-  imageUrl: string;
+  type?: string;
+  url?: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  category?: string;
   order: number;
   createdAt: string;
 }
@@ -257,6 +261,7 @@ export interface PriceQuote {
   subtotalCents: number;
   totalCents: number;
   depositRequiredCents?: number;
+  offerLabel?: string;
   breakdown: {
     baseCents: number;
     addonsCents: number;
@@ -273,6 +278,7 @@ export interface CalculateServicePricePayload {
   locationLat?: number;
   locationLng?: number;
   discountCode?: string;
+  scheduledDate?: string; // "YYYY-MM-DD"
 }
 
 export interface SearchResults {
@@ -333,8 +339,30 @@ export interface CalendarData {
   artistId: string;
   year: number;
   month: number;
-  occupiedDates: string[]; // Array de fechas YYYY-MM-DD
-  blockedDates: string[];  // Array de fechas YYYY-MM-DD
+  occupiedDates: string[];
+  blockedDates: string[];
+}
+
+export type OfferDiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+
+export interface ServiceDayOffer {
+  id: string;
+  serviceId: string;
+  offerDate: string; // "YYYY-MM-DD"
+  discountType: OfferDiscountType;
+  discountValue: number;
+  maxDiscountCents?: number;
+  label?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateDayOfferPayload {
+  offerDate: string;
+  discountType: OfferDiscountType;
+  discountValue: number;
+  maxDiscountCents?: number;
+  label?: string;
 }
 
 export interface TimeSlot {
@@ -1156,6 +1184,74 @@ class PiumsSDK {
       return await response.json();
     } catch (_error) {
       return null;
+    }
+  }
+
+  async getPublicDayOffers(serviceId: string): Promise<ServiceDayOffer[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/catalog/services/${serviceId}/day-offers/public`);
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async listDayOffers(serviceId: string, artistId: string): Promise<ServiceDayOffer[]> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/catalog/services/${serviceId}/day-offers?artistId=${artistId}`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async createDayOffer(serviceId: string, payload: CreateDayOfferPayload & { artistId: string }): Promise<ServiceDayOffer> {
+    const res = await fetch(
+      `${this.baseUrl}/catalog/services/${serviceId}/day-offers`,
+      this.withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      })
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async toggleDayOffer(serviceId: string, offerId: string, isActive: boolean, artistId: string): Promise<ServiceDayOffer> {
+    const res = await fetch(
+      `${this.baseUrl}/catalog/services/${serviceId}/day-offers/${offerId}`,
+      this.withAuth({
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isActive, artistId }),
+      })
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async deleteDayOffer(serviceId: string, offerId: string, artistId: string): Promise<void> {
+    const res = await fetch(
+      `${this.baseUrl}/catalog/services/${serviceId}/day-offers/${offerId}?artistId=${artistId}`,
+      this.withAuth({ method: 'DELETE', credentials: 'include' })
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `HTTP ${res.status}`);
     }
   }
 
@@ -3207,6 +3303,162 @@ class PiumsSDK {
     if (!res.ok) return { valid: false, discount: 0, error: 'Cupón no válido' };
     return await res.json();
   }
+
+  // ==================== TICKET EVENTS ====================
+
+  async listTicketEvents(params?: { page?: number; limit?: number }): Promise<{ events: TicketEvent[]; total: number }> {
+    const qs = params ? `?${new URLSearchParams(Object.entries(params).filter(([,v]) => v != null).map(([k,v]) => [k, String(v)]) as [string,string][]).toString()}` : '';
+    const res = await fetch(`${this.baseUrl}/ticket-events${qs}`, { method: 'GET' });
+    if (!res.ok) return { events: [], total: 0 };
+    return res.json();
+  }
+
+  async getTicketEvent(id: string): Promise<TicketEvent> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${id}`, { method: 'GET' });
+    if (!res.ok) throw new Error('Evento no encontrado');
+    return res.json();
+  }
+
+  async getMyTicketEvents(): Promise<TicketEvent[]> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/by-artist/me`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  async createTicketEvent(payload: CreateTicketEventPayload): Promise<TicketEvent> {
+    const res = await fetch(`${this.baseUrl}/ticket-events`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async updateTicketEvent(id: string, payload: Partial<CreateTicketEventPayload> & { status?: TicketEventStatus }): Promise<TicketEvent> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${id}`, this.withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async addTicketTier(eventId: string, payload: CreateTicketTierPayload): Promise<TicketTier> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/tiers`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async deleteTicketTier(eventId: string, tierId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/tiers/${tierId}`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) throw new Error(await res.text());
+  }
+
+  async initTicketPurchase(eventId: string, data: { tierId: string; quantity?: number; couponCode?: string; returnUrl?: string }): Promise<{ purchase: TicketPurchase; redirectUrl: string | null }> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/purchase`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async getMyTicketPurchases(): Promise<TicketPurchase[]> {
+    const res = await fetch(`${this.baseUrl}/ticket-purchases/my`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  async getTicketPurchase(id: string): Promise<TicketPurchase> {
+    const res = await fetch(`${this.baseUrl}/ticket-purchases/${id}`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) throw new Error('Compra no encontrada');
+    return res.json();
+  }
+
+  async checkInTicket(eventId: string, code: string): Promise<TicketPurchase> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/check-in`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async getEventAttendance(eventId: string): Promise<{ paid: number; checkedIn: number; attendees: TicketPurchase[] }> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/attendance`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { paid: 0, checkedIn: 0, attendees: [] };
+    return res.json();
+  }
+}
+
+// ==================== TICKET EVENTS TYPES ====================
+
+export type TicketEventStatus = 'BORRADOR' | 'PUBLICADO' | 'AGOTADO' | 'CANCELADO' | 'FINALIZADO';
+export type TicketPurchaseStatus = 'PENDIENTE' | 'PAGADO' | 'USADO' | 'REEMBOLSADO' | 'EXPIRADO';
+
+export interface TicketTier {
+  id: string;
+  ticketEventId: string;
+  name: string;
+  description?: string;
+  priceCents: number;
+  currency: string;
+  totalQty: number;
+  soldQty: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketEvent {
+  id: string;
+  code: string;
+  artistId: string;
+  name: string;
+  description?: string;
+  venue: string;
+  address: string;
+  locationLat?: number;
+  locationLng?: number;
+  eventDate: string;
+  doorsOpen?: string;
+  imageUrl?: string;
+  maxCapacity: number;
+  status: TicketEventStatus;
+  tiers: TicketTier[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketPurchase {
+  id: string;
+  code: string;
+  ticketEventId: string;
+  tierId: string;
+  buyerId: string;
+  buyerEmail: string;
+  buyerName: string;
+  quantity: number;
+  subtotalCents: number;
+  discountCents: number;
+  totalCents: number;
+  currency: string;
+  couponCode?: string;
+  status: TicketPurchaseStatus;
+  paidAt?: string;
+  checkedInAt?: string;
+  ticketEvent?: Partial<TicketEvent>;
+  tier?: Partial<TicketTier>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTicketEventPayload {
+  name: string;
+  description?: string;
+  venue: string;
+  address: string;
+  locationLat?: number;
+  locationLng?: number;
+  eventDate: string;
+  doorsOpen?: string;
+  imageUrl?: string;
+  maxCapacity: number;
+}
+
+export interface CreateTicketTierPayload {
+  name: string;
+  description?: string;
+  priceCents: number;
+  currency?: string;
+  totalQty: number;
 }
 
 export const sdk = new PiumsSDK();

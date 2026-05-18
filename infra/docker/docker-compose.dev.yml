@@ -103,6 +103,7 @@ services:
       REVIEWS_SERVICE_URL: http://reviews-service:4006
       USERS_SERVICE_URL: http://users-service:4002
       ARTISTS_SERVICE_URL: http://artists-service:4003
+      PAYMENTS_SERVICE_URL: http://payments-service:4005
       INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
       CLIENT_APP_URL: https://client.piums.io

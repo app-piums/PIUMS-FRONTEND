@@ -90,6 +90,37 @@ export class PaymentController {
     }
   }
 
+  async initTicketCheckout(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const { purchaseId, amount, currency, countryCode, returnUrl } = req.body as {
+        purchaseId: string;
+        amount: number;
+        currency?: string;
+        countryCode?: string;
+        returnUrl?: string;
+      };
+
+      if (!purchaseId) return res.status(400).json({ error: 'purchaseId es requerido' });
+      if (!amount || amount <= 0) return res.status(400).json({ error: 'amount debe ser mayor a 0' });
+
+      const result = await paymentService.initTicketCheckout({
+        purchaseId,
+        userId,
+        userEmail: req.user!.email,
+        amount,
+        currency: currency || 'USD',
+        countryCode,
+        returnUrl,
+      });
+
+      res.status(201).json(result);
+      return;
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   async cancelPaymentIntent(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;

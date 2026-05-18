@@ -76,10 +76,16 @@ router.post(
         return;
       }
 
-      // Extraer bookingId del orderNumber: "piums_${bookingId}_${timestamp}"
+      // Extraer bookingId o ticketPurchaseId del orderNumber
+      // Formato booking:  piums_{bookingId}_{ts}
+      // Formato boleto:   piums_ticket_{purchaseId}_{ts}
       const ourOrderNumber: string = orderNumber || external_orden_id || '';
-      const bookingId = ourOrderNumber.startsWith('piums_')
+      const isTicketPayment = ourOrderNumber.startsWith('piums_ticket_');
+      const bookingId = !isTicketPayment && ourOrderNumber.startsWith('piums_')
         ? ourOrderNumber.split('_')[1]
+        : undefined;
+      const ticketPurchaseId = isTicketPayment
+        ? ourOrderNumber.split('_')[2]
         : undefined;
 
       // responseCode "00" = aprobado — Tilopay no siempre envía campo "status"
@@ -129,6 +135,19 @@ router.post(
           ).catch((err: any) =>
             logger.error("Error notificando booking-service del pago Tilopay", "CALLBACK_TILOPAY", {
               bookingId, error: err.message,
+            })
+          );
+        }
+
+        if (ticketPurchaseId) {
+          await bookingClient.markTicketPayment(
+            ticketPurchaseId,
+            amountCents,
+            "TILOPAY",
+            providerRef,
+          ).catch((err: any) =>
+            logger.error("Error notificando booking-service del pago de boleto", "CALLBACK_TILOPAY", {
+              ticketPurchaseId, error: err.message,
             })
           );
         }

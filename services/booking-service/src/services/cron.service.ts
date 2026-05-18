@@ -3,6 +3,9 @@ import { logger } from "../utils/logger";
 import { bookingService } from "./booking.service";
 import { paymentsClient } from "../clients/payments.client";
 import { notificationsClient } from "../clients/notifications.client";
+import { usersClient } from "../clients/users.client";
+import { artistsClient } from "../clients/artists.client";
+import { catalogClient } from "../clients/catalog.client";
 
 const prisma = new PrismaClient();
 
@@ -273,6 +276,7 @@ async function runAutoComplete() {
         code: true,
         clientId: true,
         artistId: true,
+        serviceId: true,
         scheduledDate: true,
         durationMinutes: true,
       },
@@ -307,6 +311,48 @@ async function runAutoComplete() {
           category: "booking",
         }).catch(err => logger.error("Error notificando auto-complete cliente", "CRON_AUTO_COMPLETE", { error: err.message }));
 
+        // Pago hold: 24h ventana de confirmacion de entrega
+        const holdUntil = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        ;(async () => {
+          try {
+            await paymentsClient.schedulePayoutHold(booking.id, holdUntil.toISOString());
+
+            const [clientUser, artistProfile, service] = await Promise.all([
+              usersClient.getUser(booking.clientId).catch(() => null),
+              artistsClient.getArtist(booking.artistId).catch(() => null),
+              catalogClient.getService(booking.serviceId).catch(() => null),
+            ]);
+
+            const clientEmail = (clientUser as any)?.email;
+            if (!clientEmail) return;
+
+            const clientName = (clientUser as any)?.fullName || (clientUser as any)?.nombre || (clientUser as any)?.firstName || 'Cliente';
+            const artistName = (artistProfile as any)?.artistName || 'el artista';
+            const serviceName = (service as any)?.name || (service as any)?.title || `Reserva #${booking.code || booking.id}`;
+            const clientAppUrl = process.env.CLIENT_APP_URL || 'http://localhost:3000';
+            const confirmUrl = `${clientAppUrl}/bookings/${booking.id}/confirm-delivery`;
+            const disputeUrl = `${clientAppUrl}/bookings/${booking.id}/report-problem`;
+            const autoReleaseTime = holdUntil.toLocaleString('es-GT', { timeZone: 'America/Guatemala', dateStyle: 'full', timeStyle: 'short' });
+            const helpUrl = `${clientAppUrl}/soporte`;
+
+            await notificationsClient.sendDeliveryConfirmationEmail({
+              clientEmail,
+              clientName,
+              artistName,
+              serviceName,
+              bookingCode: booking.code || booking.id,
+              confirmUrl,
+              disputeUrl,
+              autoReleaseTime,
+              helpUrl,
+            });
+
+            logger.info("Email confirmacion entrega enviado", "CRON_AUTO_COMPLETE", { bookingId: booking.id, clientEmail });
+          } catch (err: any) {
+            logger.error("Error en payout hold o email confirmacion", "CRON_AUTO_COMPLETE", { bookingId: booking.id, error: err.message });
+          }
+        })();
+
         logger.info("Booking auto-completado", "CRON_AUTO_COMPLETE", { bookingId: booking.id });
       } catch (err: any) {
         logger.error("Error al auto-completar booking", "CRON_AUTO_COMPLETE", {
@@ -321,6 +367,43 @@ async function runAutoComplete() {
     }
   } catch (err: any) {
     logger.error("Error en cron auto-complete", "CRON_AUTO_COMPLETE", { error: err.message });
+  }
+}
+
+// ==================== PAYOUT HOLD AUTO-RELEASE ====================
+// Cada hora: libera el hold de payouts cuya ventana de 24h venció
+// y el cliente no confirmó entrega (artista siempre cobra).
+
+async function runPayoutHoldRelease() {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // hace 24h
+
+  try {
+    const bookings = await (prisma as any).booking.findMany({
+      where: {
+        status: "DELIVERED",
+        deliveredAt: { lte: cutoff },
+        deliveryConfirmedAt: null,
+        deletedAt: null,
+      },
+      select: { id: true, code: true },
+    });
+
+    let released = 0;
+    for (const booking of bookings) {
+      try {
+        await paymentsClient.schedulePayoutHold(booking.id, null);
+        released++;
+        logger.info("Payout hold liberado automaticamente", "CRON_PAYOUT_RELEASE", { bookingId: booking.id });
+      } catch (err: any) {
+        logger.error("Error liberando payout hold", "CRON_PAYOUT_RELEASE", { bookingId: booking.id, error: err.message });
+      }
+    }
+
+    if (released > 0) {
+      logger.info(`Payout hold release: ${released} payouts liberados`, "CRON_PAYOUT_RELEASE");
+    }
+  } catch (err: any) {
+    logger.error("Error en cron payout hold release", "CRON_PAYOUT_RELEASE", { error: err.message });
   }
 }
 
@@ -339,13 +422,17 @@ export function startCronJobs() {
   // Auto-complete de bookings IN_PROGRESS: cada hora
   setInterval(runAutoComplete, 60 * 60 * 1000);
 
+  // Liberacion automatica de payout hold tras 24h sin confirmacion: cada hora
+  setInterval(runPayoutHoldRelease, 60 * 60 * 1000);
+
   // Ejecutar inmediatamente al iniciar (con delay para que el servidor arranque)
   setTimeout(() => {
     runNoShowAutoActions().catch(() => {});
     runPreEventCharge().catch(() => {});
     runPaymentEscalation().catch(() => {});
     runAutoComplete().catch(() => {});
+    runPayoutHoldRelease().catch(() => {});
   }, 30 * 1000); // 30s después del boot
 
-  logger.info("Cron jobs iniciados (no-show 24h + cobro 72h + escalación pagos + auto-complete)", "CRON");
+  logger.info("Cron jobs iniciados (no-show 24h + cobro 72h + escalacion pagos + auto-complete + payout hold release)", "CRON");
 }

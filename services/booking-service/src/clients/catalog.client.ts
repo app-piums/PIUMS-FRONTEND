@@ -12,6 +12,7 @@ interface PriceCalculationInput {
   durationMinutes?: number;
   selectedAddonIds?: string[];
   distanceKm?: number;
+  scheduledDate?: string; // "YYYY-MM-DD"
 }
 
 interface PriceItem {
@@ -30,6 +31,7 @@ interface PriceQuote {
   subtotalCents: number;
   totalCents: number;
   depositRequiredCents?: number;
+  offerLabel?: string;
   breakdown: {
     baseCents: number;
     addonsCents: number;

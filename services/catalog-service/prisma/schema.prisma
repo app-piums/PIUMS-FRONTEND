@@ -149,9 +149,11 @@ model Service {
   viewCount   Int      @default(0)
   bookingCount Int     @default(0)
   
+  dayOffers   ServiceDayOffer[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   @@unique([artistId, slug])
   @@index([artistId])
   @@index([categoryId])
@@ -378,6 +380,34 @@ model City {
   @@index([latitude, longitude])
   @@index([isActive, isPopular])
   @@map("cities")
+}
+
+// ============================================================================
+// Service Day Offers - Descuentos especiales por dia
+// ============================================================================
+
+enum OfferDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model ServiceDayOffer {
+  id               String          @id @default(uuid())
+  serviceId        String
+  service          Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  offerDate        DateTime        @db.Date
+  discountType     OfferDiscountType
+  discountValue    Int
+  maxDiscountCents Int?
+  label            String?
+  isActive         Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([serviceId, offerDate])
+  @@index([serviceId])
+  @@index([offerDate])
+  @@map("service_day_offers")
 }
 
 // ============================================================================

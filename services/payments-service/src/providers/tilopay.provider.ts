@@ -21,7 +21,8 @@ export class TilopayProvider implements IPaymentProvider {
 
     // Tilopay expects amount in dollars with 2 decimals, not centavos
     const amountDecimal = (params.amount / 100).toFixed(2);
-    const orderNumber = `piums_${params.bookingId}_${Date.now()}`;
+    const orderPrefix = params.ticketMode ? 'piums_ticket' : 'piums';
+    const orderNumber = `${orderPrefix}_${params.bookingId}_${Date.now()}`;
 
     // POST /processPayment — hosted redirect flow
     // Fields per official Tilopay Postman collection

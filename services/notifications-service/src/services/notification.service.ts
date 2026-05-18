@@ -200,6 +200,8 @@ export class NotificationService {
         'booking-confirmed-artist': 'booking-confirmed-artist.html',
         'booking-reminder-24h': 'booking-reminder-24h.html',
         'booking-reminder-2h': 'booking-reminder-2h.html',
+        'payout-disbursement': 'payout-disbursement.html',
+        'delivery-confirmation': 'delivery-confirmation.html',
       };
 
       const templateFile = templateFiles[template];
@@ -237,6 +239,8 @@ export class NotificationService {
         'welcome-client': '¡Bienvenido a Piums! 🎉',
         'welcome-artist': '¡Bienvenido a Piums! Tu perfil de artista está listo 🎨',
         'document-review-alert': 'Documentos pendientes de revisión - Piums',
+        'payout-disbursement': 'Tu pago ha sido transferido - Piums',
+        'delivery-confirmation': 'Confirma la recepcion de tu servicio - Piums',
       };
 
       const subject = subjects[template] || 'Notificación - Piums';

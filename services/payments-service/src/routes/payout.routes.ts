@@ -1,7 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { PrismaClient } from "@prisma/client";
 import { payoutController } from "../controller/payout.controller";
 import { payoutService } from "../services/payout.service";
 import { authenticateToken } from "../middleware/auth.middleware";
+
+const prisma = new PrismaClient();
 
 const router: Router = Router();
 
@@ -27,6 +30,81 @@ router.get(
   "/payouts",
   authenticateToken,
   payoutController.listPayouts.bind(payoutController)
+);
+
+/**
+ * POST /api/payouts/internal
+ * Crear payout desde otro servicio (x-internal-secret) — sin JWT
+ * DEBE ir ANTES de /payouts/:id
+ */
+router.post(
+  "/payouts/internal",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const secret = req.headers["x-internal-secret"];
+      if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
+        res.status(403).json({ message: "Acceso denegado" });
+        return;
+      }
+
+      const { artistId, bookingId, paymentId, amount, currency, payoutType, description, metadata } = req.body;
+
+      if (!artistId || !amount || amount <= 0) {
+        res.status(400).json({ message: "artistId y amount son requeridos" });
+        return;
+      }
+
+      // Idempotencia: no crear payout duplicado para el mismo bookingId + payoutType
+      if (bookingId && payoutType) {
+        const existing = await (prisma as any).payout.findFirst({
+          where: { bookingId, payoutType, deletedAt: null, status: { not: "CANCELLED" } },
+        });
+        if (existing) {
+          res.json({ success: true, data: existing, duplicate: true });
+          return;
+        }
+      }
+
+      const payout = await payoutService.createPayout({
+        artistId, bookingId, paymentId, amount, currency, payoutType, description, metadata,
+      });
+
+      res.status(201).json({ success: true, data: payout });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * PATCH /api/payouts/internal/schedule
+ * Establecer/limpiar scheduledFor (hold) en un payout por bookingId (x-internal-secret)
+ * Body: { bookingId: string, scheduledFor: string | null }
+ */
+router.patch(
+  "/payouts/internal/schedule",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const secret = req.headers["x-internal-secret"];
+      if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
+        res.status(403).json({ message: "Acceso denegado" });
+        return;
+      }
+
+      const { bookingId, scheduledFor } = req.body;
+      if (!bookingId) {
+        res.status(400).json({ message: "bookingId es requerido" });
+        return;
+      }
+
+      const date = scheduledFor ? new Date(scheduledFor) : null;
+      const payout = await payoutService.schedulePayoutHold(bookingId, date);
+
+      res.json({ success: true, data: payout });
+    } catch (err) {
+      next(err);
+    }
+  }
 );
 
 /**
@@ -98,18 +176,17 @@ router.patch(
         res.status(403).json({ message: "Acceso denegado" });
         return;
       }
-      const { id } = req.params;
-      const { transferReference, completedByAdmin } = req.body as {
-        transferReference: string;
-        completedByAdmin?: string;
-      };
+      const id = req.params['id'] as string;
+      const body = req.body as { transferReference?: string; completedByAdmin?: string };
+      const transferReference = String(body.transferReference ?? '');
+      const completedByAdmin = body.completedByAdmin;
 
       if (!transferReference?.trim()) {
         res.status(400).json({ message: "transferReference es requerido" });
         return;
       }
 
-      const payout = await payoutService.completePayout(id, transferReference, completedByAdmin);
+      const payout = await payoutService.completePayout(id, transferReference, completedByAdmin as string | undefined);
       res.json({ success: true, data: payout });
     } catch (err) {
       next(err);

@@ -6,7 +6,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 interface EmailTemplate {
   to: string;
-  template: 'password-reset' | 'email-verification' | 'payment-confirmation' | 'review-request' | 'document-review-alert';
+  template: 'password-reset' | 'email-verification' | 'payment-confirmation' | 'review-request' | 'document-review-alert' | 'payout-disbursement';
   variables: Record<string, any>;
 }
 
@@ -165,6 +165,37 @@ export class NotificationsClient {
     }
   }
 
+  async sendPayoutDisbursementEmail(data: {
+    artistEmail: string;
+    artistName: string;
+    bookingCode: string;
+    grossAmount: string;
+    platformFee: string;
+    netAmount: string;
+    currency: string;
+    commissionRate: string;
+    transferReference: string;
+    transferDate: string;
+    dashboardUrl: string;
+    helpUrl: string;
+  }) {
+    try {
+      await this.sendEmail({
+        to: data.artistEmail,
+        template: 'payout-disbursement',
+        variables: {
+          ...data,
+          currentYear: new Date().getFullYear(),
+        },
+      });
+      logger.info('Payout disbursement email sent', 'NOTIFICATIONS_CLIENT', { email: data.artistEmail });
+      return { success: true };
+    } catch (error: any) {
+      logger.warn('Could not send payout disbursement email', 'NOTIFICATIONS_CLIENT', { email: data.artistEmail, error: error.message });
+      return { success: false };
+    }
+  }
+
   async sendWelcomeEmail(email: string, userName: string, role: 'cliente' | 'artista' | 'ambos') {
     const isArtist = role === 'artista' || role === 'ambos';
     const template = isArtist ? 'welcome-artist' : 'welcome-client';
@@ -193,12 +224,14 @@ export class NotificationsClient {
    */
   private async sendEmail(data: EmailTemplate) {
     try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
       const response = await axios.post(
         `${NOTIFICATIONS_SERVICE_URL}/api/notifications/send-template-email`,
         data,
         {
           headers: {
             'Content-Type': 'application/json',
+            'x-internal-secret': internalSecret,
           },
           timeout: 10000, // 10 segundos
         }

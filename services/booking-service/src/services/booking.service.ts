@@ -141,6 +141,7 @@ export class BookingService {
       durationMinutes: data.durationMinutes,
       selectedAddonIds: data.selectedAddons || [],
       distanceKm,
+      scheduledDate: scheduledDate.toISOString().split('T')[0],
     });
 
     if (!priceQuote) {
@@ -1368,6 +1369,35 @@ export class BookingService {
       paymentIntentId,
     });
 
+    // Crear payout automático para el artista cuando el pago cambia de estado
+    if (
+      newPaymentStatus !== booking.paymentStatus &&
+      (newPaymentStatus === "ANTICIPO_PAID" || newPaymentStatus === "FULLY_PAID")
+    ) {
+      const payoutType = newPaymentStatus === "ANTICIPO_PAID" ? "ANTICIPO" : "BOOKING_PAYMENT";
+      const bookingCode = (updated as any).code || id.slice(0, 8).toUpperCase();
+      ;(async () => {
+        const result = await paymentsClient.createPayoutInternal({
+          artistId: booking.artistId,
+          bookingId: id,
+          amount,
+          currency: booking.currency,
+          payoutType,
+          description: `Pago reserva #${bookingCode}`,
+        });
+        if (result) {
+          logger.info("Payout automático creado", "BOOKING_SERVICE", {
+            bookingId: id,
+            payoutType,
+            amount,
+            duplicate: result.duplicate ?? false,
+          });
+        } else {
+          logger.error("Error creando payout automático", "BOOKING_SERVICE", { bookingId: id });
+        }
+      })();
+    }
+
     // Enviar emails de "reserva creada" cuando el anticipo (o pago completo) se confirma por primera vez
     if (
       (newPaymentStatus === "ANTICIPO_PAID" || newPaymentStatus === "FULLY_PAID") &&
@@ -1410,6 +1440,83 @@ export class BookingService {
     }
 
     return updated;
+  }
+
+  // ==================== CONFIRMACION DE ENTREGA ====================
+
+  async confirmDelivery(bookingId: string, clientId: string) {
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+
+    if (!booking) throw new AppError(404, 'Reserva no encontrada');
+    if ((booking as any).clientId !== clientId) throw new AppError(403, 'No tienes permiso para confirmar esta reserva');
+    if ((booking as any).status !== 'DELIVERED') throw new AppError(400, 'La reserva no está en estado DELIVERED');
+    if ((booking as any).deliveryConfirmedAt) throw new AppError(400, 'La entrega ya fue confirmada anteriormente');
+
+    const updated = await (prisma as any).booking.update({
+      where: { id: bookingId },
+      data: {
+        deliveryConfirmedAt: new Date(),
+        deliveryConfirmedBy: clientId,
+      },
+    });
+
+    // Liberar payout hold inmediatamente
+    paymentsClient.schedulePayoutHold(bookingId, null).catch(err =>
+      logger.error('Error liberando payout hold', 'BOOKING_SERVICE', { bookingId, error: err.message })
+    );
+
+    logger.info('Entrega confirmada por cliente', 'BOOKING_SERVICE', { bookingId, clientId });
+    return updated;
+  }
+
+  async reportDeliveryProblem(bookingId: string, clientId: string, reason?: string) {
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+
+    if (!booking) throw new AppError(404, 'Reserva no encontrada');
+    if ((booking as any).clientId !== clientId) throw new AppError(403, 'No tienes permiso para reportar un problema en esta reserva');
+    if ((booking as any).status !== 'DELIVERED') throw new AppError(400, 'Solo se puede reportar un problema en reservas en estado DELIVERED');
+    if ((booking as any).deliveryConfirmedAt) throw new AppError(400, 'La entrega ya fue confirmada, no se puede abrir una disputa');
+
+    // Cambiar estado a DISPUTE_OPEN — el cron de auto-release solo procesa DELIVERED, queda congelado
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: 'DISPUTE_OPEN' as any,
+        disputeReason: reason || null,
+      },
+    });
+
+    await this.recordStatusChange(bookingId, (booking as any).status, 'DISPUTE_OPEN', clientId, reason || 'Cliente reportó problema con la entrega');
+
+    // Crear disputa
+    const dispute = await prisma.dispute.create({
+      data: {
+        bookingId,
+        reportedBy: clientId,
+        reportedAgainst: (booking as any).artistId,
+        disputeType: 'QUALITY' as any,
+        status: 'OPEN',
+        subject: `Problema con entrega — reserva #${(booking as any).code || bookingId}`,
+        description: reason || 'El cliente reportó que no recibió el servicio correctamente.',
+        priority: 2,
+      },
+    });
+
+    logger.info('Problema de entrega reportado', 'BOOKING_SERVICE', { bookingId, clientId, disputeId: dispute.id });
+
+    // Alertar admin (in-app)
+    notificationsClient.sendNotification({
+      userId: 'admin',
+      type: 'DELIVERY_PROBLEM_REPORTED',
+      channel: 'IN_APP',
+      title: 'Problema de entrega reportado',
+      message: `Reserva #${(booking as any).code || bookingId}: el cliente reportó que no recibio el servicio. Pago congelado hasta revision.`,
+      data: { bookingId, disputeId: dispute.id },
+      priority: 'high',
+      category: 'admin',
+    }).catch(err => logger.error('Error notificando admin disputa entrega', 'BOOKING_SERVICE', { error: err.message }));
+
+    return { booking: await this.getBookingById(bookingId), dispute };
   }
 
   // ==================== DISPONIBILIDAD ====================
