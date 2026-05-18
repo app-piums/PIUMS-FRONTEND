@@ -41,6 +41,12 @@ model User {
   documentFrontUrl    String?
   documentBackUrl     String?
   documentSelfieUrl   String?
+  // Google Calendar (opt-in)
+  googleAccessToken      String?
+  googleRefreshToken     String?
+  googleTokenExpiresAt   DateTime?
+  googleCalendarEnabled  Boolean   @default(false)
+
   // Push notifications
   fcmToken            String?             // Firebase Cloud Messaging token del dispositivo móvil
   // Revisión de admin

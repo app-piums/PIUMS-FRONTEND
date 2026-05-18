@@ -42,6 +42,15 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction) =
   }
 };
 
+// Accepts either a valid JWT or a valid x-internal-secret header (for internal service calls)
+export const authenticateOrInternal = (req: Request, _res: Response, next: NextFunction) => {
+  const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+  if (internalSecret && req.headers['x-internal-secret'] === internalSecret) {
+    return next();
+  }
+  return authenticate(req, _res, next);
+};
+
 // Optional authentication (doesn't fail if no token)
 export const optionalAuth = (req: Request, _res: Response, next: NextFunction) => {
   try {

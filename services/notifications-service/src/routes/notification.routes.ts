@@ -1,12 +1,19 @@
 import { Router } from 'express';
 import { notificationController } from '../controller/notification.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, authenticateOrInternal } from '../middleware/auth.middleware';
 import { pushProvider } from '../providers/push.provider';
 import {
   sendRateLimiter,
   batchSendRateLimiter,
   preferencesRateLimiter,
 } from '../middleware/rateLimiter';
+import {
+  sendDeliveryConfirmedArtistEmail,
+  sendBookingReminder7dEmail,
+  sendBookingReminder3dEmail,
+  sendBookingReminderSameDayEmail,
+  sendArtistReminderEmail,
+} from '../services/booking-emails.service';
 
 const router: Router = Router();
 
@@ -67,7 +74,7 @@ router.post(
  */
 router.post(
   '/send',
-  authenticate,
+  authenticateOrInternal,
   sendRateLimiter,
   notificationController.sendNotification.bind(notificationController)
 );
@@ -79,7 +86,7 @@ router.post(
  */
 router.post(
   '/batch',
-  authenticate,
+  authenticateOrInternal,
   batchSendRateLimiter,
   notificationController.batchSend.bind(notificationController)
 );
@@ -253,6 +260,107 @@ router.delete(
  * POST /api/notifications/internal/push
  * Envía push directamente con fcmToken — solo inter-servicios (x-internal-secret)
  */
+// Middleware reutilizable para rutas internas
+const internalOnly = (req: any, res: any, next: any) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
+
+// Helper: extrae BookingEmailData del body, valida campos mínimos
+const extractBookingEmailData = (body: any) => ({
+  bookingId: body.bookingId || '',
+  bookingCode: body.bookingCode || '',
+  clientId: body.clientId || '',
+  clientName: body.clientName || '',
+  clientEmail: body.clientEmail || '',
+  artistId: body.artistId || '',
+  artistName: body.artistName || '',
+  artistEmail: body.artistEmail || '',
+  artistCategory: body.artistCategory || '',
+  artistImage: body.artistImage || '',
+  serviceName: body.serviceName || '',
+  scheduledDate: body.scheduledDate || '',
+  durationMinutes: body.durationMinutes || 60,
+  location: body.location || '',
+  servicePrice: body.servicePrice || 0,
+  totalPrice: body.totalPrice || 0,
+  currency: body.currency || 'GTQ',
+  depositRequired: body.depositRequired || false,
+});
+
+/**
+ * POST /api/notifications/booking/reminder-7d — recordatorio 7 dias al cliente
+ */
+router.post('/booking/reminder-7d', internalOnly, async (req, res) => {
+  try {
+    await sendBookingReminder7dEmail(extractBookingEmailData(req.body));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/reminder-3d — recordatorio 3 dias al cliente
+ */
+router.post('/booking/reminder-3d', internalOnly, async (req, res) => {
+  try {
+    await sendBookingReminder3dEmail(extractBookingEmailData(req.body));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/reminder-same-day — recordatorio el mismo dia al cliente
+ */
+router.post('/booking/reminder-same-day', internalOnly, async (req, res) => {
+  try {
+    await sendBookingReminderSameDayEmail(extractBookingEmailData(req.body));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/artist-reminder — recordatorio al artista (any interval)
+ */
+router.post('/booking/artist-reminder', internalOnly, async (req, res) => {
+  const { daysLabel, ...rest } = req.body;
+  try {
+    await sendArtistReminderEmail(extractBookingEmailData(rest), daysLabel || '');
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/delivery-confirmed-artist
+ * Envia email al artista cuando el cliente confirma la entrega — solo inter-servicios
+ */
+router.post('/booking/delivery-confirmed-artist', async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { artistEmail, artistName, clientName, serviceName, bookingCode, dashboardUrl } = req.body;
+  if (!artistEmail || !bookingCode) {
+    return res.status(400).json({ error: 'artistEmail y bookingCode son requeridos' });
+  }
+  try {
+    await sendDeliveryConfirmedArtistEmail({ artistEmail, artistName, clientName, serviceName, bookingCode, dashboardUrl });
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/internal/push', async (req, res) => {
   const secret = process.env.INTERNAL_SERVICE_SECRET;
   if (!secret || req.headers['x-internal-secret'] !== secret) {

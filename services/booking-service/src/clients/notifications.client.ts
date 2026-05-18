@@ -170,6 +170,70 @@ export class NotificationsClient {
     }
   }
 
+  private async postInternalEmail(path: string, payload: Record<string, any>): Promise<void> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        console.error(`[NotificationsClient] Error en ${path}:`, err);
+      }
+    } catch (error) {
+      console.error(`[NotificationsClient] Conexion fallida en ${path}:`, error);
+    }
+  }
+
+  async sendReminder7d(payload: Record<string, any>): Promise<void> {
+    await this.postInternalEmail('/api/notifications/booking/reminder-7d', payload);
+  }
+
+  async sendReminder3d(payload: Record<string, any>): Promise<void> {
+    await this.postInternalEmail('/api/notifications/booking/reminder-3d', payload);
+  }
+
+  async sendReminderSameDay(payload: Record<string, any>): Promise<void> {
+    await this.postInternalEmail('/api/notifications/booking/reminder-same-day', payload);
+  }
+
+  async sendArtistReminder(payload: Record<string, any>, daysLabel: string): Promise<void> {
+    await this.postInternalEmail('/api/notifications/booking/artist-reminder', { ...payload, daysLabel });
+  }
+
+  /**
+   * Enviar email al artista cuando el cliente confirma la entrega
+   */
+  async sendDeliveryConfirmedArtistEmail(payload: {
+    artistEmail: string;
+    artistName: string;
+    clientName: string;
+    serviceName: string;
+    bookingCode: string;
+    dashboardUrl: string;
+  }): Promise<void> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
+      const response = await fetch(`${this.baseUrl}/api/notifications/booking/delivery-confirmed-artist`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': internalSecret,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        console.error('[NotificationsClient] Error enviando email artista delivery confirmed:', error);
+      }
+    } catch (error) {
+      console.error('[NotificationsClient] Error de conexion al enviar email artista delivery confirmed:', error);
+    }
+  }
+
   /**
    * Verificar si el servicio de notificaciones está disponible
    */

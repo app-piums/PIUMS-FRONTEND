@@ -1146,7 +1146,7 @@ class PiumsSDK {
 
   async getArtistReviews(artistId: string, page: number = 1, limit: number = 10): Promise<{ reviews: Review[]; total: number; page: number; totalPages: number }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews?artistId=${artistId}&page=${page}&limit=${limit}&sortBy=recent`);
+      const response = await fetch(`${this.baseUrl}/reviews?artistId=${artistId}&page=${page}&limit=${limit}&sortBy=recent`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1253,6 +1253,26 @@ class PiumsSDK {
       const err = await res.json().catch(() => ({}));
       throw new Error((err as any).error || `HTTP ${res.status}`);
     }
+  }
+
+  async getCalendarStatus(): Promise<{ enabled: boolean }> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/auth/google-calendar/status`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!res.ok) return { enabled: false };
+      return res.json();
+    } catch {
+      return { enabled: false };
+    }
+  }
+
+  async disconnectGoogleCalendar(): Promise<void> {
+    await fetch(
+      `${this.baseUrl}/auth/google-calendar/disconnect`,
+      this.withAuth({ method: 'POST', credentials: 'include' })
+    );
   }
 
   /**
@@ -2033,7 +2053,7 @@ class PiumsSDK {
    */
   async createReview(payload: CreateReviewPayload): Promise<ReviewDetailed> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews`, this.withAuth({
+      const response = await fetch(`${this.baseUrl}/reviews`, this.withAuth({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2083,7 +2103,7 @@ class PiumsSDK {
       if (filters?.page) queryParams.append('page', filters.page.toString());
       if (filters?.limit) queryParams.append('limit', filters.limit.toString());
 
-      const response = await fetch(`${this.baseUrl}/reviews/reviews?${queryParams.toString()}`);
+      const response = await fetch(`${this.baseUrl}/reviews?${queryParams.toString()}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -2102,7 +2122,7 @@ class PiumsSDK {
    */
   async getReviewById(reviewId: string): Promise<ReviewDetailed | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}`);
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -2125,7 +2145,7 @@ class PiumsSDK {
    */
   async updateReview(reviewId: string, payload: UpdateReviewPayload): Promise<ReviewDetailed> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -2153,7 +2173,7 @@ class PiumsSDK {
    */
   async deleteReview(reviewId: string): Promise<{ message: string; review: ReviewDetailed }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -2178,7 +2198,7 @@ class PiumsSDK {
    */
   async markHelpful(reviewId: string, isHelpful: boolean): Promise<{ success: boolean; helpfulCount: number }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}/helpful`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}/helpful`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2207,7 +2227,7 @@ class PiumsSDK {
    */
   async reportReview(reviewId: string, payload: ReportReviewPayload): Promise<{ message: string; reportId: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}/report`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2236,7 +2256,7 @@ class PiumsSDK {
    */
   async respondToReview(reviewId: string, message: string): Promise<ReviewResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}/respond`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

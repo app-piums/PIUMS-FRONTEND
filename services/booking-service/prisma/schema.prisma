@@ -197,10 +197,23 @@ model Booking {
   confirmedAt     DateTime?
   confirmedBy     String?      // artistId
   
-  // Recordatorios enviados
-  reminderSent24h Boolean      @default(false)
-  reminderSent2h  Boolean      @default(false)
+  // Recordatorios enviados — cliente
+  reminderSent7d      Boolean  @default(false)
+  reminderSent3d      Boolean  @default(false)
+  reminderSentSameDay Boolean  @default(false)
+  reminderSent24h     Boolean  @default(false)
+  reminderSent2h      Boolean  @default(false)
+
+  // Recordatorios enviados — artista
+  artistReminderSent7d      Boolean  @default(false)
+  artistReminderSent3d      Boolean  @default(false)
+  artistReminderSent24h     Boolean  @default(false)
+  artistReminderSentSameDay Boolean  @default(false)
   
+  // Google Calendar event IDs (null si el usuario no conectó Calendar)
+  clientCalendarEventId  String?
+  artistCalendarEventId  String?
+
   // Review (después de completar)
   reviewId        String?      @unique
 
