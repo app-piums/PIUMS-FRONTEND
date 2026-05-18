@@ -254,6 +254,7 @@ export interface AdminPayout {
   completedAt?: string | null;
   notes?: string | null;
   createdAt: string;
+  scheduledFor?: string | null;
   // enriched by backend
   artistName?: string;
   bookingCode?: string;

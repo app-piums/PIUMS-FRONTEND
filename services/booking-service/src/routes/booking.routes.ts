@@ -110,6 +110,26 @@ router.post(
 );
 
 /**
+ * POST /api/bookings/:id/confirm-delivery
+ * Confirmar recepcion del servicio (solo el cliente de la reserva)
+ */
+router.post(
+  "/bookings/:id/confirm-delivery",
+  authenticateToken,
+  bookingController.confirmDelivery.bind(bookingController)
+);
+
+/**
+ * POST /api/bookings/:id/report-delivery-problem
+ * Reportar problema con la entrega — abre disputa y congela payout (solo el cliente)
+ */
+router.post(
+  "/bookings/:id/report-delivery-problem",
+  authenticateToken,
+  bookingController.reportDeliveryProblem.bind(bookingController)
+);
+
+/**
  * POST /api/bookings/:id/no-show
  * Reportar no-show del artista (solo el cliente de la reserva)
  */

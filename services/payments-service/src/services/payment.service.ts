@@ -692,6 +692,44 @@ export class PaymentService {
     return result;
   }
 
+  async initTicketCheckout(data: {
+    userId: string;
+    userEmail?: string;
+    purchaseId: string;
+    amount: number;
+    currency?: string;
+    countryCode?: string;
+    returnUrl?: string;
+  }) {
+    const currency = data.currency || process.env.DEFAULT_CURRENCY || "USD";
+
+    const { getProvider } = await import("../utils/payment-router");
+    const provider = await getProvider(data.countryCode);
+
+    const result = await provider.createCheckout({
+      bookingId: data.purchaseId,
+      amount: data.amount,
+      currency,
+      userId: data.userId,
+      userEmail: data.userEmail,
+      returnUrl: data.returnUrl,
+      ticketMode: true,
+      metadata: {
+        purchaseId: data.purchaseId,
+        userId: data.userId,
+      },
+    });
+
+    logger.info("Ticket checkout iniciado", "PAYMENT_SERVICE", {
+      purchaseId: data.purchaseId,
+      provider: result.provider,
+      providerRef: result.providerRef,
+      requiresAction: result.requiresAction,
+    });
+
+    return result;
+  }
+
   // ==================== HELPERS ====================
 
   private mapStripeStatusToPaymentIntentStatus(stripeStatus: string): PaymentIntentStatus {

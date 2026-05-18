@@ -283,6 +283,110 @@ export class PaymentsClient {
   }
 
   /**
+   * Crear payout para un artista tras confirmar pago (llamada interna)
+   */
+  async createPayoutInternal(payload: {
+    artistId: string;
+    bookingId?: string;
+    amount: number;
+    currency?: string;
+    payoutType?: string;
+    description?: string;
+  }): Promise<any | null> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      const response = await fetch(`${this.baseUrl}/api/payouts/internal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': internalSecret || '',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        console.error('[PaymentsClient] Error creando payout:', error);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[PaymentsClient] Error de conexión al crear payout:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Establecer o limpiar el hold de un payout por bookingId (llamada interna)
+   * scheduledFor = ISO string para activar hold; null para liberarlo
+   */
+  async schedulePayoutHold(bookingId: string, scheduledFor: string | null): Promise<any | null> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      const response = await fetch(`${this.baseUrl}/api/payouts/internal/schedule`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': internalSecret || '',
+        },
+        body: JSON.stringify({ bookingId, scheduledFor }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        console.error('[PaymentsClient] Error actualizando payout hold:', error);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[PaymentsClient] Error de conexión al actualizar payout hold:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Iniciar checkout para compra de boleto de evento (ticketMode)
+   */
+  async initTicketCheckout(data: {
+    purchaseId: string;
+    userId: string;
+    userEmail?: string;
+    amount: number;
+    currency?: string;
+    returnUrl?: string;
+  }): Promise<{ redirectUrl?: string; providerRef: string; orderNumber?: string } | null> {
+    try {
+      const serviceToken = generateServiceToken(data.userId);
+      const response = await fetch(`${this.baseUrl}/api/payments/ticket-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceToken}`,
+        },
+        body: JSON.stringify({
+          purchaseId: data.purchaseId,
+          amount: data.amount,
+          currency: data.currency || 'USD',
+          returnUrl: data.returnUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        console.error('[PaymentsClient] Error iniciando ticket checkout:', error);
+        return null;
+      }
+
+      return await response.json() as { redirectUrl?: string; providerRef: string; orderNumber?: string };
+    } catch (error) {
+      console.error('[PaymentsClient] Error de conexión al iniciar ticket checkout:', error);
+      return null;
+    }
+  }
+
+  /**
    * Buscar pagos de un booking
    */
   async getBookingPayments(bookingId: string, userId: string): Promise<any | null> {

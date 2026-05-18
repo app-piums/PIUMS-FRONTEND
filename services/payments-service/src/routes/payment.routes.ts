@@ -15,6 +15,14 @@ router.post(
   paymentController.initCheckout.bind(paymentController)
 );
 
+// Inicia checkout para compra de boletos (ticketMode — sin ownership check de booking)
+router.post(
+  "/ticket-checkout",
+  authenticateToken,
+  createPaymentLimiter,
+  paymentController.initTicketCheckout.bind(paymentController)
+);
+
 // ==================== PAYMENT INTENTS ====================
 
 // Crear payment intent (Stripe legacy)

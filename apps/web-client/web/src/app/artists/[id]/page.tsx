@@ -18,6 +18,43 @@ import { getMockArtist, getMockServices, getMockReviews } from '@/lib/mockData';
 import { formatArtistCategory } from '@/lib/artistCategory';
 import { toast } from '@/lib/toast';
 
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function VideoModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const videoId = extractYouTubeId(url);
+  if (!videoId) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl mx-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white text-2xl font-bold hover:text-gray-300"
+          aria-label="Cerrar"
+        >
+          ✕
+        </button>
+        <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
+          <iframe
+            className="absolute inset-0 w-full h-full rounded-xl"
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ArtistProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -48,6 +85,7 @@ export default function ArtistProfilePage() {
   const [activeTab, setActiveTab] = useState<'about' | 'services' | 'portfolio' | 'reviews'>('services');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [videoModal, setVideoModal] = useState<string | null>(null);
   const [hoveredServiceId, setHoveredServiceId] = useState<string | null>(null);
   const startingPrice = useMemo(() => {
     if (services.length > 0) {
@@ -224,8 +262,15 @@ export default function ArtistProfilePage() {
     }
   };
 
+  const imagePortfolioItems = artist?.portfolio?.filter(item => item.type !== 'video') ?? [];
+  const portfolioImages = imagePortfolioItems.map(item => ({
+    url: cImg(item.url ?? item.imageUrl ?? '') || '/placeholder-image.jpg',
+    title: item.title,
+    description: item.description,
+  }));
+
   const nextImage = () => {
-    if (artist?.portfolio && lightboxIndex < artist.portfolio.length - 1) {
+    if (lightboxIndex < portfolioImages.length - 1) {
       setLightboxIndex(lightboxIndex + 1);
     }
   };
@@ -273,11 +318,6 @@ export default function ArtistProfilePage() {
     });
   };
 
-  const portfolioImages = artist.portfolio?.map(item => ({
-    url: cImg(item.imageUrl) || '/placeholder-image.jpg',
-    title: item.title,
-    description: item.description
-  })) || [];
 
   return (
     <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
@@ -292,6 +332,11 @@ export default function ArtistProfilePage() {
           onNext={nextImage}
           onPrev={prevImage}
         />
+      )}
+
+      {/* Video modal */}
+      {videoModal && (
+        <VideoModal url={videoModal} onClose={() => setVideoModal(null)} />
       )}
 
       <div className="flex-1 min-w-0 overflow-y-auto p-4 pt-20 lg:p-0 lg:pt-0">
@@ -568,36 +613,53 @@ export default function ArtistProfilePage() {
 
             {activeTab === 'portfolio' && (
               <div className="grid grid-cols-2 gap-4">
-                {artist.portfolio && artist.portfolio.length > 0 ? (
-                  artist.portfolio.map((item, index) => (
-                    <Card 
-                      key={item.id} 
-                      padding="none" 
-                      className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => openLightbox(index)}
-                    >
-                      <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                        {item.imageUrl ? (
-                          <img
-                            src={cImg(item.imageUrl)}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <svg className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <p className="font-medium text-gray-900">{item.title}</p>
-                        {item.description && (
-                          <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                        )}
-                      </div>
-                    </Card>
-                  ))
-                ) : (
+                {artist.portfolio && artist.portfolio.length > 0 ? (() => {
+                  let imgIdx = 0;
+                  return artist.portfolio.map((item) => {
+                    const isVideo = item.type === 'video';
+                    const currentImgIdx = isVideo ? -1 : imgIdx++;
+                    const thumb = isVideo
+                      ? (item.thumbnailUrl ?? '')
+                      : (item.url ?? item.imageUrl ?? '');
+                    return (
+                      <Card
+                        key={item.id}
+                        padding="none"
+                        className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => isVideo ? setVideoModal(item.url ?? '') : openLightbox(currentImgIdx)}
+                      >
+                        <div className="relative h-48 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                          {thumb ? (
+                            <img
+                              src={isVideo ? thumb : cImg(thumb)}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <svg className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                          {isVideo && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="bg-black/50 rounded-full p-3">
+                                <svg className="h-8 w-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M8 5v14l11-7z"/>
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <p className="font-medium text-gray-900">{item.title}</p>
+                          {item.description && (
+                            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  });
+                })() : (
                   <Card className="col-span-2">
                     <CardContent>
                       <p className="text-gray-600 text-center py-8">

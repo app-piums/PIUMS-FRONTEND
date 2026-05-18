@@ -147,7 +147,6 @@ export class PayoutService {
         status: "COMPLETED",
         transferReference,
         completedByAdmin: completedByAdmin ?? null,
-        completedAt: new Date(),
         processedAt: new Date(),
       },
     });
@@ -222,6 +221,34 @@ export class PayoutService {
     toDate?: Date;
   }) {
     return this.listPayouts({ artistId, ...filters });
+  }
+
+  // ==================== SCHEDULE HOLD ====================
+
+  async schedulePayoutHold(bookingId: string, scheduledFor: Date | null) {
+    const payout = await (prisma as any).payout.findFirst({
+      where: {
+        bookingId,
+        status: { in: ["PENDING", "SCHEDULED"] },
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!payout) return null;
+
+    const updated = await (prisma as any).payout.update({
+      where: { id: payout.id },
+      data: { scheduledFor },
+    });
+
+    logger.info("Payout hold actualizado", "PAYOUT_SERVICE", {
+      payoutId: payout.id,
+      bookingId,
+      scheduledFor,
+    });
+
+    return updated;
   }
 
   // ==================== CANCEL PAYOUT ====================

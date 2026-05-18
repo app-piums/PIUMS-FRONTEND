@@ -36,6 +36,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV DOCKER_BUILD=1
 
+ARG GATEWAY_INTERNAL_URL=http://host.docker.internal:80
+ENV GATEWAY_INTERNAL_URL=$GATEWAY_INTERNAL_URL
+
 # Build only the web-admin app (not the full monorepo)
 WORKDIR /app/apps/web-admin/web
 RUN pnpm build

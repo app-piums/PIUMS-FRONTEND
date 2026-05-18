@@ -9,6 +9,10 @@ function centsToDisplay(cents: number) {
   return (cents / 100).toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function isOnHold(payout: AdminPayout): boolean {
+  return !!(payout.scheduledFor && new Date(payout.scheduledFor) > new Date());
+}
+
 const STATUS_STYLES: Record<string, string> = {
   PENDING:    "bg-yellow-100 text-yellow-800",
   PROCESSING: "bg-blue-100 text-blue-800",
@@ -180,9 +184,16 @@ function PayoutsContent() {
                         {p.currency} {centsToDisplay(p.netAmount ?? p.amount)}
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[p.status] ?? "bg-zinc-100 text-zinc-600"}`}>
-                          {p.status}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[p.status] ?? "bg-zinc-100 text-zinc-600"}`}>
+                            {p.status}
+                          </span>
+                          {p.status === "PENDING" && isOnHold(p) && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                              En espera
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3.5 text-zinc-500 whitespace-nowrap">
                         {new Date(p.createdAt).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" })}

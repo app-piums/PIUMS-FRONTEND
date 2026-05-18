@@ -39,6 +39,8 @@ export default function ClientSidebar({ userName, onNavigateAttempt }: Props) {
     { href: '/artists',          icon: SearchIcon,   label: 'Artistas' },
     { href: '/bookings',         icon: CalIcon,      label: 'Reservas' },
     { href: '/events',           icon: EventsIcon,   label: 'Eventos' },
+    { href: '/tickets',          icon: TicketIcon,   label: 'Conciertos' },
+    { href: '/mis-tickets',      icon: TicketIcon,   label: 'Mis Boletos' },
     { href: '/bookmarks',        icon: HeartIcon,    label: 'Favoritos' },
     { href: '/coupons',          icon: TicketIcon,   label: 'Cupones' },
     { href: '/chat',             icon: ChatIcon,     label: 'Mensajes', badge: 3 },

@@ -57,6 +57,32 @@ export class BookingClient {
       return null;
     }
   }
+
+  async markTicketPayment(
+    purchaseId: string,
+    amount: number,
+    paymentMethod?: string,
+    paymentIntentId?: string,
+  ): Promise<any> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/api/ticket-purchases/internal/${purchaseId}/mark-payment`,
+        {
+          method: "POST",
+          headers: internalHeaders,
+          body: JSON.stringify({ amount, paymentMethod, paymentIntentId }),
+        }
+      );
+      if (!response.ok) {
+        console.error("[BookingClient] Error marcando pago de boleto:", await response.text());
+        return null;
+      }
+      return await response.json();
+    } catch (error) {
+      console.error("[BookingClient] Error de conexión al marcar pago de boleto:", error);
+      return null;
+    }
+  }
 }
 
 export const bookingClient = new BookingClient();

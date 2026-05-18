@@ -4,9 +4,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { PageHelpButton } from '@/components/PageHelpButton';
 import { useRouter } from 'next/navigation';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
-import { sdk, Service, ServiceCategory } from '@piums/sdk';
+import { sdk, Service, ServiceCategory, ServiceDayOffer, CreateDayOfferPayload } from '@piums/sdk';
 import { getErrorMessage, isUnauthorizedError, isArtistNotFoundError } from '@/lib/errors';
-import { Pencil, Trash2, Settings, Lightbulb, Pause, Play } from 'lucide-react';
+import { Pencil, Trash2, Settings, Lightbulb, Pause, Play, Tag } from 'lucide-react';
 
 type PricingType = 'FIXED' | 'HOURLY' | 'PER_SESSION' | 'CUSTOM';
 
@@ -64,6 +64,15 @@ export default function ArtistServicesPage() {
   // Toggling status
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [whatIsIncludedInput, setWhatIsIncludedInput] = useState('');
+
+  // Day offers panel
+  const [offersServiceId, setOffersServiceId] = useState<string | null>(null);
+  const [offersMap, setOffersMap] = useState<Record<string, ServiceDayOffer[]>>({});
+  const [loadingOffers, setLoadingOffers] = useState(false);
+  const [offerFormError, setOfferFormError] = useState<string | null>(null);
+  const [isCreatingOffer, setIsCreatingOffer] = useState(false);
+  const emptyOfferForm: CreateDayOfferPayload = { offerDate: '', discountType: 'PERCENTAGE', discountValue: 10 };
+  const [offerForm, setOfferForm] = useState<CreateDayOfferPayload>(emptyOfferForm);
 
   const emptyForm: ServiceForm = {
     name: '',
@@ -232,6 +241,68 @@ export default function ArtistServicesPage() {
     }
   };
 
+  const openOffersPanel = async (serviceId: string) => {
+    setOffersServiceId(serviceId);
+    setOfferForm(emptyOfferForm);
+    setOfferFormError(null);
+    if (!offersMap[serviceId]) {
+      setLoadingOffers(true);
+      try {
+        const list = await sdk.listDayOffers(serviceId, artistId!);
+        setOffersMap((prev) => ({ ...prev, [serviceId]: list }));
+      } catch { /* ignore */ }
+      finally { setLoadingOffers(false); }
+    }
+  };
+
+  const closeOffersPanel = () => {
+    setOffersServiceId(null);
+    setOfferForm(emptyOfferForm);
+    setOfferFormError(null);
+  };
+
+  const handleCreateOffer = async () => {
+    if (!offersServiceId || !artistId) return;
+    if (!offerForm.offerDate) { setOfferFormError('Selecciona una fecha'); return; }
+    if (offerForm.discountValue <= 0) { setOfferFormError('El descuento debe ser mayor a 0'); return; }
+    if (offerForm.discountType === 'PERCENTAGE' && offerForm.discountValue > 100) {
+      setOfferFormError('El porcentaje debe ser entre 1 y 100'); return;
+    }
+    setOfferFormError(null);
+    setIsCreatingOffer(true);
+    try {
+      const created = await sdk.createDayOffer(offersServiceId, { ...offerForm, artistId });
+      setOffersMap((prev) => ({ ...prev, [offersServiceId]: [created, ...(prev[offersServiceId] || [])] }));
+      setOfferForm(emptyOfferForm);
+    } catch (err: unknown) {
+      setOfferFormError(err instanceof Error ? err.message : 'Error al crear la oferta');
+    } finally {
+      setIsCreatingOffer(false);
+    }
+  };
+
+  const handleToggleOffer = async (serviceId: string, offer: ServiceDayOffer) => {
+    if (!artistId) return;
+    try {
+      const updated = await sdk.toggleDayOffer(serviceId, offer.id, !offer.isActive, artistId);
+      setOffersMap((prev) => ({
+        ...prev,
+        [serviceId]: (prev[serviceId] || []).map((o) => (o.id === updated.id ? updated : o)),
+      }));
+    } catch { /* ignore */ }
+  };
+
+  const handleDeleteOffer = async (serviceId: string, offerId: string) => {
+    if (!artistId) return;
+    try {
+      await sdk.deleteDayOffer(serviceId, offerId, artistId);
+      setOffersMap((prev) => ({
+        ...prev,
+        [serviceId]: (prev[serviceId] || []).filter((o) => o.id !== offerId),
+      }));
+    } catch { /* ignore */ }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <DashboardSidebar />
@@ -322,7 +393,7 @@ export default function ArtistServicesPage() {
                           )}
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 mb-2">
                           <button
                             onClick={() => openEdit(service)}
                             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
@@ -347,6 +418,12 @@ export default function ArtistServicesPage() {
                             <Trash2 size={16} />
                           </button>
                         </div>
+                        <button
+                          onClick={() => openOffersPanel(service.id)}
+                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
+                        >
+                          <Tag size={14} /> Ofertas de dias especiales
+                        </button>
                       </div>
                     );
                   })}
@@ -605,6 +682,149 @@ export default function ArtistServicesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Day Offers Panel */}
+      {offersServiceId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Ofertas de dias especiales</h2>
+                <p className="text-xs text-gray-500 mt-0.5">El descuento se aplica automaticamente cuando el cliente selecciona ese dia</p>
+              </div>
+              <button onClick={closeOffersPanel} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">x</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-5">
+              {/* Create form */}
+              <div className="border border-orange-200 rounded-lg p-4 bg-orange-50 space-y-3">
+                <p className="text-sm font-semibold text-orange-800">Agregar nueva oferta</p>
+                {offerFormError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded p-2">{offerFormError}</div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Fecha <span className="text-red-500">*</span></label>
+                    <input
+                      type="date"
+                      value={offerForm.offerDate}
+                      min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                      onChange={(e) => setOfferForm({ ...offerForm, offerDate: e.target.value })}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de descuento</label>
+                    <select
+                      value={offerForm.discountType}
+                      onChange={(e) => setOfferForm({ ...offerForm, discountType: e.target.value as 'PERCENTAGE' | 'FIXED_AMOUNT' })}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white text-gray-900"
+                    >
+                      <option value="PERCENTAGE">Porcentaje (%)</option>
+                      <option value="FIXED_AMOUNT">Monto fijo ($)</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      {offerForm.discountType === 'PERCENTAGE' ? 'Porcentaje (1-100)' : 'Monto fijo (USD)'} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={offerForm.discountType === 'PERCENTAGE' ? 100 : undefined}
+                      step={offerForm.discountType === 'PERCENTAGE' ? 1 : 0.01}
+                      value={offerForm.discountValue}
+                      onChange={(e) => setOfferForm({ ...offerForm, discountValue: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-900"
+                    />
+                  </div>
+                  {offerForm.discountType === 'PERCENTAGE' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Tope maximo (USD, opcional)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        placeholder="Sin limite"
+                        value={offerForm.maxDiscountCents ? offerForm.maxDiscountCents / 100 : ''}
+                        onChange={(e) => setOfferForm({ ...offerForm, maxDiscountCents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : undefined })}
+                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-900"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Etiqueta (opcional)</label>
+                  <input
+                    type="text"
+                    maxLength={60}
+                    placeholder="Ej: Oferta especial de mayo"
+                    value={offerForm.label || ''}
+                    onChange={(e) => setOfferForm({ ...offerForm, label: e.target.value || undefined })}
+                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-900"
+                  />
+                </div>
+                <button
+                  onClick={handleCreateOffer}
+                  disabled={isCreatingOffer}
+                  className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium disabled:opacity-60"
+                >
+                  {isCreatingOffer ? 'Creando...' : 'Crear oferta'}
+                </button>
+              </div>
+
+              {/* Offers list */}
+              {loadingOffers ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
+                </div>
+              ) : (offersMap[offersServiceId] || []).length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-4">No hay ofertas creadas para este servicio</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ofertas existentes</p>
+                  {(offersMap[offersServiceId] || []).map((offer) => {
+                    const dateStr = new Date(offer.offerDate).toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+                    const discountStr = offer.discountType === 'PERCENTAGE'
+                      ? `${offer.discountValue}%`
+                      : `$${(offer.discountValue / 100).toFixed(2)}`;
+                    return (
+                      <div key={offer.id} className={`flex items-center justify-between p-3 rounded-lg border ${offer.isActive ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{dateStr}</p>
+                          <p className="text-xs text-gray-500">{discountStr} de descuento{offer.label ? ` · ${offer.label}` : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleToggleOffer(offersServiceId, offer)}
+                            className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${offer.isActive ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                          >
+                            {offer.isActive ? 'Activa' : 'Inactiva'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteOffer(offersServiceId, offer.id)}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 shrink-0">
+              <button onClick={closeOffersPanel} className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium">
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

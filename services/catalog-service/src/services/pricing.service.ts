@@ -24,6 +24,7 @@ export interface PriceQuote {
   subtotalCents: number;
   totalCents: number;
   depositRequiredCents?: number;
+  offerLabel?: string;
   breakdown: {
     baseCents: number;
     addonsCents: number;
@@ -37,10 +38,11 @@ export interface PriceQuote {
  */
 export interface PriceCalculationInput {
   serviceId: string;
-  durationMinutes?: number; // Para servicios con pricing por tiempo
-  selectedAddonIds?: string[]; // IDs de los addons seleccionados
-  distanceKm?: number; // Distancia en km (pre-calculada por el caller)
-  discountCode?: string; // Código de descuento (futuro)
+  durationMinutes?: number;
+  selectedAddonIds?: string[];
+  distanceKm?: number;
+  discountCode?: string;
+  scheduledDate?: string; // "YYYY-MM-DD" — activa descuento de oferta especial si existe
 }
 
 /**
@@ -267,8 +269,37 @@ export const calculateServicePrice = async (
   // ==================== CALCULAR SUBTOTAL Y TOTAL ====================
 
   const subtotalCents = basePriceCents + addonsTotalCents + travelCostCents;
-  const discountsCents = 0; // Futuro: lógica de descuentos
-  const totalCents = subtotalCents - discountsCents;
+
+  // Descuento por oferta de dia especial
+  let discountsCents = 0;
+  let offerLabel: string | undefined;
+
+  if (input.scheduledDate) {
+    const offerDay = new Date(input.scheduledDate);
+    offerDay.setUTCHours(0, 0, 0, 0);
+    const offer = await (prisma as any).serviceDayOffer.findFirst({
+      where: { serviceId, offerDate: offerDay, isActive: true },
+    });
+    if (offer) {
+      if (offer.discountType === 'PERCENTAGE') {
+        discountsCents = Math.floor(subtotalCents * offer.discountValue / 100);
+        if (offer.maxDiscountCents) discountsCents = Math.min(discountsCents, offer.maxDiscountCents);
+      } else {
+        discountsCents = Math.min(offer.discountValue, subtotalCents);
+      }
+      offerLabel = offer.label || 'Oferta especial';
+      // Agregar linea de descuento al desglose
+      items.push({
+        type: 'DISCOUNT',
+        name: offerLabel,
+        qty: 1,
+        unitPriceCents: -discountsCents,
+        totalPriceCents: -discountsCents,
+      });
+    }
+  }
+
+  const totalCents = Math.max(0, subtotalCents - discountsCents);
 
   // ==================== CALCULAR DEPÓSITO REQUERIDO ====================
 
@@ -293,6 +324,7 @@ export const calculateServicePrice = async (
     subtotalCents,
     totalCents,
     depositRequiredCents,
+    offerLabel,
     breakdown: {
       baseCents: basePriceCents,
       addonsCents: addonsTotalCents,

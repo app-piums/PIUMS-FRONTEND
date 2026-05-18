@@ -64,6 +64,7 @@ export default function ArtistBookingsPage() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number | null>>({
     PENDING: null, CONFIRMED: null, COMPLETED: null, CANCELLED: null, REJECTED: null,
   });
+  const [confirmModal, setConfirmModal] = useState<{ type: 'complete' | 'accept'; bookingId: string } | null>(null);
 
   const loadBookings = useCallback(async () => {
     try {
@@ -121,8 +122,10 @@ export default function ArtistBookingsPage() {
 
 
   const handleAccept = async (bookingId: string) => {
-    if (!confirm('¿Confirmar aceptar esta reserva?')) return;
+    setConfirmModal({ type: 'accept', bookingId });
+  };
 
+  const handleAcceptConfirmed = async (bookingId: string) => {
     try {
       setProcessingBookingId(bookingId);
       await sdk.acceptBooking(bookingId);
@@ -156,7 +159,10 @@ export default function ArtistBookingsPage() {
   };
 
   const handleComplete = async (bookingId: string) => {
-    if (!confirm('¿Marcar esta reserva como completada? Esta acción no se puede deshacer.')) return;
+    setConfirmModal({ type: 'complete', bookingId });
+  };
+
+  const handleCompleteConfirmed = async (bookingId: string) => {
     try {
       setProcessingBookingId(bookingId);
       await sdk.completeBooking(bookingId);
@@ -912,6 +918,50 @@ export default function ArtistBookingsPage() {
                   <p className="text-center text-sm text-gray-400 py-2">No hay acciones disponibles</p>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-full ${confirmModal.type === 'complete' ? 'bg-blue-100' : 'bg-green-100'}`}>
+                {confirmModal.type === 'complete' ? (
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                ) : (
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                )}
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">
+                {confirmModal.type === 'complete' ? 'Marcar como completada' : 'Aceptar reserva'}
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              {confirmModal.type === 'complete'
+                ? 'Esta accion marcara la reserva como completada. El cliente tendra 24 horas para confirmar la recepcion del servicio antes de liberar el pago.'
+                : 'Se notificara al cliente que aceptaste su reserva.'}
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const id = confirmModal.bookingId;
+                  setConfirmModal(null);
+                  if (confirmModal.type === 'complete') void handleCompleteConfirmed(id);
+                  else void handleAcceptConfirmed(id);
+                }}
+                className={`flex-1 py-2.5 rounded-xl text-white text-sm font-semibold transition-colors ${confirmModal.type === 'complete' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}
+              >
+                Confirmar
+              </button>
             </div>
           </div>
         </div>

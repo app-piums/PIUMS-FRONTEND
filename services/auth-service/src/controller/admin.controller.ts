@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { bookingClient } from '../clients/booking.client';
 import { reviewsClient } from '../clients/reviews.client';
 import { artistsClient } from '../clients/artists.client';
+import { notificationsClient } from '../clients/notifications.client';
 
 // GET /api/admin/stats - Métricas generales
 export const getStats = async (req: Request, res: Response, next: NextFunction) => {
@@ -955,7 +956,7 @@ export const shadowBanArtist = async (req: Request, res: Response, next: NextFun
 
 // ==================== COMMISSION RULES (PROXY) ====================
 
-const PAYMENTS_SERVICE_URL = process.env.PAYMENTS_SERVICE_URL || 'http://payments-service:4007';
+const PAYMENTS_SERVICE_URL = process.env.PAYMENTS_SERVICE_URL || 'http://payments-service:4005';
 
 // GET /api/admin/commission-rules
 export const listCommissionRules = async (req: Request, res: Response, next: NextFunction) => {
@@ -1036,8 +1037,54 @@ export const completePayout = async (req: Request, res: Response, next: NextFunc
       },
       body: JSON.stringify({ transferReference, completedByAdmin: adminId }),
     });
-    const data = await response.json();
+    const data = await response.json() as any;
     res.status(response.status).json(data);
+
+    if (response.ok && data?.data) {
+      const payout = data.data;
+      ;(async () => {
+        try {
+          const [artistProfiles] = await Promise.all([
+            artistsClient.getByIds([payout.artistId]),
+          ]);
+          const artistProfile = artistProfiles[0];
+          if (!artistProfile?.authId) return;
+
+          const user = await prisma.user.findUnique({
+            where: { id: artistProfile.authId },
+            select: { email: true, nombre: true, name: true },
+          });
+          if (!user?.email) return;
+
+          const artistName = user.nombre || user.name || artistProfile.nombre || 'Artista';
+          const grossAmount = (Number(payout.originalAmount) || Number(payout.amount)).toFixed(2);
+          const platformFeeAmount = (Number(payout.platformFee) || 0).toFixed(2);
+          const netAmount = (Number(payout.amount) - Number(payout.platformFee || 0)).toFixed(2);
+          const commissionRate = payout.platformFee && payout.originalAmount
+            ? ((Number(payout.platformFee) / Number(payout.originalAmount)) * 100).toFixed(0)
+            : '18';
+
+          const artistAppUrl = process.env.ARTIST_APP_URL || 'https://artist.piums.io';
+
+          await notificationsClient.sendPayoutDisbursementEmail({
+            artistEmail: user.email,
+            artistName,
+            bookingCode: payout.bookingId ? payout.description?.match(/#(\S+)/)?.[1] || payout.bookingId.slice(0, 8).toUpperCase() : 'N/A',
+            grossAmount,
+            platformFee: platformFeeAmount,
+            netAmount,
+            currency: payout.currency || 'USD',
+            commissionRate,
+            transferReference,
+            transferDate: new Date().toLocaleDateString('es-GT', { timeZone: 'America/Guatemala', day: '2-digit', month: 'long', year: 'numeric' }),
+            dashboardUrl: `${artistAppUrl}/payments`,
+            helpUrl: `${artistAppUrl}/help`,
+          });
+        } catch (err: any) {
+          logger.warn(`Failed to send payout disbursement email: ${err.message}`, 'ADMIN_CONTROLLER');
+        }
+      })();
+    }
   } catch (error: any) {
     logger.error(`Error completing payout: ${error.message}`, 'ADMIN_CONTROLLER');
     next(error);

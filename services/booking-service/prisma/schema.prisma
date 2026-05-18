@@ -173,12 +173,14 @@ model Booking {
   noShowReason     String?     @db.Text
 
   // Entrega del servicio (flujo post-evento)
-  estimatedDuration  Int?      // Duración estimada del servicio en minutos (default: 120)
-  deliveredAt        DateTime? // Cuándo el artista marcó como entregado
-  autoCompleteAt     DateTime? // Programado = deliveredAt + 24h (auto-complete si cliente no responde)
-  disputeReason      String?   @db.Text
-  disputeResolvedAt  DateTime?
-  disputeResolvedBy  String?   // ID del admin que resolvió
+  estimatedDuration     Int?      // Duración estimada del servicio en minutos (default: 120)
+  deliveredAt           DateTime? // Cuándo el artista marcó como entregado
+  autoCompleteAt        DateTime? // Programado = deliveredAt + 24h (auto-complete si cliente no responde)
+  deliveryConfirmedAt   DateTime? // Cuándo el cliente confirmó recepción
+  deliveryConfirmedBy   String?   // clientId que confirmó
+  disputeReason         String?   @db.Text
+  disputeResolvedAt     DateTime?
+  disputeResolvedBy     String?   // ID del admin que resolvió
 
   // Ubicación del cliente (para regla de 60km mismo día)
   clientLat    Float?          // Latitud ingresada por el cliente al reservar
@@ -495,4 +497,102 @@ model BookingFunnelEvent {
   @@index([sessionId])
   @@index([createdAt])
   @@map("booking_funnel_events")
+}
+
+// ============================================================================
+// Ticket Events — TicketEvent / TicketTier / TicketPurchase
+// ============================================================================
+
+enum TicketEventStatus {
+  BORRADOR
+  PUBLICADO
+  AGOTADO
+  CANCELADO
+  FINALIZADO
+}
+
+enum TicketPurchaseStatus {
+  PENDIENTE
+  PAGADO
+  USADO
+  REEMBOLSADO
+  EXPIRADO
+}
+
+model TicketEvent {
+  id          String            @id @default(uuid())
+  code        String            @unique
+  artistId    String
+  name        String
+  description String?           @db.Text
+  venue       String
+  address     String
+  locationLat Float?
+  locationLng Float?
+  eventDate   DateTime
+  doorsOpen   DateTime?
+  imageUrl    String?
+  maxCapacity Int
+  status      TicketEventStatus @default(BORRADOR)
+  tiers       TicketTier[]
+  purchases   TicketPurchase[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([artistId])
+  @@index([status])
+  @@index([eventDate])
+  @@map("ticket_events")
+}
+
+model TicketTier {
+  id            String         @id @default(uuid())
+  ticketEventId String
+  ticketEvent   TicketEvent    @relation(fields: [ticketEventId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?        @db.Text
+  priceCents    Int
+  currency      String         @default("USD")
+  totalQty      Int
+  soldQty       Int            @default(0)
+  purchases     TicketPurchase[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([ticketEventId])
+  @@map("ticket_tiers")
+}
+
+model TicketPurchase {
+  id            String               @id @default(uuid())
+  code          String               @unique
+  ticketEventId String
+  ticketEvent   TicketEvent          @relation(fields: [ticketEventId], references: [id])
+  tierId        String
+  tier          TicketTier           @relation(fields: [tierId], references: [id])
+  buyerId       String
+  buyerEmail    String
+  buyerName     String
+  quantity      Int                  @default(1)
+  subtotalCents Int
+  discountCents Int                  @default(0)
+  totalCents    Int
+  currency      String               @default("USD")
+  couponCode    String?
+  couponId      String?
+  status        TicketPurchaseStatus @default(PENDIENTE)
+  orderNumber   String?              @unique
+  providerRef   String?
+  paidAt        DateTime?
+  checkedInAt   DateTime?
+  checkedInBy   String?
+  deletedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([ticketEventId])
+  @@index([tierId])
+  @@index([buyerId])
+  @@index([status])
+  @@map("ticket_purchases")
 }

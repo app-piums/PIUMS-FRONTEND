@@ -130,6 +130,47 @@ export class NotificationsClient {
   }
 
   /**
+   * Enviar email de confirmacion de entrega al cliente
+   */
+  async sendDeliveryConfirmationEmail(payload: {
+    clientEmail: string;
+    clientName: string;
+    artistName: string;
+    serviceName: string;
+    bookingCode: string;
+    confirmUrl: string;
+    disputeUrl: string;
+    autoReleaseTime: string;
+    helpUrl: string;
+  }): Promise<void> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
+      const response = await fetch(`${this.baseUrl}/api/notifications/send-template-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': internalSecret,
+        },
+        body: JSON.stringify({
+          to: payload.clientEmail,
+          template: 'delivery-confirmation',
+          variables: {
+            ...payload,
+            currentYear: new Date().getFullYear(),
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        console.error('[NotificationsClient] Error enviando email confirmacion entrega:', error);
+      }
+    } catch (error) {
+      console.error('[NotificationsClient] Error de conexion al enviar email confirmacion entrega:', error);
+    }
+  }
+
+  /**
    * Verificar si el servicio de notificaciones está disponible
    */
   async healthCheck(): Promise<boolean> {
