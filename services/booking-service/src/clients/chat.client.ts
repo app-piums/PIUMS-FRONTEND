@@ -103,6 +103,57 @@ export class ChatClient {
       return null;
     }
   }
+
+  private getInternalSecret(): string {
+    return process.env.INTERNAL_SERVICE_SECRET || '';
+  }
+
+  async createOrGetGroupConversation(params: {
+    bookingId?: string;
+    eventId?: string;
+    createdBy: string;
+    participantIds: string[];
+    name?: string;
+  }): Promise<{ group: any } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/internal/group-conversations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': this.getInternalSecret(),
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' })) as any;
+        logger.error('[ChatClient] Error creando grupo', 'CHAT_CLIENT', { error: error.message });
+        return null;
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      logger.error('[ChatClient] Error de conexión con chat-service (grupo)', 'CHAT_CLIENT', { error: error.message });
+      return null;
+    }
+  }
+
+  async addParticipantToGroup(groupId: string, userId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/internal/group-conversations/add-participant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': this.getInternalSecret(),
+        },
+        body: JSON.stringify({ groupId, userId }),
+      });
+      return response.ok;
+    } catch (error: any) {
+      logger.error('[ChatClient] Error añadiendo participante al grupo', 'CHAT_CLIENT', { error: error.message });
+      return false;
+    }
+  }
 }
 
 export const chatClient = new ChatClient();

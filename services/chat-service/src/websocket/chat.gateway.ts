@@ -4,9 +4,11 @@ import { Redis } from 'ioredis';
 import { Server as HttpServer } from 'http';
 import { verifySocketToken } from '../middleware/auth.middleware';
 import { ChatService } from '../services/chat.service';
+import { GroupChatService } from '../services/group-chat.service';
 import { logger } from '../utils/logger';
 
 const chatService = new ChatService();
+const groupChatService = new GroupChatService();
 
 interface AuthenticatedSocket extends Socket {
   data: {
@@ -65,16 +67,30 @@ export class ChatGateway {
         });
     }
 
-    // Listen to HTTP POST messages being created and broadcast them via WebSocket
+    // Listen to HTTP POST messages and broadcast via WebSocket
     import('../services/chat.service').then(({ chatEmitter }) => {
       chatEmitter.on('new_message', (message, conversation) => {
         const recipientId = conversation.participant1Id === message.senderId ? conversation.participant2Id : conversation.participant1Id;
-        
-        // Notify recipient if connected
         this.io.to(`user:${recipientId}`).emit('message:received', message);
-        
-        // Notify sender if connected across other tabs
         this.io.to(`user:${message.senderId}`).emit('message:received', message);
+      });
+
+      // Group chat events
+      chatEmitter.on('group:new_message', ({ groupId, message, senderIds }: { groupId: string; message: any; senderIds: string[] }) => {
+        // Broadcast to all group participants via their personal rooms
+        for (const uid of senderIds) {
+          this.io.to(`user:${uid}`).emit('group:message:received', { groupId, message });
+        }
+        // Also broadcast to the group room (for connected sockets that joined it)
+        this.io.to(`group:${groupId}`).emit('group:message:received', { groupId, message });
+      });
+
+      chatEmitter.on('group:participant:joined', ({ groupId, userId }: { groupId: string; userId: string }) => {
+        this.io.to(`group:${groupId}`).emit('group:participant:joined', { groupId, userId });
+      });
+
+      chatEmitter.on('group:participant:left', ({ groupId, userId }: { groupId: string; userId: string }) => {
+        this.io.to(`group:${groupId}`).emit('group:participant:left', { groupId, userId });
       });
     });
   }
@@ -228,6 +244,34 @@ export class ChatGateway {
       socket.on('conversation:leave', (data: { conversationId: string }) => {
         socket.leave(`conversation:${data.conversationId}`);
         logger.debug(`User left conversation room`, 'CHAT_GATEWAY', { userId, conversationId: data.conversationId });
+      });
+
+      // ==================== GROUP CHAT EVENTS ====================
+
+      socket.on('group:conversation:join', (data: { groupId: string }) => {
+        socket.join(`group:${data.groupId}`);
+        logger.debug('User joined group room', 'CHAT_GATEWAY', { userId, groupId: data.groupId });
+      });
+
+      socket.on('group:conversation:leave', (data: { groupId: string }) => {
+        socket.leave(`group:${data.groupId}`);
+      });
+
+      socket.on('group:message:send', async (data: { groupId: string; content: string; type?: string }) => {
+        try {
+          const message = await groupChatService.sendGroupMessage(data.groupId, userId, data.content, data.type || 'TEXT');
+          socket.emit('group:message:sent', { groupId: data.groupId, message });
+        } catch (error: any) {
+          socket.emit('group:message:error', { error: error.message });
+        }
+      });
+
+      socket.on('group:typing:start', async (data: { groupId: string }) => {
+        this.io.to(`group:${data.groupId}`).emit('group:typing:start', { groupId: data.groupId, userId });
+      });
+
+      socket.on('group:typing:stop', async (data: { groupId: string }) => {
+        this.io.to(`group:${data.groupId}`).emit('group:typing:stop', { groupId: data.groupId, userId });
       });
 
       // Desconexión

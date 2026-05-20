@@ -80,3 +80,57 @@ model Message {
   @@index([status])
   @@map("messages")
 }
+
+// ============================================================================
+// Chat grupal entre artistas (Flujo A: event multi-artista / Flujo B: collaborators)
+// ============================================================================
+
+model GroupConversation {
+  id                 String             @id @default(uuid())
+  // Flujo A: ligado al eventId del Event (cliente con múltiples artistas)
+  eventId            String?            @unique
+  // Flujo B: ligado al bookingId de la reserva (lead artist + collaborators)
+  bookingId          String?            @unique
+  name               String?
+  createdBy          String             // lead artist ID
+  status             ConversationStatus @default(ACTIVE)
+  participants       GroupParticipant[]
+  messages           GroupMessage[]
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@map("group_conversations")
+}
+
+model GroupParticipant {
+  id          String            @id @default(uuid())
+  groupId     String
+  group       GroupConversation @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String
+  unreadCount Int               @default(0)
+  joinedAt    DateTime          @default(now())
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_participants")
+}
+
+model GroupMessage {
+  id        String            @id @default(uuid())
+  groupId   String
+  group     GroupConversation @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderId  String
+  content   String
+  type      MessageType       @default(TEXT)
+  status    MessageStatus     @default(SENT)
+  deletedAt DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([groupId])
+  @@index([senderId])
+  @@map("group_messages")
+}

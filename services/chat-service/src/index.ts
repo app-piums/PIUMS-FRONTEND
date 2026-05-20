@@ -5,9 +5,11 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import conversationsRoutes from './routes/conversations.routes';
 import messagesRoutes from './routes/messages.routes';
+import groupConversationsRoutes from './routes/group-conversations.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 import { ChatGateway } from './websocket/chat.gateway';
+import { GroupChatService } from './services/group-chat.service';
 import { logger } from './utils/logger';
 
 const app = express();
@@ -34,6 +36,7 @@ app.get('/health', (req, res) => {
 app.use('/api', apiLimiter);
 app.use('/api/chat/conversations', conversationsRoutes);
 app.use('/api/chat/messages', messagesRoutes);
+app.use('/api/chat/group-conversations', groupConversationsRoutes);
 
 // Middleware de error handling (debe ir al final)
 app.use(errorHandler);
@@ -43,6 +46,42 @@ const chatGateway = new ChatGateway(httpServer);
 
 // Internal endpoint — emits a socket event to a specific user
 // Called by other services (notifications-service, etc.) using x-internal-secret
+// Internal: booking-service creates/updates group conversations
+const groupChatServiceInternal = new GroupChatService();
+app.post('/internal/group-conversations', async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { bookingId, eventId, createdBy, participantIds, name } = req.body;
+  if (!createdBy || !participantIds?.length) {
+    return res.status(400).json({ error: 'createdBy and participantIds are required' });
+  }
+  try {
+    const group = await groupChatServiceInternal.createOrGetGroup({ bookingId, eventId, createdBy, participantIds, name });
+    return res.json({ group });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/internal/group-conversations/add-participant', async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { groupId, userId } = req.body;
+  if (!groupId || !userId) {
+    return res.status(400).json({ error: 'groupId and userId are required' });
+  }
+  try {
+    await groupChatServiceInternal.addParticipant(groupId, userId, '', true);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/internal/notify', (req, res) => {
   const secret = process.env.INTERNAL_SERVICE_SECRET;
   if (!secret || req.headers['x-internal-secret'] !== secret) {

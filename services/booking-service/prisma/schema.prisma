@@ -222,6 +222,9 @@ model Booking {
   eventId         String?
   event           Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
+  // Colaboradores (artistas adicionales invitados por el lead artist)
+  collaborators   BookingCollaborator[]
+
   // Solicitudes de cambio de fecha
   rescheduleRequests RescheduleRequest[]
 
@@ -609,4 +612,35 @@ model TicketPurchase {
   @@index([buyerId])
   @@index([status])
   @@map("ticket_purchases")
+}
+
+// ============================================================================
+// Colaboración entre artistas (Flujo B: lead artist invita a sub-artistas)
+// ============================================================================
+
+enum CollaboratorStatus {
+  INVITED    // Invitación enviada, pendiente de respuesta
+  ACCEPTED   // Colaborador aceptó
+  REJECTED   // Colaborador rechazó
+  CANCELLED  // Lead artist canceló la invitación
+}
+
+model BookingCollaborator {
+  id          String             @id @default(uuid())
+  bookingId   String
+  booking     Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  artistId    String             // Artista invitado (auth user ID)
+  invitedBy   String             // Lead artist ID (= booking.artistId)
+  role        String?            // "Violinista", "Baterista", etc.
+  status      CollaboratorStatus @default(INVITED)
+  notes       String?            @db.Text
+  invitedAt   DateTime           @default(now())
+  respondedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([bookingId, artistId])
+  @@index([bookingId])
+  @@index([artistId])
+  @@map("booking_collaborators")
 }

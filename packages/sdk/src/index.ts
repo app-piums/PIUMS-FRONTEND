@@ -3420,6 +3420,122 @@ class PiumsSDK {
     if (!res.ok) return { paid: 0, checkedIn: 0, attendees: [] };
     return res.json();
   }
+
+  // ==================== COLLABORATORS ====================
+
+  async inviteCollaborator(bookingId: string, data: { artistId: string; role?: string; notes?: string }): Promise<{ collaborator: BookingCollaborator }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/collaborators`, this.withAuth({ method: 'POST', body: JSON.stringify(data) }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error invitando colaborador'); }
+    return res.json();
+  }
+
+  async getBookingCollaborators(bookingId: string): Promise<{ collaborators: BookingCollaborator[] }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/collaborators`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { collaborators: [] };
+    return res.json();
+  }
+
+  async respondToCollaboration(collaboratorId: string, accept: boolean): Promise<{ collaborator: BookingCollaborator }> {
+    const res = await fetch(`${this.baseUrl}/collaborators/${collaboratorId}/respond`, this.withAuth({ method: 'POST', body: JSON.stringify({ accept }) }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error respondiendo'); }
+    return res.json();
+  }
+
+  async cancelCollaborator(bookingId: string, artistId: string): Promise<{ collaborator: BookingCollaborator }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/collaborators/${artistId}`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error cancelando colaborador'); }
+    return res.json();
+  }
+
+  async getMyCollaborations(): Promise<{ collaborations: BookingCollaborator[] }> {
+    const res = await fetch(`${this.baseUrl}/artists/me/collaborations`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { collaborations: [] };
+    return res.json();
+  }
+
+  // ==================== GROUP CHAT ====================
+
+  async getGroupConversations(): Promise<{ groups: GroupConversation[] }> {
+    const res = await fetch(`${this.baseUrl}/chat/group-conversations`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { groups: [] };
+    return res.json();
+  }
+
+  async getGroupConversation(groupId: string): Promise<{ group: GroupConversation }> {
+    const res = await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error cargando grupo'); }
+    return res.json();
+  }
+
+  async sendGroupMessage(groupId: string, content: string, type?: string): Promise<{ message: GroupMessage }> {
+    const res = await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}/messages`, this.withAuth({ method: 'POST', body: JSON.stringify({ content, type }) }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error enviando mensaje'); }
+    return res.json();
+  }
+
+  async markGroupAsRead(groupId: string): Promise<void> {
+    await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}/read`, this.withAuth({ method: 'PATCH' }));
+  }
+}
+
+// ==================== COLLABORATOR & GROUP CHAT TYPES ====================
+
+export type CollaboratorStatus = 'INVITED' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+
+export interface BookingCollaborator {
+  id: string;
+  bookingId: string;
+  artistId: string;
+  invitedBy: string;
+  role?: string;
+  status: CollaboratorStatus;
+  notes?: string;
+  invitedAt: string;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  artistName?: string;
+  artistAvatar?: string;
+}
+
+export interface GroupParticipant {
+  id: string;
+  groupId: string;
+  userId: string;
+  unreadCount: number;
+  joinedAt: string;
+  // Enriched
+  artistName?: string;
+  artistAvatar?: string;
+}
+
+export interface GroupMessage {
+  id: string;
+  groupId: string;
+  senderId: string;
+  content: string;
+  type: string;
+  status: string;
+  deletedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupConversation {
+  id: string;
+  bookingId?: string;
+  eventId?: string;
+  name?: string;
+  createdBy: string;
+  status: string;
+  participants: GroupParticipant[];
+  messages?: GroupMessage[];
+  lastMessageAt?: string;
+  lastMessagePreview?: string;
+  unreadCount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ==================== TICKET EVENTS TYPES ====================

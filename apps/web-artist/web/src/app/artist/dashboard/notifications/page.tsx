@@ -8,25 +8,28 @@ import { sdk } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   ClipboardList, CheckCircle, XCircle, PartyPopper, DollarSign,
-  Star, MessageCircle, CalendarClock, AlertTriangle, Info, Bell
+  Star, MessageCircle, CalendarClock, AlertTriangle, Info, Bell, Users
 } from 'lucide-react';
 
 type NotificationIconKey =
   | 'BOOKING_REQUEST' | 'BOOKING_CONFIRMED' | 'BOOKING_CANCELLED'
   | 'BOOKING_COMPLETED' | 'PAYMENT_RECEIVED' | 'NEW_REVIEW'
-  | 'NEW_MESSAGE' | 'RESCHEDULE_REQUEST' | 'BOOKING_NO_SHOW' | 'SYSTEM';
+  | 'NEW_MESSAGE' | 'RESCHEDULE_REQUEST' | 'BOOKING_NO_SHOW' | 'SYSTEM'
+  | 'COLLABORATION_INVITE' | 'COLLABORATION_RESPONSE';
 
 const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
-  BOOKING_REQUEST:    <ClipboardList   size={20} className="text-blue-500" />,
-  BOOKING_CONFIRMED:  <CheckCircle     size={20} className="text-green-500" />,
-  BOOKING_CANCELLED:  <XCircle         size={20} className="text-red-500" />,
-  BOOKING_COMPLETED:  <PartyPopper     size={20} className="text-purple-500" />,
-  PAYMENT_RECEIVED:   <DollarSign      size={20} className="text-green-600" />,
-  NEW_REVIEW:         <Star            size={20} className="text-yellow-500" />,
-  NEW_MESSAGE:        <MessageCircle   size={20} className="text-blue-400" />,
-  RESCHEDULE_REQUEST: <CalendarClock   size={20} className="text-orange-500" />,
-  BOOKING_NO_SHOW:    <AlertTriangle   size={20} className="text-red-600" />,
-  SYSTEM:             <Info            size={20} className="text-gray-400" />,
+  BOOKING_REQUEST:      <ClipboardList   size={20} className="text-blue-500" />,
+  BOOKING_CONFIRMED:    <CheckCircle     size={20} className="text-green-500" />,
+  BOOKING_CANCELLED:    <XCircle         size={20} className="text-red-500" />,
+  BOOKING_COMPLETED:    <PartyPopper     size={20} className="text-purple-500" />,
+  PAYMENT_RECEIVED:     <DollarSign      size={20} className="text-green-600" />,
+  NEW_REVIEW:           <Star            size={20} className="text-yellow-500" />,
+  NEW_MESSAGE:          <MessageCircle   size={20} className="text-blue-400" />,
+  RESCHEDULE_REQUEST:   <CalendarClock   size={20} className="text-orange-500" />,
+  BOOKING_NO_SHOW:      <AlertTriangle   size={20} className="text-red-600" />,
+  SYSTEM:               <Info            size={20} className="text-gray-400" />,
+  COLLABORATION_INVITE: <Users           size={20} className="text-purple-500" />,
+  COLLABORATION_RESPONSE: <Users         size={20} className="text-green-500" />,
 };
 
 const DEFAULT_ICON = <Bell size={20} className="text-gray-400" />;
@@ -39,15 +42,70 @@ type Notification = {
   status?: string;
   isRead?: boolean;
   createdAt?: string;
-  metadata?: { disputeId?: string; bookingId?: string };
+  metadata?: { disputeId?: string; bookingId?: string; collaboratorId?: string };
 };
 
 const NO_SHOW_TYPES = new Set(['BOOKING_NO_SHOW', 'ARTIST_NO_SHOW']);
+
+function CollabInviteActions({ collaboratorId, bookingId, onDone }: { collaboratorId: string; bookingId?: string; onDone: () => void }) {
+  const [loading, setLoading] = useState<'accept' | 'reject' | null>(null);
+  const [done, setDone] = useState<'accepted' | 'rejected' | null>(null);
+
+  const respond = async (accept: boolean) => {
+    setLoading(accept ? 'accept' : 'reject');
+    try {
+      await sdk.respondToCollaboration(collaboratorId, accept);
+      setDone(accept ? 'accepted' : 'rejected');
+      onDone();
+    } catch (err: any) {
+      alert(err.message || 'Error respondiendo');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="mt-2 flex items-center gap-2">
+        <span className={`text-xs font-medium px-2 py-1 rounded-full ${done === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+          {done === 'accepted' ? 'Aceptaste la invitación' : 'Invitación rechazada'}
+        </span>
+        {done === 'accepted' && bookingId && (
+          <Link href={`/chat/grupo?bookingId=${bookingId}`} className="text-xs text-purple-600 font-medium hover:underline">
+            Abrir chat
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex gap-2">
+      <button
+        onClick={() => respond(true)}
+        disabled={!!loading}
+        className="text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+      >
+        {loading === 'accept' ? 'Aceptando...' : 'Aceptar'}
+      </button>
+      <button
+        onClick={() => respond(false)}
+        disabled={!!loading}
+        className="text-xs font-semibold border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
+      >
+        {loading === 'reject' ? 'Rechazando...' : 'Rechazar'}
+      </button>
+    </div>
+  );
+}
 
 function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id: string) => void }) {
   const icon = TYPE_ICON_MAP[n.type as NotificationIconKey] ?? DEFAULT_ICON;
   const isUnread = n.status === 'PENDING' || n.isRead === false;
   const isNoShow = NO_SHOW_TYPES.has(n.type ?? '');
+  const isCollabInvite = n.type === 'COLLABORATION_INVITE';
+  const collaboratorId = n.metadata?.collaboratorId;
+  const bookingId = n.metadata?.bookingId;
   const disputeId = n.metadata?.disputeId;
   const date = n.createdAt
     ? new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -84,6 +142,9 @@ function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id:
             </Link>
             <p className="text-xs text-red-600 mt-1.5">Tienes 24h para responder antes de que se procesen acciones automáticas.</p>
           </div>
+        )}
+        {isCollabInvite && collaboratorId && (
+          <CollabInviteActions collaboratorId={collaboratorId} bookingId={bookingId} onDone={() => onMarkRead(n.id)} />
         )}
         {date && <p className="text-xs text-gray-400 mt-1.5">{date}</p>}
       </div>

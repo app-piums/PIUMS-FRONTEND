@@ -7,6 +7,7 @@ import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
 import { ReportarQuejaModal } from '@/components/quejas/ReportarQuejaModal';
 import Link from 'next/link';
 import { sdk, Booking } from '@piums/sdk';
+import CollaborationPanel from '@/components/bookings/CollaborationPanel';
 import { getErrorMessage, isUnauthorizedError } from '@/lib/errors';
 import { Check, X, Cake, Gem, GraduationCap, Crown, Building2, Music, PartyPopper, Baby, Church, Wine, HelpCircle, CalendarDays } from 'lucide-react';
 
@@ -752,6 +753,16 @@ export default function ArtistBookingsPage() {
                   </div>
                 );
               })()}
+
+              {/* Collaboration panel — only for confirmed bookings */}
+              {['CONFIRMED', 'ANTICIPO_PAID', 'IN_PROGRESS'].includes(selectedBooking.status) && (
+                <div className="bg-gray-50 rounded-xl px-4 py-3">
+                  <CollaborationPanel
+                    bookingId={selectedBooking.id}
+                    isLeadArtist={(user as any)?.id === (selectedBooking as any).artistId || (user as any)?.artistId === (selectedBooking as any).artistId}
+                  />
+                </div>
+              )}
 
               {/* Price */}
               <div className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-3">

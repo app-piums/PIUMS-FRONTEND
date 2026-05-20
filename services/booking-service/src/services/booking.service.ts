@@ -680,6 +680,34 @@ export class BookingService {
       })
       .catch(err => logger.error("Error creando conversación de chat", "BOOKING_SERVICE", { error: err.message }));
 
+    // Flujo A: si el booking pertenece a un Event, verificar si hay ≥2 bookings confirmados
+    // y crear/actualizar el grupo de coordinación de artistas para ese evento
+    if (booking.eventId) {
+      (async () => {
+        try {
+          const confirmedInEvent = await prisma.booking.findMany({
+            where: {
+              eventId: booking.eventId!,
+              status: { in: ['CONFIRMED', 'ANTICIPO_PAID', 'IN_PROGRESS', 'FULLY_PAID'] },
+            },
+            select: { artistId: true },
+          });
+          if (confirmedInEvent.length >= 2) {
+            const artistIds = [...new Set(confirmedInEvent.map(b => b.artistId))];
+            await chatClient.createOrGetGroupConversation({
+              eventId: booking.eventId!,
+              createdBy: booking.artistId,
+              participantIds: artistIds,
+              name: `Coordinación evento`,
+            });
+            logger.info("Grupo de coordinación creado/actualizado para evento", "BOOKING_SERVICE", { eventId: booking.eventId });
+          }
+        } catch (err: any) {
+          logger.error("Error creando grupo de coordinación por evento", "BOOKING_SERVICE", { error: err.message });
+        }
+      })();
+    }
+
     // Sync Google Calendar (best-effort, non-blocking — silently skips if user has no tokens)
     ;(async () => {
       try {
