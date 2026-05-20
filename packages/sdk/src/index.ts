@@ -3476,6 +3476,110 @@ class PiumsSDK {
   async markGroupAsRead(groupId: string): Promise<void> {
     await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}/read`, this.withAuth({ method: 'PATCH' }));
   }
+
+  // ==================== POSTULACIONES ====================
+
+  async createPosting(data: {
+    title: string;
+    description: string;
+    role: string;
+    category?: string;
+    eventDate?: string;
+    cityId?: string;
+    budgetMin?: number;
+    budgetMax?: number;
+    currency?: string;
+  }): Promise<{ posting: ArtistPosting }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings`, this.withAuth({ method: 'POST', body: JSON.stringify(data) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error creando postulación'); }
+    return res.json();
+  }
+
+  async getPostings(params?: {
+    status?: string;
+    role?: string;
+    category?: string;
+    cityId?: string;
+    artistId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ postings: ArtistPosting[]; total: number; page: number; limit: number }> {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.role) q.set('role', params.role);
+    if (params?.category) q.set('category', params.category);
+    if (params?.cityId) q.set('cityId', params.cityId);
+    if (params?.artistId) q.set('artistId', params.artistId);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    const res = await fetch(`${this.baseUrl}/catalog/postings?${q}`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando postulaciones');
+    return res.json();
+  }
+
+  async getPosting(id: string): Promise<{ posting: ArtistPosting }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${id}`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando postulación');
+    return res.json();
+  }
+
+  async getMyPostings(): Promise<{ postings: ArtistPosting[] }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/mine`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando mis postulaciones');
+    return res.json();
+  }
+
+  async updatePosting(id: string, data: Partial<{
+    title: string;
+    description: string;
+    role: string;
+    category: string;
+    eventDate: string;
+    cityId: string;
+    budgetMin: number;
+    budgetMax: number;
+    status: string;
+  }>): Promise<{ posting: ArtistPosting }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${id}`, this.withAuth({ method: 'PATCH', body: JSON.stringify(data) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error actualizando postulación'); }
+    return res.json();
+  }
+
+  async deletePosting(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${id}`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error eliminando postulación'); }
+    return res.json();
+  }
+
+  async applyToPosting(postingId: string, data: { message: string; portfolioLinks?: string[] }): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${postingId}/apply`, this.withAuth({ method: 'POST', body: JSON.stringify(data) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error aplicando a postulación'); }
+    return res.json();
+  }
+
+  async getPostingApplications(postingId: string): Promise<{ applications: PostingApplication[] }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${postingId}/applications`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando aplicaciones');
+    return res.json();
+  }
+
+  async respondToApplication(appId: string, accept: boolean): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/respond`, this.withAuth({ method: 'PATCH', body: JSON.stringify({ accept }) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error respondiendo aplicación'); }
+    return res.json();
+  }
+
+  async withdrawApplication(appId: string): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/withdraw`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error retirando aplicación'); }
+    return res.json();
+  }
+
+  async getMyApplications(): Promise<{ applications: PostingApplication[] }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/mine`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando mis aplicaciones');
+    return res.json();
+  }
 }
 
 // ==================== COLLABORATOR & GROUP CHAT TYPES ====================
@@ -3536,6 +3640,49 @@ export interface GroupConversation {
   unreadCount?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ==================== POSTULACIONES TYPES ====================
+
+export type PostingStatus = 'OPEN' | 'CLOSED' | 'FILLED' | 'CANCELLED';
+export type ApplicationStatus = 'PENDING' | 'REVIEWED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN';
+
+export interface ArtistPosting {
+  id: string;
+  artistId: string;
+  title: string;
+  description: string;
+  role: string;
+  category?: string;
+  eventDate?: string;
+  cityId?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  currency: string;
+  status: PostingStatus;
+  applicationCount: number;
+  closedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  applications?: PostingApplication[];
+}
+
+export interface PostingApplication {
+  id: string;
+  postingId: string;
+  artistId: string;
+  message: string;
+  portfolioLinks: string[];
+  status: ApplicationStatus;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  artistName?: string;
+  artistAvatar?: string;
+  artistCategory?: string;
+  posting?: Partial<ArtistPosting>;
 }
 
 // ==================== TICKET EVENTS TYPES ====================

@@ -210,7 +210,12 @@ export default function GroupChatPage() {
               </div>
 
               <div className="border-t border-gray-100 bg-white px-4 py-3">
-                <MessageInput onSend={handleSend} disabled={isSending} />
+                <MessageInput
+                  onSendMessage={handleSend}
+                  onTypingStart={() => {}}
+                  onTypingStop={() => {}}
+                  disabled={isSending}
+                />
               </div>
             </>
           )}

@@ -11,6 +11,7 @@ import mediaRoutes from "./routes/media.routes";
 import categoryRoutes from "./routes/category.routes";
 import locationRoutes from "./routes/location.routes";
 import dayOfferRoutes from "./routes/day-offer.routes";
+import postingRoutes from "./routes/posting.routes";
 
 // Cargar variables de entorno
 dotenv.config();
@@ -64,6 +65,7 @@ app.use("/api", mediaRoutes);
 app.use("/api", categoryRoutes);
 app.use("/api", locationRoutes);
 app.use("/api", dayOfferRoutes);
+app.use("/api", postingRoutes);
 
 // Ruta 404
 app.use((req, res) => {

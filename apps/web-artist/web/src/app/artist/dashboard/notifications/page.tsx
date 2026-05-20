@@ -15,7 +15,8 @@ type NotificationIconKey =
   | 'BOOKING_REQUEST' | 'BOOKING_CONFIRMED' | 'BOOKING_CANCELLED'
   | 'BOOKING_COMPLETED' | 'PAYMENT_RECEIVED' | 'NEW_REVIEW'
   | 'NEW_MESSAGE' | 'RESCHEDULE_REQUEST' | 'BOOKING_NO_SHOW' | 'SYSTEM'
-  | 'COLLABORATION_INVITE' | 'COLLABORATION_RESPONSE';
+  | 'COLLABORATION_INVITE' | 'COLLABORATION_RESPONSE'
+  | 'APPLICATION_RECEIVED' | 'APPLICATION_ACCEPTED' | 'APPLICATION_REJECTED';
 
 const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
   BOOKING_REQUEST:      <ClipboardList   size={20} className="text-blue-500" />,
@@ -30,6 +31,9 @@ const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
   SYSTEM:               <Info            size={20} className="text-gray-400" />,
   COLLABORATION_INVITE: <Users           size={20} className="text-purple-500" />,
   COLLABORATION_RESPONSE: <Users         size={20} className="text-green-500" />,
+  APPLICATION_RECEIVED: <Users           size={20} className="text-blue-500" />,
+  APPLICATION_ACCEPTED: <CheckCircle     size={20} className="text-green-500" />,
+  APPLICATION_REJECTED: <XCircle         size={20} className="text-gray-400" />,
 };
 
 const DEFAULT_ICON = <Bell size={20} className="text-gray-400" />;
