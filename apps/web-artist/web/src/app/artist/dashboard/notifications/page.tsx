@@ -14,26 +14,27 @@ import {
 type NotificationIconKey =
   | 'BOOKING_REQUEST' | 'BOOKING_CONFIRMED' | 'BOOKING_CANCELLED'
   | 'BOOKING_COMPLETED' | 'PAYMENT_RECEIVED' | 'NEW_REVIEW'
-  | 'NEW_MESSAGE' | 'RESCHEDULE_REQUEST' | 'BOOKING_NO_SHOW' | 'SYSTEM'
+  | 'NEW_MESSAGE' | 'RESCHEDULE_REQUEST' | 'BOOKING_NO_SHOW' | 'ARTIST_NO_SHOW' | 'SYSTEM'
   | 'COLLABORATION_INVITE' | 'COLLABORATION_RESPONSE'
   | 'APPLICATION_RECEIVED' | 'APPLICATION_ACCEPTED' | 'APPLICATION_REJECTED';
 
 const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
-  BOOKING_REQUEST:      <ClipboardList   size={20} className="text-blue-500" />,
-  BOOKING_CONFIRMED:    <CheckCircle     size={20} className="text-green-500" />,
-  BOOKING_CANCELLED:    <XCircle         size={20} className="text-red-500" />,
-  BOOKING_COMPLETED:    <PartyPopper     size={20} className="text-purple-500" />,
-  PAYMENT_RECEIVED:     <DollarSign      size={20} className="text-green-600" />,
-  NEW_REVIEW:           <Star            size={20} className="text-yellow-500" />,
-  NEW_MESSAGE:          <MessageCircle   size={20} className="text-blue-400" />,
-  RESCHEDULE_REQUEST:   <CalendarClock   size={20} className="text-orange-500" />,
-  BOOKING_NO_SHOW:      <AlertTriangle   size={20} className="text-red-600" />,
-  SYSTEM:               <Info            size={20} className="text-gray-400" />,
-  COLLABORATION_INVITE: <Users           size={20} className="text-purple-500" />,
-  COLLABORATION_RESPONSE: <Users         size={20} className="text-green-500" />,
-  APPLICATION_RECEIVED: <Users           size={20} className="text-blue-500" />,
-  APPLICATION_ACCEPTED: <CheckCircle     size={20} className="text-green-500" />,
-  APPLICATION_REJECTED: <XCircle         size={20} className="text-gray-400" />,
+  BOOKING_REQUEST:        <ClipboardList   size={20} className="text-blue-500" />,
+  BOOKING_CONFIRMED:      <CheckCircle     size={20} className="text-green-500" />,
+  BOOKING_CANCELLED:      <XCircle         size={20} className="text-red-500" />,
+  BOOKING_COMPLETED:      <PartyPopper     size={20} className="text-purple-500" />,
+  PAYMENT_RECEIVED:       <DollarSign      size={20} className="text-green-600" />,
+  NEW_REVIEW:             <Star            size={20} className="text-yellow-500" />,
+  NEW_MESSAGE:            <MessageCircle   size={20} className="text-blue-400" />,
+  RESCHEDULE_REQUEST:     <CalendarClock   size={20} className="text-orange-500" />,
+  BOOKING_NO_SHOW:        <AlertTriangle   size={20} className="text-red-600" />,
+  ARTIST_NO_SHOW:         <AlertTriangle   size={20} className="text-red-600" />,
+  SYSTEM:                 <Info            size={20} className="text-gray-400" />,
+  COLLABORATION_INVITE:   <Users           size={20} className="text-purple-500" />,
+  COLLABORATION_RESPONSE: <Users           size={20} className="text-green-500" />,
+  APPLICATION_RECEIVED:   <Users           size={20} className="text-blue-500" />,
+  APPLICATION_ACCEPTED:   <CheckCircle     size={20} className="text-green-500" />,
+  APPLICATION_REJECTED:   <XCircle         size={20} className="text-gray-400" />,
 };
 
 const DEFAULT_ICON = <Bell size={20} className="text-gray-400" />;

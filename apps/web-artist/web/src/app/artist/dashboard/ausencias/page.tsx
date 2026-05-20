@@ -73,7 +73,7 @@ export default function AusenciasPage() {
       .then((data) => setAbsences(data))
       .catch((err) => {
         if (isUnauthorizedError(err)) {
-          router.replace('/artist/login');
+          router.replace('/login');
         } else {
           setError(getErrorMessage(err));
         }
