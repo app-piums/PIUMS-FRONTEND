@@ -17,6 +17,7 @@ router.post('/postings/:id/apply', authenticateToken, postingController.applyToP
 router.get('/postings/:id/applications', authenticateToken, postingController.getApplicationsForPosting.bind(postingController));
 
 // Application actions (by ID)
+router.patch('/applications/:appId/review', authenticateToken, postingController.markApplicationReviewed.bind(postingController));
 router.patch('/applications/:appId/respond', authenticateToken, postingController.respondToApplication.bind(postingController));
 router.delete('/applications/:appId/withdraw', authenticateToken, postingController.withdrawApplication.bind(postingController));
 router.get('/applications/mine', authenticateToken, postingController.getMyApplications.bind(postingController));

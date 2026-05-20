@@ -1,7 +1,7 @@
 "use client";
 
 import { io, Socket } from 'socket.io-client';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { sdk } from '@piums/sdk';
 import type { GroupConversation, GroupMessage } from '@piums/sdk';
@@ -16,7 +16,7 @@ const CHAT_SOCKET_URL =
     ? (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'https://backend.piums.io')
     : (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010');
 
-export default function GroupChatPage() {
+function GroupChatPageInner() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -222,5 +222,13 @@ export default function GroupChatPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function GroupChatPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <GroupChatPageInner />
+    </Suspense>
   );
 }

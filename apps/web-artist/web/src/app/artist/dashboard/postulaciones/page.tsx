@@ -8,8 +8,10 @@ import type { ArtistPosting, PostingApplication } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Plus, ChevronDown, ChevronUp, Users, Calendar, DollarSign,
-  CheckCircle, XCircle, Clock, Eye, Trash2, Edit2, X
+  CheckCircle, XCircle, Clock, Eye, Trash2, ExternalLink, X, Link2
 } from 'lucide-react';
+
+const CLIENT_APP_URL = process.env.NEXT_PUBLIC_CLIENT_URL || 'https://client.piums.io';
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: 'Abierta',
@@ -40,9 +42,136 @@ const APP_STATUS_COLORS: Record<string, string> = {
 
 const ROLES = ['Guitarrista', 'Bajista', 'Baterista', 'Tecladista', 'Violinista', 'Saxofonista', 'DJ', 'Cantante', 'Fotógrafo', 'Videógrafo', 'Sonidista', 'MC / Animador', 'Otro'];
 
-type ApplicationEnriched = PostingApplication & { artistName?: string; artistAvatar?: string };
+type ApplicationEnriched = PostingApplication & { artistName?: string; artistAvatar?: string; artistCategory?: string };
 type PostingWithApps = ArtistPosting & { applications: ApplicationEnriched[] };
 
+// ── Application detail / review modal ──────────────────────────────────────
+function ApplicationDetailModal({
+  app,
+  postingIsOpen,
+  onClose,
+  onRespond,
+}: {
+  app: ApplicationEnriched;
+  postingIsOpen: boolean;
+  onClose: () => void;
+  onRespond: (appId: string, accept: boolean) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState<'accept' | 'reject' | null>(null);
+
+  const handle = async (accept: boolean) => {
+    setLoading(accept ? 'accept' : 'reject');
+    try {
+      await onRespond(app.id, accept);
+      onClose();
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const isActionable = postingIsOpen && (app.status === 'PENDING' || app.status === 'REVIEWED');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-900">Revisar postulación</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Artist identity */}
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center text-lg font-bold text-purple-600 shrink-0">
+              {(app.artistName ?? 'A').charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-gray-900">{app.artistName ?? 'Artista'}</p>
+              {app.artistCategory && (
+                <p className="text-xs text-gray-500">{app.artistCategory}</p>
+              )}
+              <a
+                href={`${CLIENT_APP_URL}/artists/${app.artistId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-[#FF6B35] font-medium hover:underline mt-0.5"
+              >
+                <ExternalLink size={11} />
+                Ver perfil público
+              </a>
+            </div>
+            <span className={`text-[11px] font-semibold px-2 py-1 rounded-full shrink-0 ${APP_STATUS_COLORS[app.status]}`}>
+              {APP_STATUS_LABELS[app.status]}
+            </span>
+          </div>
+
+          {/* Message */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Mensaje</p>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{app.message}</p>
+          </div>
+
+          {/* Portfolio links */}
+          {app.portfolioLinks && app.portfolioLinks.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Portfolio</p>
+              <ul className="space-y-1">
+                {app.portfolioLinks.map((link, i) => (
+                  <li key={i}>
+                    <a
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-[#FF6B35] hover:underline break-all"
+                    >
+                      <Link2 size={11} className="shrink-0" />
+                      {link}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400">
+            Aplicó el {new Date(app.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+
+        {/* Actions */}
+        {isActionable ? (
+          <div className="px-5 pb-5 flex gap-3">
+            <button
+              disabled={!!loading}
+              onClick={() => handle(false)}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              {loading === 'reject' ? 'Rechazando...' : 'Rechazar'}
+            </button>
+            <button
+              disabled={!!loading}
+              onClick={() => handle(true)}
+              className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition"
+            >
+              {loading === 'accept' ? 'Aceptando...' : 'Aceptar artista'}
+            </button>
+          </div>
+        ) : (
+          <div className="px-5 pb-5">
+            <button onClick={onClose} className="w-full py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+              Cerrar
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Posting card ────────────────────────────────────────────────────────────
 function PostingCard({
   posting,
   onClose,
@@ -52,22 +181,35 @@ function PostingCard({
   posting: PostingWithApps;
   onClose: (id: string, status: 'CLOSED' | 'CANCELLED') => void;
   onDelete: (id: string) => void;
-  onApplicationRespond: (appId: string, accept: boolean) => void;
+  onApplicationRespond: (appId: string, accept: boolean) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [loadingApp, setLoadingApp] = useState<string | null>(null);
+  const [selectedApp, setSelectedApp] = useState<ApplicationEnriched | null>(null);
 
-  const handleRespond = async (appId: string, accept: boolean) => {
-    setLoadingApp(appId);
-    try {
-      await onApplicationRespond(appId, accept);
-    } finally {
-      setLoadingApp(null);
+  const openApp = async (app: ApplicationEnriched) => {
+    setSelectedApp(app);
+    // Mark as reviewed if still PENDING (fire-and-forget)
+    if (app.status === 'PENDING') {
+      sdk.markApplicationReviewed(app.id).catch(() => {});
     }
   };
 
+  const pendingCount = posting.applications.filter(a => a.status === 'PENDING').length;
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {selectedApp && (
+        <ApplicationDetailModal
+          app={selectedApp}
+          postingIsOpen={posting.status === 'OPEN'}
+          onClose={() => setSelectedApp(null)}
+          onRespond={async (appId, accept) => {
+            await onApplicationRespond(appId, accept);
+            setSelectedApp(null);
+          }}
+        />
+      )}
+
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -76,9 +218,14 @@ function PostingCard({
                 {STATUS_LABELS[posting.status] ?? posting.status}
               </span>
               <span className="text-xs text-gray-500 font-medium">{posting.role}</span>
+              {pendingCount > 0 && (
+                <span className="text-xs text-amber-600 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                  <Clock size={11} /> {pendingCount} nueva{pendingCount !== 1 ? 's' : ''}
+                </span>
+              )}
               {posting.applicationCount > 0 && (
                 <span className="text-xs text-purple-600 font-medium flex items-center gap-0.5">
-                  <Users size={11} /> {posting.applicationCount} aplicaci{posting.applicationCount === 1 ? 'ón' : 'ones'}
+                  <Users size={11} /> {posting.applicationCount} total
                 </span>
               )}
             </div>
@@ -132,40 +279,31 @@ function PostingCard({
       {expanded && posting.applications.length > 0 && (
         <div className="border-t border-gray-100 divide-y divide-gray-50">
           {posting.applications.map(app => (
-            <div key={app.id} className="px-4 py-3 flex items-start gap-3">
+            <button
+              key={app.id}
+              onClick={() => openApp(app)}
+              className="w-full px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition text-left"
+            >
               <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center shrink-0 text-xs font-bold text-purple-600">
                 {(app.artistName ?? 'A').charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-gray-900">{app.artistName ?? 'Artista'}</span>
+                  {app.artistCategory && <span className="text-xs text-gray-400">{app.artistCategory}</span>}
                   <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${APP_STATUS_COLORS[app.status]}`}>
                     {APP_STATUS_LABELS[app.status]}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{app.message}</p>
+                <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{app.message}</p>
+                {app.portfolioLinks && app.portfolioLinks.length > 0 && (
+                  <p className="text-xs text-[#FF6B35] mt-0.5 flex items-center gap-0.5">
+                    <Link2 size={10} /> {app.portfolioLinks.length} link{app.portfolioLinks.length !== 1 ? 's' : ''} de portfolio
+                  </p>
+                )}
               </div>
-              {app.status === 'PENDING' && posting.status === 'OPEN' && (
-                <div className="flex gap-1 shrink-0">
-                  <button
-                    disabled={!!loadingApp}
-                    onClick={() => handleRespond(app.id, true)}
-                    className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 disabled:opacity-50 transition"
-                    title="Aceptar"
-                  >
-                    <CheckCircle size={16} />
-                  </button>
-                  <button
-                    disabled={!!loadingApp}
-                    onClick={() => handleRespond(app.id, false)}
-                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-50 transition"
-                    title="Rechazar"
-                  >
-                    <XCircle size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
+              <Eye size={14} className="shrink-0 text-gray-300 mt-1" />
+            </button>
           ))}
         </div>
       )}

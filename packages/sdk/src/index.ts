@@ -3563,6 +3563,12 @@ class PiumsSDK {
     return res.json();
   }
 
+  async markApplicationReviewed(appId: string): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/review`, this.withAuth({ method: 'PATCH' }));
+    if (!res.ok) return res.json();
+    return res.json();
+  }
+
   async respondToApplication(appId: string, accept: boolean): Promise<{ application: PostingApplication }> {
     const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/respond`, this.withAuth({ method: 'PATCH', body: JSON.stringify({ accept }) }));
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error respondiendo aplicación'); }

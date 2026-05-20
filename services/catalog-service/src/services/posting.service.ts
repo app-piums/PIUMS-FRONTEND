@@ -273,6 +273,21 @@ export class PostingService {
     return updated;
   }
 
+  async markApplicationReviewed(applicationId: string, postingArtistId: string) {
+    const application = await prisma.postingApplication.findUnique({
+      where: { id: applicationId },
+      include: { posting: true },
+    });
+    if (!application) throw new AppError(404, 'Aplicación no encontrada');
+    if (application.posting.artistId !== postingArtistId) throw new AppError(403, 'Sin permiso');
+    if (application.status !== 'PENDING') return application; // already in a further state
+
+    return prisma.postingApplication.update({
+      where: { id: applicationId },
+      data: { status: 'REVIEWED' },
+    });
+  }
+
   async withdrawApplication(applicationId: string, artistId: string) {
     const application = await prisma.postingApplication.findUnique({ where: { id: applicationId } });
     if (!application) throw new AppError(404, 'Aplicación no encontrada');

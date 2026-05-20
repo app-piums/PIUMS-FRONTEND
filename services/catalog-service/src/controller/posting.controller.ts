@@ -80,6 +80,13 @@ export class PostingController {
     } catch (error) { next(error); }
   }
 
+  async markApplicationReviewed(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const application = await postingService.markApplicationReviewed(req.params.appId, req.user!.id);
+      res.json({ application });
+    } catch (error) { next(error); }
+  }
+
   async withdrawApplication(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const application = await postingService.withdrawApplication(req.params.appId, req.user!.id);
