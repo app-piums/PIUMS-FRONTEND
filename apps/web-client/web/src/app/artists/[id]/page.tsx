@@ -14,7 +14,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { ReportModal } from '@/components/ReportModal';
 import type { ArtistProfile, Review, Service } from '@piums/sdk';
-import { getMockArtist, getMockServices, getMockReviews } from '@/lib/mockData';
 import { formatArtistCategory } from '@/lib/artistCategory';
 import { toast } from '@/lib/toast';
 
@@ -69,6 +68,7 @@ export default function ArtistProfilePage() {
   const [reviewsPage, setReviewsPage] = useState(1);
   const [reviewsTotalPages, setReviewsTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState('');
@@ -115,23 +115,17 @@ export default function ArtistProfilePage() {
   const loadArtistData = useCallback(async () => {
     try {
       setLoading(true);
-      // Try API first, fall back to mock
-      let artistData: ArtistProfile | null = null;
-      let servicesData: Service[] = [];
-      try {
-        const { sdk } = await import('@piums/sdk');
-        artistData = await sdk.getArtist(artistId);
-        servicesData = await sdk.getArtistServices(artistId);
-      } catch {
-        artistData = getMockArtist(artistId);
-        servicesData = getMockServices(artistId);
-      }
+      setLoadError(false);
+      const { sdk } = await import('@piums/sdk');
+      const [artistData, servicesData] = await Promise.all([
+        sdk.getArtist(artistId),
+        sdk.getArtistServices(artistId).catch(() => [] as Service[]),
+      ]);
+      if (!artistData) { setLoadError(true); return; }
       setArtist(artistData);
       setServices(servicesData);
-    } catch (error) {
-      console.error('Error loading artist:', error);
-      setArtist(getMockArtist(artistId));
-      setServices(getMockServices(artistId));
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -147,17 +141,11 @@ export default function ArtistProfilePage() {
       let reviewsData: Review[] = [];
       let total = 0;
       let totalPages = 1;
-      try {
-        const { sdk } = await import('@piums/sdk');
-        const result = await sdk.getArtistReviews(artistId, page, 5);
-        reviewsData = result.reviews;
-        total = result.total;
-        totalPages = result.totalPages;
-      } catch {
-        reviewsData = getMockReviews(artistId);
-        total = reviewsData.length;
-        totalPages = 1;
-      }
+      const { sdk } = await import('@piums/sdk');
+      const result = await sdk.getArtistReviews(artistId, page, 5);
+      reviewsData = result.reviews;
+      total = result.total;
+      totalPages = result.totalPages;
       if (page === 1) {
         setReviews(reviewsData);
       } else {
@@ -297,7 +285,15 @@ export default function ArtistProfilePage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Artista no encontrado</h2>
-          <Button onClick={() => router.push('/artists')}>Volver a Artistas</Button>
+          <p className="text-gray-500 mb-6">
+            {loadError ? 'Ocurrio un error al cargar el perfil.' : 'Este artista no existe o fue eliminado.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            {loadError && (
+              <Button onClick={loadArtistData} variant="outline">Reintentar</Button>
+            )}
+            <Button onClick={() => router.push('/artists')}>Volver a Artistas</Button>
+          </div>
         </div>
       </div>
     );

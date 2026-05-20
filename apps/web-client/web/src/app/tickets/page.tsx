@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { sdk, TicketEvent } from '@piums/sdk';
+import ClientSidebar from '@/components/ClientSidebar';
+import { useAuth } from '@/contexts/AuthContext';
 
 const CalendarIcon = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -71,6 +73,7 @@ function EventCard({ event }: { event: TicketEvent }) {
 }
 
 export default function TicketsPage() {
+  const { user } = useAuth();
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -90,7 +93,9 @@ export default function TicketsPage() {
   }, [page]);
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
+      <ClientSidebar userName={user?.nombre ?? 'Usuario'} />
+      <main className="flex-1 min-w-0">
       <div className="max-w-6xl mx-auto px-4 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Eventos</h1>
@@ -142,6 +147,7 @@ export default function TicketsPage() {
           </>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

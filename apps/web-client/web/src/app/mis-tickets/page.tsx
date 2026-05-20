@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { sdk, TicketPurchase } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import ClientSidebar from '@/components/ClientSidebar';
 
 const TicketIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -115,14 +116,19 @@ export default function MisTicketsPage() {
 
   if (authLoading || loading) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-      </main>
+      <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
+        <ClientSidebar userName={user?.nombre ?? 'Usuario'} />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
+      <ClientSidebar userName={user?.nombre ?? 'Usuario'} />
+      <main className="flex-1 min-w-0">
       <div className="max-w-2xl mx-auto px-4 py-10">
         <div className="flex items-center gap-3 mb-8">
           <TicketIcon />
@@ -158,6 +164,7 @@ export default function MisTicketsPage() {
           </>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

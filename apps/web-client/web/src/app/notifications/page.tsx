@@ -8,23 +8,30 @@ import { sdk } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   CheckCircle, XCircle, Clock, DollarSign,
-  Star, MessageCircle, Info, Bell
+  Star, MessageCircle, Info, Bell, AlertTriangle, Tag, Percent
 } from 'lucide-react';
 
 type NotificationIconKey =
   | 'BOOKING_CONFIRMED' | 'BOOKING_CANCELLED' | 'BOOKING_REJECTED'
   | 'BOOKING_PENDING' | 'PAYMENT_RECEIVED' | 'NEW_REVIEW'
-  | 'NEW_MESSAGE' | 'SYSTEM';
+  | 'NEW_MESSAGE' | 'SYSTEM'
+  | 'DELIVERY_PROBLEM_REPORTED' | 'dispute_opened'
+  | 'COUPON_EXPIRING' | 'COUPON_SENT' | 'DISCOUNT';
 
 const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
-  BOOKING_CONFIRMED:  <CheckCircle   size={20} className="text-green-500" />,
-  BOOKING_CANCELLED:  <XCircle       size={20} className="text-red-500" />,
-  BOOKING_REJECTED:   <XCircle       size={20} className="text-red-500" />,
-  BOOKING_PENDING:    <Clock         size={20} className="text-orange-400" />,
-  PAYMENT_RECEIVED:   <DollarSign    size={20} className="text-green-600" />,
-  NEW_REVIEW:         <Star          size={20} className="text-yellow-500" />,
-  NEW_MESSAGE:        <MessageCircle size={20} className="text-blue-400" />,
-  SYSTEM:             <Info          size={20} className="text-gray-400" />,
+  BOOKING_CONFIRMED:          <CheckCircle    size={20} className="text-green-500" />,
+  BOOKING_CANCELLED:          <XCircle        size={20} className="text-red-500" />,
+  BOOKING_REJECTED:           <XCircle        size={20} className="text-red-500" />,
+  BOOKING_PENDING:            <Clock          size={20} className="text-orange-400" />,
+  PAYMENT_RECEIVED:           <DollarSign     size={20} className="text-green-600" />,
+  NEW_REVIEW:                 <Star           size={20} className="text-yellow-500" />,
+  NEW_MESSAGE:                <MessageCircle  size={20} className="text-blue-400" />,
+  SYSTEM:                     <Info           size={20} className="text-gray-400" />,
+  DELIVERY_PROBLEM_REPORTED:  <AlertTriangle  size={20} className="text-red-400" />,
+  dispute_opened:             <AlertTriangle  size={20} className="text-red-500" />,
+  COUPON_EXPIRING:            <Tag            size={20} className="text-orange-400" />,
+  COUPON_SENT:                <Tag            size={20} className="text-green-500" />,
+  DISCOUNT:                   <Percent        size={20} className="text-indigo-500" />,
 };
 
 const DEFAULT_ICON = <Bell size={20} className="text-gray-400" />;
