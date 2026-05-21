@@ -124,6 +124,7 @@ function ArtistDetailDrawer({
   const [commissionReason, setCommissionReason] = useState("");
   const [commissionStartDate, setCommissionStartDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [creatingCommission, setCreatingCommission] = useState(false);
+  const [commissionError, setCommissionError] = useState<string | null>(null);
 
   const shadowBanMutation = useMutation({
     mutationFn: ({ banned, reason }: { banned: boolean; reason?: string }) =>
@@ -557,6 +558,7 @@ function ArtistDetailDrawer({
                   onClick={async () => {
                     if (!data) return;
                     setCreatingCommission(true);
+                    setCommissionError(null);
                     try {
                       await commissionsApi.create({
                         artistId: data.id,
@@ -568,7 +570,9 @@ function ArtistDetailDrawer({
                       });
                       setCommissionRate(""); setCommissionFixed(""); setCommissionReason("");
                       queryClient.invalidateQueries({ queryKey: ["admin-commissions", artistId] });
-                    } catch { /* non-critical */ } finally {
+                    } catch (err) {
+                      setCommissionError(err instanceof Error ? err.message : "Error al crear la regla");
+                    } finally {
                       setCreatingCommission(false);
                     }
                   }}
@@ -576,6 +580,9 @@ function ArtistDetailDrawer({
                 >
                   {creatingCommission ? "Creando…" : "Crear regla"}
                 </button>
+                {commissionError && (
+                  <p className="text-xs text-red-500 mt-2">{commissionError}</p>
+                )}
               </div>
             </div>
 

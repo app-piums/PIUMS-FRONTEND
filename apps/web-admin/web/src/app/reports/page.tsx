@@ -239,14 +239,18 @@ function ResolveDisputeModal({
             <label className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Monto a reembolsar (USD, opcional)
             </label>
-            <input
-              type="number"
-              min={0}
-              value={refundAmount}
-              onChange={(e) => setRefundAmount(e.target.value)}
-              placeholder="Ej: 500"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-[#FF6A00] focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
-            />
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-400">$</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder="Ej: 25.00"
+                className="w-full rounded-lg border border-zinc-300 pl-7 pr-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-[#FF6A00] focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+              />
+            </div>
           </div>
         )}
         <div className="mt-4">
@@ -274,7 +278,7 @@ function ResolveDisputeModal({
               onSubmit(
                 resolution,
                 notes,
-                refundAmount ? parseInt(refundAmount) : undefined
+                refundAmount ? Math.round(parseFloat(refundAmount) * 100) : undefined
               )
             }
             disabled={isPending || !notes.trim()}
