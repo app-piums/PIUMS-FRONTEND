@@ -52,20 +52,18 @@ export default function BookingConfirmationPage() {
       return;
     }
 
-    // Confirmar el pago en el backend (idempotente)
+    // Confirmar el pago en el backend y luego recargar el booking para reflejar el estado actualizado
     sdk.confirmTilopayRedirect({ bookingId, responseCode, orderNumber: orderNumber!, amount: amount!, auth, currency, orderHash })
+      .then(() => loadBookingData())
       .catch(() => {
         // No bloquear la UI si falla — el admin puede confirmar manualmente
       });
 
-    // Save card token as default payment method for future one-click payments
     if (cardHash) {
       sdk.saveProviderToken({ provider: 'TILOPAY', token: cardHash })
-        .catch(() => {
-          // Silent — card saving is best-effort
-        });
+        .catch(() => {});
     }
-  }, [bookingId, searchParams]);
+  }, [bookingId, searchParams, loadBookingData]);
 
   const loadBookingData = useCallback(async () => {
     try {
