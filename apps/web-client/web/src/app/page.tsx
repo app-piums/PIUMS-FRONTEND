@@ -1,245 +1,426 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
+import {
+  Camera, Music, Disc3, Palette, Video, Sparkles,
+  ShieldCheck, DollarSign, Clock, ArrowRight, Check,
+} from "lucide-react";
 
 const ARTIST_APP_URL = process.env.NEXT_PUBLIC_ARTIST_URL || "http://127.0.0.1:3001";
 
 const CATEGORIES = [
   {
+    Icon: Camera,
     name: "Fotografía",
-    desc: "Bodas, eventos, retratos y más",
-    icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
+    desc: "Bodas, eventos, retratos",
+    href: "/artists?category=FOTOGRAFIA",
   },
   {
+    Icon: Music,
     name: "Música",
     desc: "Bandas, cantantes, tríos",
-    icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-      </svg>
-    ),
+    href: "/artists?category=MUSICA",
   },
   {
+    Icon: Disc3,
     name: "DJ",
-    desc: "Fiestas, bodas, eventos corporativos",
-    icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-      </svg>
-    ),
+    desc: "Fiestas, bodas, corporativos",
+    href: "/artists?category=DJ",
   },
   {
-    name: "Diseño Gráfico",
-    desc: "Branding, ilustración, identidad visual",
-    icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    ),
+    Icon: Palette,
+    name: "Diseño gráfico",
+    desc: "Branding, identidad visual",
+    href: "/artists?category=DISENO_GRAFICO",
   },
   {
+    Icon: Video,
     name: "Video",
-    desc: "Bodas, publicidad, documentales",
-    icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-      </svg>
-    ),
+    desc: "Bodas, publicidad, docs",
+    href: "/artists?category=VIDEO",
   },
   {
+    Icon: Sparkles,
     name: "Arte & Performance",
-    desc: "Pintores, performers, artistas escénicos",
-    icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-      </svg>
-    ),
+    desc: "Performers, pintores, escénicas",
+    href: "/artists?category=ARTE_PERFORMANCE",
+  },
+];
+
+const MARQUEE_TAGS = [
+  "Fotografía", "Música en vivo", "DJ Set", "Branding", "Video bodas",
+  "Retrato", "Performance", "Ilustración", "Animación", "Diseño web",
+  "Fotografía", "Música en vivo", "DJ Set", "Branding", "Video bodas",
+  "Retrato", "Performance", "Ilustración", "Animación", "Diseño web",
+];
+
+const TRUST = [
+  {
+    Icon: ShieldCheck,
+    title: "Artistas verificados",
+    desc: "Cada perfil es revisado antes de publicarse. Sin perfiles falsos.",
+  },
+  {
+    Icon: DollarSign,
+    title: "Pagos seguros en USD",
+    desc: "Tu dinero queda protegido hasta que el artista entregue el servicio.",
+  },
+  {
+    Icon: Clock,
+    title: "Reserva en minutos",
+    desc: "Elige, agenda y paga. Todo desde la plataforma, sin llamadas.",
   },
 ];
 
 const STEPS = [
   {
     num: "01",
-    title: "Busca tu artista",
-    desc: "Explora perfiles, portafolios y precios. Filtra por categoría, ciudad y disponibilidad.",
+    title: "Explora artistas",
+    desc: "Filtra por categoría, ciudad y precio. Ve portafolios reales antes de decidir.",
   },
   {
     num: "02",
     title: "Reserva con un clic",
-    desc: "Elige fecha, hora y servicio. El pago en USD queda protegido hasta que confirmen.",
+    desc: "Elige fecha y servicio. El pago en USD queda protegido hasta que confirmen.",
   },
   {
     num: "03",
     title: "Disfruta el resultado",
-    desc: "El artista se presenta, entrega su trabajo y tú dejas una reseña. Simple y seguro.",
+    desc: "El artista se presenta, entrega su trabajo y tú dejas una reseña.",
   },
+];
+
+const PERKS = [
+  "Sin comisiones ocultas",
+  "Artistas verificados",
+  "Soporte en español",
+  "Reembolso garantizado",
 ];
 
 export default function Home() {
   return (
     <>
-      <div className="flex min-h-screen flex-col bg-white dark:bg-black">
+      <div
+        className="flex min-h-[100dvh] flex-col"
+        style={{ background: "#0a0a0a", color: "#fafafa", fontFamily: "var(--font-geist-sans)" }}
+      >
         {/* Navbar */}
-        <nav className="flex items-center justify-between px-8 py-5 border-b border-zinc-100 dark:border-zinc-900">
+        <nav
+          className="relative z-20 flex items-center justify-between px-6 md:px-10 py-4"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+        >
           <Image
-            src="/logo.png"
+            src="/logo-white.png"
             alt="Piums"
-            width={36}
-            height={36}
-            className="h-9 w-auto"
+            width={90}
+            height={28}
+            className="h-7 w-auto"
             priority
           />
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50 transition-colors"
+              className="text-sm font-medium transition-colors"
+              style={{ color: "rgba(255,255,255,0.45)" }}
             >
               Iniciar sesión
             </Link>
             <Link
               href="/register"
-              className="rounded-full bg-[#FF6B35] px-5 py-2 text-sm font-semibold text-white hover:bg-[#e05e00] transition-colors"
+              className="rounded-full px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: "#FF6B35" }}
             >
               Registrarse gratis
             </Link>
           </div>
         </nav>
 
-        <main className="flex flex-1 flex-col items-center px-6 pt-20 pb-16">
+        <main className="relative flex flex-1 flex-col items-center overflow-hidden">
+          {/* Hero radial glow */}
+          <div
+            className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 h-[700px] w-full max-w-[1000px]"
+            style={{
+              background:
+                "radial-gradient(ellipse at 50% -5%, rgba(255,107,53,0.12) 0%, transparent 65%)",
+            }}
+          />
 
           {/* Hero */}
-          <div className="flex flex-col items-center text-center max-w-3xl">
-            <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#FF6B35]/30 bg-[#FF6B35]/5 px-4 py-1.5 text-xs font-medium text-[#FF6B35]">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
-              </svg>
+          <section className="relative z-10 flex flex-col items-center px-6 pt-20 pb-14 text-center max-w-4xl w-full">
+            <div
+              className="mb-8 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-medium tracking-wide"
+              style={{
+                borderColor: "rgba(255,107,53,0.25)",
+                background: "rgba(255,107,53,0.07)",
+                color: "#FF6B35",
+              }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full animate-pulse"
+                style={{ background: "#FF6B35" }}
+              />
               Economía Naranja — Guatemala
-            </span>
+            </div>
 
-            <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 leading-tight">
-              El talento creativo de Guatemala,<br />
-              <span className="text-[#FF6B35]">a tu alcance</span>
+            <h1
+              className="text-5xl sm:text-6xl md:text-7xl font-bold leading-[1.04]"
+              style={{ letterSpacing: "-0.03em" }}
+            >
+              El talento creativo
+              <br />
+              de Guatemala,
+              <br />
+              <span style={{ color: "#FF6B35" }}>a tu alcance</span>
             </h1>
 
-            <p className="mt-6 max-w-md text-lg text-zinc-500 dark:text-zinc-400 leading-relaxed">
-              Contrata artistas verificados para tu boda, evento, empresa o proyecto personal.
-              Todo en USD, todo con garantía.
+            <p
+              className="mt-7 max-w-md text-base md:text-lg leading-relaxed"
+              style={{ color: "rgba(255,255,255,0.42)" }}
+            >
+              Contrata artistas verificados para tu boda, evento, empresa
+              o proyecto personal. Todo en USD, todo con garantía.
             </p>
 
-            <div className="mt-10 flex flex-col sm:flex-row gap-4">
+            <div className="mt-10 flex flex-col sm:flex-row gap-3">
               <Link
                 href="/artists"
-                className="rounded-full bg-[#FF6B35] px-8 py-3.5 text-sm font-semibold text-white hover:bg-[#e05e00] transition-colors shadow-lg shadow-[#FF6B35]/25"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-8 py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{
+                  background: "#FF6B35",
+                  boxShadow: "0 0 32px rgba(255,107,53,0.32)",
+                }}
               >
                 Explorar artistas
+                <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/register"
-                className="rounded-full border border-zinc-200 bg-white px-8 py-3.5 text-sm font-semibold text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 transition-colors dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+                className="inline-flex items-center justify-center rounded-full px-8 py-3.5 text-sm font-semibold transition-all hover:border-white/20"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  color: "rgba(255,255,255,0.55)",
+                  background: "rgba(255,255,255,0.03)",
+                }}
               >
                 Crear cuenta gratis
               </Link>
             </div>
 
-            {/* Trust badges */}
-            <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm text-zinc-400">
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                Artistas verificados
-              </div>
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Pagos seguros en USD
-              </div>
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Reserva en minutos
-              </div>
-            </div>
-          </div>
-
-          {/* Categories */}
-          <div className="mt-24 w-full max-w-4xl">
-            <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 text-center mb-2">Explora por categoría</h2>
-            <p className="text-sm text-zinc-500 text-center mb-10">Encuentra el artista perfecto para cada ocasión</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {CATEGORIES.map((cat) => (
-                <Link
-                  key={cat.name}
-                  href={`/artists?category=${cat.name.toUpperCase().replace(/\s/g, '_')}`}
-                  className="group flex flex-col gap-3 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-5 hover:border-[#FF6B35]/40 hover:bg-[#FF6B35]/5 transition-all"
+            {/* Perks */}
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+              {PERKS.map((p) => (
+                <span
+                  key={p}
+                  className="inline-flex items-center gap-1.5 text-xs"
+                  style={{ color: "rgba(255,255,255,0.35)" }}
                 >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[#FF6B35] group-hover:bg-[#FF6B35]/10 transition-colors">
-                    {cat.icon}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-zinc-900 dark:text-zinc-50 text-sm">{cat.name}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">{cat.desc}</p>
-                  </div>
-                </Link>
+                  <Check className="h-3 w-3 shrink-0" style={{ color: "#FF6B35" }} />
+                  {p}
+                </span>
+              ))}
+            </div>
+          </section>
+
+          {/* Marquee */}
+          <div
+            className="relative z-10 w-full overflow-hidden py-6"
+            style={{
+              borderTop: "1px solid rgba(255,255,255,0.05)",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+            }}
+          >
+            <div className="animate-marquee gap-3">
+              {MARQUEE_TAGS.map((tag, i) => (
+                <span
+                  key={i}
+                  className="shrink-0 rounded-full px-4 py-1.5 text-sm font-medium mr-3"
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "rgba(255,255,255,0.38)",
+                    background: "rgba(255,255,255,0.025)",
+                  }}
+                >
+                  {tag}
+                </span>
               ))}
             </div>
           </div>
 
-          {/* Cómo funciona */}
-          <div className="mt-24 w-full max-w-4xl">
-            <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 text-center mb-2">¿Cómo funciona?</h2>
-            <p className="text-sm text-zinc-500 text-center mb-12">De la idea al resultado en 3 pasos</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
-              {STEPS.map((s) => (
-                <div key={s.num} className="flex flex-col gap-3">
-                  <span className="font-mono text-3xl font-bold text-[#FF6B35] opacity-40">{s.num}</span>
-                  <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">{s.title}</h3>
-                  <p className="text-sm text-zinc-500 leading-relaxed">{s.desc}</p>
+          {/* Categories */}
+          <div className="relative z-10 mt-24 w-full max-w-4xl px-6 mx-auto">
+            <div className="text-center mb-12">
+              <h2
+                className="text-2xl md:text-3xl font-bold"
+                style={{ letterSpacing: "-0.02em" }}
+              >
+                Explora por categoría
+              </h2>
+              <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
+                Encuentra el artista perfecto para cada ocasión
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {CATEGORIES.map(({ Icon, name, desc, href }) => (
+                <Link
+                  key={name}
+                  href={href}
+                  className="group flex flex-col gap-4 rounded-2xl p-5 transition-all"
+                  style={{
+                    background: "#111",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                  }}
+                >
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-xl transition-colors"
+                    style={{ background: "rgba(255,107,53,0.1)" }}
+                  >
+                    <Icon className="h-5 w-5" style={{ color: "#FF6B35" }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">{name}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+                      {desc}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-center">
+              <Link
+                href="/artists"
+                className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-medium transition-all hover:border-white/20"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  color: "rgba(255,255,255,0.5)",
+                }}
+              >
+                Ver todos los artistas
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Trust */}
+          <div className="relative z-10 mt-24 w-full max-w-3xl px-6 mx-auto">
+            <div
+              className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-2xl overflow-hidden"
+              style={{ border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              {TRUST.map(({ Icon, title, desc }, i) => (
+                <div
+                  key={title}
+                  className="flex flex-col gap-3 p-7"
+                  style={{
+                    background: "#111",
+                    borderRight:
+                      i < TRUST.length - 1 ? "1px solid rgba(255,255,255,0.07)" : "none",
+                  }}
+                >
+                  <Icon className="h-5 w-5" style={{ color: "#FF6B35" }} />
+                  <p className="font-semibold text-sm">{title}</p>
+                  <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    {desc}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* CTA final */}
-          <div className="mt-20 w-full max-w-4xl rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-10 flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">¿Listo para tu primer proyecto?</h2>
-              <p className="mt-1 text-sm text-zinc-500">Crea tu cuenta y reserva tu primer artista hoy.</p>
+          {/* Steps */}
+          <div className="relative z-10 mt-24 w-full max-w-3xl px-6 mx-auto">
+            <div className="text-center mb-14">
+              <h2
+                className="text-2xl md:text-3xl font-bold"
+                style={{ letterSpacing: "-0.02em" }}
+              >
+                De la idea al resultado en 3 pasos
+              </h2>
             </div>
-            <Link
-              href="/register"
-              className="shrink-0 rounded-full bg-[#FF6B35] px-8 py-3.5 text-sm font-semibold text-white hover:bg-[#e05e00] transition-colors shadow-lg shadow-[#FF6B35]/25"
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
+              {STEPS.map((s) => (
+                <div key={s.num} className="flex flex-col gap-3">
+                  <span
+                    className="font-mono text-5xl font-bold"
+                    style={{
+                      color: "rgba(255,107,53,0.2)",
+                      fontFamily: "var(--font-geist-mono)",
+                    }}
+                  >
+                    {s.num}
+                  </span>
+                  <h3 className="font-semibold text-sm">{s.title}</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    {s.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CTA block */}
+          <div className="relative z-10 mt-20 mb-16 w-full max-w-3xl px-6 mx-auto">
+            <div
+              className="rounded-2xl p-12 flex flex-col sm:flex-row items-center justify-between gap-8 relative overflow-hidden"
+              style={{ background: "#111", border: "1px solid rgba(255,107,53,0.18)" }}
             >
-              Empezar ahora
-            </Link>
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(ellipse at 50% 0%, rgba(255,107,53,0.07) 0%, transparent 65%)",
+                }}
+              />
+              <div className="relative">
+                <h2
+                  className="text-xl md:text-2xl font-bold"
+                  style={{ letterSpacing: "-0.02em" }}
+                >
+                  ¿Listo para tu primer proyecto?
+                </h2>
+                <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  Crea tu cuenta y reserva tu primer artista hoy.
+                </p>
+              </div>
+              <Link
+                href="/register"
+                className="relative shrink-0 inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{
+                  background: "#FF6B35",
+                  boxShadow: "0 0 32px rgba(255,107,53,0.32)",
+                }}
+              >
+                Empezar ahora
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </main>
 
-        {/* Footer for artists */}
-        <div className="border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-950 px-8 py-6">
-          <div className="mx-auto max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
-            <span>¿Eres artista? Ofrece tus servicios en PIUMS</span>
-            <a
-              href={`${ARTIST_APP_URL}/register/artist`}
-              className="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-5 py-2 font-medium text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50 transition-colors dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-            >
-              <svg className="h-4 w-4 text-[#FF6B35]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
-              </svg>
-              Ir a Piums for Artists
-            </a>
-          </div>
+        {/* Artist crosslink */}
+        <div
+          className="px-6 md:px-10 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm"
+          style={{
+            borderTop: "1px solid rgba(255,255,255,0.05)",
+            background: "#080808",
+          }}
+        >
+          <span style={{ color: "rgba(255,255,255,0.28)" }}>
+            ¿Eres artista? Ofrece tus servicios en Piums
+          </span>
+          <a
+            href={`${ARTIST_APP_URL}/register/artist`}
+            className="inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-medium transition-all hover:border-white/20"
+            style={{
+              borderColor: "rgba(255,255,255,0.1)",
+              color: "rgba(255,255,255,0.45)",
+            }}
+          >
+            Ir a Piums for Artists
+            <ArrowRight className="h-3.5 w-3.5" />
+          </a>
         </div>
       </div>
       <Footer />
     </>
   );
 }
-
