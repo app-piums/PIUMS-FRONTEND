@@ -1025,7 +1025,7 @@ Un pool nuevo se abre cada 24h. `$disconnect()` solo se llama si no hay excepci�
 | PII-M2 | Medio | Privacidad | Email en claims del JWT (PII en token base64) | Pendiente — requiere refactor amplio (email usado en rotación de tokens y muchos callers) |
 | PII-M3 | Medio | Privacidad | Error body de Tilopay loggeado — puede incluir credenciales | **Resuelto** — eliminado `body` del log de error en tilopay-token-cache.ts; solo se logea `status` |
 | PII-M4 | Medio | Privacidad | getMe devuelve URLs públicas permanentes de documentos KYC | **Mitigado** — nuevas subidas usan `type: 'authenticated'` en Cloudinary; `getSignedDocumentUrl()` genera URLs firmadas con expiración de 1h; endpoint `/users/internal/cloudinary-sign` disponible. Documentos existentes requieren migración Cloudinary (deferred) |
-| PII-M5 | Medio | Privacidad | Soft-delete en users-service sin purge job | Pendiente |
+| PII-M5 | Medio | Privacidad | Soft-delete en users-service sin purge job | **Resuelto** — `purge.service.ts` en users-service: anonimiza usuarios con `deletedAt > 90 días` (email→`deleted_id@purged.invalid`, PII→null, Cloudinary limpiado). Corre diario vía `setInterval` y una vez al startup |
 | PII-M6 | Medio | Privacidad | Ningún middleware verifica revocación de sesiones por JTI | Pendiente — parcialmente mitigado: verify endpoint ya tiene JTI check (PII-H4) |
 | API-M1 | Medio | API/Auth | updateAddon pasa data sin validar a Prisma | **Resuelto** — `addonSchema.parse(req.body)` aplicado en `updateAddon` del catalog controller |
 | API-M2 | Medio | API/Auth | sortBy de query sin validar en Prisma orderBy | **Resuelto** — allowlist `SORTABLE_FIELDS` validada en `getBookings` de booking.service.ts |
