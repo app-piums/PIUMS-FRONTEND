@@ -60,6 +60,11 @@ export class ArtistsClient {
     }
   }
 
+  async getArtistIdByAuthId(authId: string): Promise<string | null> {
+    const artist = await this.getArtist(authId);
+    return artist?.id ?? null;
+  }
+
   // artistId here is always the auth user ID (from booking/posting/application)
   async getArtist(authId: string): Promise<any> {
     try {

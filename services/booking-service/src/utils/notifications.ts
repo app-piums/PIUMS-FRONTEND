@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logger } from './logger';
 
 const NOTIFICATIONS_URL = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:4007';
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
@@ -141,11 +142,11 @@ export async function notifyBookingCreated(data: BookingNotificationData): Promi
   const vars = buildVars(data);
   await Promise.allSettled([
     sendTemplate(data.clientEmail, 'booking-created-client', vars)
-      .then(() => console.log(`[NOTIF] booking-created-client → ${data.clientEmail}`))
-      .catch((e: any) => console.error('[NOTIF] booking-created-client failed:', e.message)),
+      .then(() => logger.info('booking-created-client sent', 'NOTIF', { bookingId: data.bookingId }))
+      .catch((e: any) => logger.error('booking-created-client failed', 'NOTIF', { bookingId: data.bookingId, error: e.message })),
     sendTemplate(data.artistEmail, 'booking-created-artist', vars)
-      .then(() => console.log(`[NOTIF] booking-created-artist → ${data.artistEmail}`))
-      .catch((e: any) => console.error('[NOTIF] booking-created-artist failed:', e.message)),
+      .then(() => logger.info('booking-created-artist sent', 'NOTIF', { bookingId: data.bookingId }))
+      .catch((e: any) => logger.error('booking-created-artist failed', 'NOTIF', { bookingId: data.bookingId, error: e.message })),
   ]);
 }
 
@@ -153,11 +154,11 @@ export async function notifyBookingConfirmed(data: BookingNotificationData): Pro
   const vars = buildVars(data);
   await Promise.allSettled([
     sendTemplate(data.clientEmail, 'booking-confirmed', vars)
-      .then(() => console.log(`[NOTIF] booking-confirmed → ${data.clientEmail}`))
-      .catch((e: any) => console.error('[NOTIF] booking-confirmed failed:', e.message)),
+      .then(() => logger.info('booking-confirmed sent', 'NOTIF', { bookingId: data.bookingId }))
+      .catch((e: any) => logger.error('booking-confirmed failed', 'NOTIF', { bookingId: data.bookingId, error: e.message })),
     sendTemplate(data.artistEmail, 'booking-confirmed-artist', vars)
-      .then(() => console.log(`[NOTIF] booking-confirmed-artist → ${data.artistEmail}`))
-      .catch((e: any) => console.error('[NOTIF] booking-confirmed-artist failed:', e.message)),
+      .then(() => logger.info('booking-confirmed-artist sent', 'NOTIF', { bookingId: data.bookingId }))
+      .catch((e: any) => logger.error('booking-confirmed-artist failed', 'NOTIF', { bookingId: data.bookingId, error: e.message })),
   ]);
 }
 
@@ -172,7 +173,7 @@ export async function notifyNoShowReported(data: {
     bookingCode: data.bookingCode,
     scheduledDate: formatDate(data.scheduledDate),
     currentYear: new Date().getFullYear(),
-  }).catch((e: any) => console.error('[NOTIF] booking-no-show-artist failed:', e.message));
+  }).catch((e: any) => logger.error('booking-no-show-artist failed', 'NOTIF', { error: e.message }));
 }
 
 export async function notifyNoShowResolved(data: {
@@ -188,17 +189,17 @@ export async function notifyNoShowResolved(data: {
     refundAmount: (data.refundAmount / 100).toFixed(2),
     creditAmount: (data.creditAmount / 100).toFixed(2),
     currentYear: new Date().getFullYear(),
-  }).catch((e: any) => console.error('[NOTIF] booking-no-show-client failed:', e.message));
+  }).catch((e: any) => logger.error('booking-no-show-client failed', 'NOTIF', { error: e.message }));
 }
 
 export async function sendReminder24h(data: BookingNotificationData): Promise<void> {
   const vars = buildVars(data);
   await sendTemplate(data.clientEmail, 'booking-reminder-24h', vars)
-    .catch((e: any) => console.error('[NOTIF] booking-reminder-24h failed:', e.message));
+    .catch((e: any) => logger.error('booking-reminder-24h failed', 'NOTIF', { error: e.message }));
 }
 
 export async function sendReminder2h(data: BookingNotificationData): Promise<void> {
   const vars = buildVars(data);
   await sendTemplate(data.clientEmail, 'booking-reminder-2h', vars)
-    .catch((e: any) => console.error('[NOTIF] booking-reminder-2h failed:', e.message));
+    .catch((e: any) => logger.error('booking-reminder-2h failed', 'NOTIF', { error: e.message }));
 }

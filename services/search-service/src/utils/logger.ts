@@ -36,7 +36,7 @@ export const logger = {
   },
 
   debug: (message: string, data?: any) => {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
       console.log(JSON.stringify({
         timestamp: new Date().toISOString(),
         level: 'DEBUG',

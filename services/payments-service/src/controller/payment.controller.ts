@@ -60,9 +60,8 @@ export class PaymentController {
   async initCheckout(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { bookingId, amount, currency, countryCode, description, returnUrl } = req.body as {
+      const { bookingId, currency, countryCode, description, returnUrl } = req.body as {
         bookingId: string;
-        amount: number;
         currency?: string;
         countryCode?: string;
         description?: string;
@@ -70,13 +69,11 @@ export class PaymentController {
       };
 
       if (!bookingId) return res.status(400).json({ error: 'bookingId es requerido' });
-      if (!amount || amount <= 0) return res.status(400).json({ error: 'amount debe ser mayor a 0' });
 
       const result = await paymentService.initCheckout({
         bookingId,
         userId,
         userEmail: req.user!.email,
-        amount,
         currency: currency || 'USD',
         countryCode,
         description,

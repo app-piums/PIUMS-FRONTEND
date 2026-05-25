@@ -3,6 +3,7 @@
  */
 
 import jwt from "jsonwebtoken";
+import { logger } from '../utils/logger';
 
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:4006';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production';
@@ -36,6 +37,7 @@ export class NotificationsClient {
       const serviceToken = generateServiceToken(payload.userId);
       
       const response = await fetch(`${this.baseUrl}/api/notifications/send`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -46,13 +48,13 @@ export class NotificationsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[NotificationsClient] Error enviando notificación:', error);
+        logger.error('Error enviando notificacion', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[NotificationsClient] Error de conexión con notifications-service:', error);
+      logger.error('Error de conexion con notifications-service', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

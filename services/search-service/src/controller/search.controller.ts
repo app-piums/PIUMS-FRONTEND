@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { searchService } from '../services/search.service';
+import { logger } from '../utils/logger';
 import { addDynamicSynonym, hasSynonym } from '../utils/synonyms';
 import {
   searchArtistsSchema,
@@ -92,13 +93,13 @@ export const searchController = {
       // Start indexing asynchronously
       if (type === 'artists' || type === 'all') {
         searchService.bulkIndexArtists(batchSize!).catch(error => {
-          console.error('Bulk artist indexing failed:', error);
+          logger.error('Bulk artist indexing failed', 'SEARCH', { error: typeof error === 'string' ? error : error?.message });
         });
       }
 
       if (type === 'services' || type === 'all') {
         searchService.bulkIndexServices(batchSize!).catch(error => {
-          console.error('Bulk service indexing failed:', error);
+          logger.error('Bulk service indexing failed', 'SEARCH', { error: typeof error === 'string' ? error : error?.message });
         });
       }
 

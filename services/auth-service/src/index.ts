@@ -30,6 +30,10 @@ configureFacebookStrategy();
 app.use(cors({ credentials: true, origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'] }));
 app.use(express.json());
 app.use(cookieParser());
+if (!process.env.SESSION_SECRET && process.env.NODE_ENV === 'production') {
+  logger.error('FATAL: SESSION_SECRET no definido en produccion', 'SERVER');
+  process.exit(1);
+}
 app.use(session({
   secret: process.env.SESSION_SECRET || 'piums-session-secret',
   resave: false,
@@ -194,8 +198,17 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4001;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Auth Service running on http://localhost:${PORT}`, "SERVER");
   logger.info(`Health check: http://localhost:${PORT}/health`, "SERVER");
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`, "SERVER");
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  server.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
 });

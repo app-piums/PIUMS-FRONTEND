@@ -30,14 +30,35 @@ router.post(
         signature
       );
 
-      // Registrar evento
-      await prisma.webhookEvent.create({
-        data: {
-          stripeEventId: event.id,
-          eventType: event.type,
-          payload: event.data as any,
-        },
+      // Idempotency guard: fast path — if already successfully processed, skip
+      const alreadyProcessed = await prisma.webhookEvent.findFirst({
+        where: { stripeEventId: event.id, processed: true },
       });
+      if (alreadyProcessed) {
+        logger.info("Webhook ya procesado, ignorando", "WEBHOOK_HANDLER", { eventId: event.id });
+        return res.json({ received: true });
+      }
+
+      // Registrar evento
+      try {
+        await prisma.webhookEvent.create({
+          data: {
+            stripeEventId: event.id,
+            eventType: event.type,
+            payload: event.data as any,
+          },
+        });
+      } catch (createErr: any) {
+        // Unique constraint means the event already exists — check if processed
+        const existing = await prisma.webhookEvent.findFirst({
+          where: { stripeEventId: event.id, processed: true },
+        });
+        if (existing) {
+          logger.info("Webhook duplicado ya procesado", "WEBHOOK_HANDLER", { eventId: event.id });
+          return res.json({ received: true });
+        }
+        // Exists but not yet processed — let the current run continue
+      }
 
       logger.info("Webhook recibido", "WEBHOOK_HANDLER", {
         eventId: event.id,

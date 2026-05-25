@@ -99,7 +99,7 @@ export const setupRoutes = (app: Express) => {
                 
                 const isArtistRole = data.user && (data.user.role === 'artista' || data.user.role === 'ambos');
                 if (isArtistRole) {
-                  logger.info(`[GATEWAY] Artist detected (role=${data.user.role}): ${data.user.email}. Fetching artist profile...`, "GATEWAY");
+                  logger.info(`[GATEWAY] Artist detected (role=${data.user.role}, id=${data.user.id}). Fetching artist profile...`, "GATEWAY");
                   const token = req.headers.authorization?.substring(7);
                   if (token) {
                     const ARTISTS_SERVICE_URL = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
@@ -315,10 +315,11 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
-  // Ticket Events & Purchases — booking-service, auth applied per route
+  // Ticket Events & Purchases — booking-service, auth required at gateway
   // ============================================================================
   app.use(
     "/api/ticket-events",
+    authMiddleware,
     createProxyMiddleware({
       target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
       changeOrigin: true,
@@ -328,6 +329,7 @@ export const setupRoutes = (app: Express) => {
   );
   app.use(
     "/api/ticket-purchases",
+    authMiddleware,
     createProxyMiddleware({
       target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
       changeOrigin: true,

@@ -3,6 +3,7 @@
  */
 
 import { generateServiceToken } from "../utils/jwt";
+import { logger } from '../utils/logger';
 
 const PAYMENTS_SERVICE_URL = process.env.PAYMENTS_SERVICE_URL || 'http://localhost:4007';
 
@@ -52,6 +53,7 @@ export class PaymentsClient {
       const serviceToken = generateServiceToken(payload.userId);
       
       const response = await fetch(`${this.baseUrl}/api/payments/payment-intents`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,13 +69,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error creando Payment Intent:', error);
+        logger.error('Error creando Payment Intent', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json() as PaymentIntentResponse;
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión con payments-service:', error);
+      logger.error('Error de conexion con payments-service', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -89,6 +91,7 @@ export class PaymentsClient {
       const response = await fetch(
         `${this.baseUrl}/api/payments/payment-intents/${payload.paymentIntentId}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -99,13 +102,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error obteniendo Payment Intent:', error);
+        logger.error('Error obteniendo Payment Intent', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión con payments-service:', error);
+      logger.error('Error de conexion con payments-service', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -121,6 +124,7 @@ export class PaymentsClient {
       const response = await fetch(
         `${this.baseUrl}/api/payments/payment-intents/${payload.paymentIntentId}/cancel`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -131,13 +135,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error cancelando Payment Intent:', error);
+        logger.error('Error cancelando Payment Intent', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión con payments-service:', error);
+      logger.error('Error de conexion con payments-service', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -154,6 +158,7 @@ export class PaymentsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
       const response = await fetch(`${this.baseUrl}/api/credits/internal`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -164,13 +169,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error creando crédito:', error);
+        logger.error('Error creando credito', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return (await response.json() as any).data ?? null;
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al crear crédito:', error);
+      logger.error('Error de conexion al crear credito', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -187,6 +192,7 @@ export class PaymentsClient {
     try {
       const serviceToken = generateServiceToken(payload.userId);
       const response = await fetch(`${this.baseUrl}/api/payments/refunds`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,13 +203,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error creando reembolso:', error);
+        logger.error('Error creando reembolso', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al crear reembolso:', error);
+      logger.error('Error de conexion al crear reembolso', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -222,6 +228,7 @@ export class PaymentsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
       const response = await fetch(`${this.baseUrl}/api/coupons/validate`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -232,7 +239,7 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error validando cupón:', error);
+        logger.error('Error validando cupon', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
@@ -244,7 +251,7 @@ export class PaymentsClient {
         error: result.error,
       };
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al validar cupón:', error);
+      logger.error('Error de conexion al validar cupon', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -261,6 +268,7 @@ export class PaymentsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
       const response = await fetch(`${this.baseUrl}/api/coupons/redeem`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -271,13 +279,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error redimiendo cupón:', error);
+        logger.error('Error redimiendo cupon', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al redimir cupón:', error);
+      logger.error('Error de conexion al redimir cupon', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -296,6 +304,7 @@ export class PaymentsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
       const response = await fetch(`${this.baseUrl}/api/payouts/internal`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -306,13 +315,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error creando payout:', error);
+        logger.error('Error creando payout', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al crear payout:', error);
+      logger.error('Error de conexion al crear payout', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -325,6 +334,7 @@ export class PaymentsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
       const response = await fetch(`${this.baseUrl}/api/payouts/internal/schedule`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -335,13 +345,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error actualizando payout hold:', error);
+        logger.error('Error actualizando payout hold', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al actualizar payout hold:', error);
+      logger.error('Error de conexion al actualizar payout hold', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -360,6 +370,7 @@ export class PaymentsClient {
     try {
       const serviceToken = generateServiceToken(data.userId);
       const response = await fetch(`${this.baseUrl}/api/payments/ticket-checkout`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -375,13 +386,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error iniciando ticket checkout:', error);
+        logger.error('Error iniciando ticket checkout', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json() as { redirectUrl?: string; providerRef: string; orderNumber?: string };
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión al iniciar ticket checkout:', error);
+      logger.error('Error de conexion al iniciar ticket checkout', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -397,6 +408,7 @@ export class PaymentsClient {
       const response = await fetch(
         `${this.baseUrl}/api/payments/payments?bookingId=${bookingId}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -407,13 +419,13 @@ export class PaymentsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[PaymentsClient] Error obteniendo pagos del booking:', error);
+        logger.error('Error obteniendo pagos del booking', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[PaymentsClient] Error de conexión con payments-service:', error);
+      logger.error('Error de conexion con payments-service', 'PAYMENTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

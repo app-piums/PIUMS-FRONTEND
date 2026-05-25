@@ -273,6 +273,7 @@ router.put(
  */
 router.get(
   "/bookings/users/:userId/stats",
+  authenticateToken,
   bookingController.getUserStats.bind(bookingController)
 );
 

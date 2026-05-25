@@ -31,6 +31,7 @@ export class ChatClient {
   async createConversation(userId: string, artistId: string, bookingId: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/chat/conversations`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,6 +59,7 @@ export class ChatClient {
   async closeConversation(bookingId: string, userId: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/chat/conversations/booking/${bookingId}/close`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -84,6 +86,7 @@ export class ChatClient {
   async activateConversation(bookingId: string, userId: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/chat/conversations/booking/${bookingId}/activate`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -117,6 +120,7 @@ export class ChatClient {
   }): Promise<{ group: any } | null> {
     try {
       const response = await fetch(`${this.baseUrl}/internal/group-conversations`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,6 +145,7 @@ export class ChatClient {
   async addParticipantToGroup(groupId: string, userId: string): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/internal/group-conversations/add-participant`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

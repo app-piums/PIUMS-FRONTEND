@@ -8,6 +8,7 @@ export const artistsClient = {
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/auth-ids?category=${encodeURIComponent(category)}`,
         { headers: { 'x-internal-secret': internalSecret } }
+          signal: AbortSignal.timeout(10_000),
       );
       if (!res.ok) return [];
       const data = await res.json() as { authIds: string[] };
@@ -24,6 +25,7 @@ export const artistsClient = {
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/stats`,
         { headers: { 'x-internal-secret': internalSecret } }
+          signal: AbortSignal.timeout(10_000),
       );
       if (!res.ok) return {};
       const data = await res.json() as { byCategory: Record<string, number> };
@@ -40,6 +42,7 @@ export const artistsClient = {
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/by-auth/${authId}/active`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'PATCH',
           headers: { 'x-internal-secret': internalSecret, 'Content-Type': 'application/json' },
           body: JSON.stringify({ isActive }),
@@ -58,6 +61,7 @@ export const artistsClient = {
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/by-auth/${authId}/shadow-ban`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'PATCH',
           headers: { 'x-internal-secret': internalSecret, 'Content-Type': 'application/json' },
           body: JSON.stringify({ banned, reason }),
@@ -76,6 +80,7 @@ export const artistsClient = {
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/by-ids`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'POST',
           headers: { 'x-internal-secret': internalSecret, 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids }),

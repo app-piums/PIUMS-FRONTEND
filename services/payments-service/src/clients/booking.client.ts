@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger';
+
 const BOOKING_SERVICE_URL =
   process.env.BOOKING_SERVICE_URL || "http://booking-service:4008";
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
@@ -19,14 +21,15 @@ export class BookingClient {
       const response = await fetch(
         `${this.baseUrl}/api/bookings/internal/${bookingId}`,
         { headers: internalHeaders }
+          signal: AbortSignal.timeout(10_000),
       );
       if (!response.ok) {
-        console.error("[BookingClient] Error obteniendo booking:", await response.text());
+        logger.error('Error obteniendo booking', 'BOOKING_CLIENT', { error: await response.text() });
         return null;
       }
       return await response.json();
     } catch (error) {
-      console.error("[BookingClient] Error de conexión con booking-service:", error);
+      logger.error('Error de conexion con booking-service', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -42,18 +45,19 @@ export class BookingClient {
       const response = await fetch(
         `${this.baseUrl}/api/bookings/internal/${bookingId}/mark-payment`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers: internalHeaders,
           body: JSON.stringify({ amount, paymentMethod, paymentIntentId, paymentType }),
         }
       );
       if (!response.ok) {
-        console.error("[BookingClient] Error marcando pago:", await response.text());
+        logger.error('Error marcando pago', 'BOOKING_CLIENT', { error: await response.text() });
         return null;
       }
       return await response.json();
     } catch (error) {
-      console.error("[BookingClient] Error de conexión con booking-service:", error);
+      logger.error('Error de conexion con booking-service', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -68,18 +72,19 @@ export class BookingClient {
       const response = await fetch(
         `${this.baseUrl}/api/ticket-purchases/internal/${purchaseId}/mark-payment`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers: internalHeaders,
           body: JSON.stringify({ amount, paymentMethod, paymentIntentId }),
         }
       );
       if (!response.ok) {
-        console.error("[BookingClient] Error marcando pago de boleto:", await response.text());
+        logger.error('Error marcando pago de boleto', 'BOOKING_CLIENT', { error: await response.text() });
         return null;
       }
       return await response.json();
     } catch (error) {
-      console.error("[BookingClient] Error de conexión al marcar pago de boleto:", error);
+      logger.error('Error de conexion al marcar pago de boleto', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

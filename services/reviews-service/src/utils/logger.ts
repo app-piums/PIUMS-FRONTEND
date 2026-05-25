@@ -28,7 +28,7 @@ export const logger = {
     console.error(formatLog("ERROR", message, context, data));
   },
   debug: (message: string, context?: string, data?: LogContext) => {
-    if (process.env.NODE_ENV === "development") {
+    if (process.env.LOG_LEVEL === "debug" || process.env.NODE_ENV === "development") {
       console.log(formatLog("DEBUG", message, context, data));
     }
   },

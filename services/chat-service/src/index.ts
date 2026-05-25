@@ -135,3 +135,12 @@ httpServer.listen(PORT, () => {
   logger.info(`Health check: http://localhost:${PORT}/health`, 'SERVER');
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`, 'SERVER');
 });
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  httpServer.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
+});

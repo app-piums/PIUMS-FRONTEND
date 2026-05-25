@@ -1,10 +1,13 @@
 import { Router } from "express";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 import { 
-  register, 
+  register,
   registerArtist,
   registerClient,
-  login, 
-  refreshToken, 
+  login,
+  refreshToken,
   verify,
   forgotPassword,
   resetPassword,
@@ -17,6 +20,7 @@ import {
   firebaseLogin,
   completeOnboarding,
   registerFCMToken,
+  deleteSelfAccount,
 } from "../controller/auth.controller";
 import { isAdmin } from "../middleware/isAdmin";
 import { authenticate } from "../middleware/authenticate";
@@ -36,7 +40,7 @@ router.post("/register", registerLimiter, register);
 router.post("/register/artist", registerLimiter, registerArtist);
 router.post("/register/client", registerLimiter, registerClient);
 router.post("/login", loginLimiter, login);
-router.post("/firebase", refreshTokenLimiter, firebaseLogin);
+router.post("/firebase", loginLimiter, firebaseLogin);
 router.post("/refresh", refreshTokenLimiter, refreshToken);
 router.post("/verify", verify);
 router.post("/logout", logout);
@@ -52,6 +56,7 @@ router.post("/resend-verification", resendVerificationLimiter, resendVerificatio
 
 // Get current authenticated user (any authenticated user)
 router.get("/me", authenticate, getMe);
+router.delete("/me", authenticate, deleteSelfAccount);
 router.patch("/profile", authenticate, updateProfile);
 router.patch("/complete-onboarding", authenticate, completeOnboarding);
 router.patch("/fcm-token", authenticate, registerFCMToken);
@@ -63,13 +68,10 @@ router.get("/internal/fcm-token/:userId", async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
     const user = await prisma.user.findUnique({
       where: { id: req.params.userId },
       select: { fcmToken: true },
     });
-    await prisma.$disconnect();
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.json({ fcmToken: user.fcmToken ?? null });
   } catch (e: any) {

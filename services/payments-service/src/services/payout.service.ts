@@ -5,7 +5,11 @@ import { bookingClient } from "../clients/booking.client";
 
 const prisma = new PrismaClient();
 
-const PLATFORM_FEE_PERCENTAGE = parseFloat(process.env.PLATFORM_FEE_PERCENTAGE || "18");
+const _rawFee = process.env.PLATFORM_FEE_PERCENTAGE;
+if (!_rawFee) {
+  logger.warn('PLATFORM_FEE_PERCENTAGE not set — using default 18%. Set it explicitly in production.', 'PAYOUT_SERVICE');
+}
+const PLATFORM_FEE_PERCENTAGE = parseFloat(_rawFee || "18");
 
 export class PayoutService {
   // ==================== CREATE PAYOUT ====================
@@ -137,8 +141,8 @@ export class PayoutService {
 
     if (!payout) throw new AppError(404, "Payout no encontrado");
 
-    if (!["PENDING", "PROCESSING", "SCHEDULED"].includes(payout.status)) {
-      throw new AppError(400, `No se puede completar un payout con estado: ${payout.status}`);
+    if (!["PROCESSING", "SCHEDULED"].includes(payout.status)) {
+      throw new AppError(400, `No se puede completar un payout con estado: ${payout.status}. Se requiere estado PROCESSING o SCHEDULED.`);
     }
 
     const updated = await (prisma as any).payout.update({

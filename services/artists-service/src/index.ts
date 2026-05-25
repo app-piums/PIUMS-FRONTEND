@@ -33,8 +33,17 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4003;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Artists Service running on http://localhost:${PORT}`, "SERVER");
   logger.info(`Health check: http://localhost:${PORT}/health`, "SERVER");
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`, "SERVER");
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  server.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
 });

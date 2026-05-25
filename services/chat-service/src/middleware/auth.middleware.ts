@@ -3,6 +3,11 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
 import { resolveArtistId } from '../utils/artist-resolver';
 
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
+  process.exit(1);
+}
+
 export interface AuthRequest extends Request {
   user?: {
     id: string;

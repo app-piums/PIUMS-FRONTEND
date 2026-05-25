@@ -46,20 +46,26 @@ export default function DeleteAccountTab(props: DeleteAccountTabProps = {}) {
 
     try {
       setLoading(true);
-      
-      // TODO: Call API to delete account
-      // await sdk.deleteAccount({ password });
-      
-      setTimeout(() => {
-        setLoading(false);
-        toast.success('Cuenta eliminada correctamente');
-        // Redirect to homepage
-        router.push('/');
-      }, 2000);
+
+      const response = await fetch('/api/auth/delete-account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        toast.error(data.message || 'Error al eliminar la cuenta');
+        return;
+      }
+
+      toast.success('Cuenta eliminada correctamente');
+      router.push('/');
     } catch (error) {
       console.error('Error deleting account:', error);
-      setLoading(false);
       toast.error('Error al eliminar la cuenta');
+    } finally {
+      setLoading(false);
     }
   };
 

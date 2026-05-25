@@ -1,6 +1,6 @@
 import { v2 as cloudinary } from 'cloudinary';
+import { Readable } from 'stream';
 import { logger } from '../utils/logger';
-import streamifier from 'streamifier';
 
 // Configurar Cloudinary
 cloudinary.config({
@@ -39,7 +39,7 @@ export class CloudinaryProvider {
           }
         );
 
-        streamifier.createReadStream(buffer).pipe(uploadStream);
+        Readable.from(buffer).pipe(uploadStream);
       });
     } catch (error: any) {
       logger.error('Failed to upload avatar', 'CLOUDINARY_PROVIDER', error);
@@ -91,12 +91,12 @@ export class CloudinaryProvider {
           }
         }
       );
-      streamifier.createReadStream(buffer).pipe(uploadStream);
+      Readable.from(buffer).pipe(uploadStream);
     });
   }
 
   /**
-   * Subir documento de identidad a Cloudinary
+   * Subir documento de identidad a Cloudinary (tipo 'authenticated' — acceso privado)
    */
   async uploadDocument(buffer: Buffer, folder: string): Promise<string> {
     try {
@@ -105,6 +105,7 @@ export class CloudinaryProvider {
           {
             folder: `piums/documents/${folder}`,
             public_id: `doc_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            type: 'authenticated',
             transformation: [
               { quality: 'auto', fetch_format: 'auto' },
             ],
@@ -118,11 +119,36 @@ export class CloudinaryProvider {
             }
           }
         );
-        streamifier.createReadStream(buffer).pipe(uploadStream);
+        Readable.from(buffer).pipe(uploadStream);
       });
     } catch (error: any) {
       logger.error('Failed to upload document', 'CLOUDINARY_PROVIDER', error);
       throw new Error(`Error al subir documento: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generar URL firmada con expiración de 1 hora para un documento privado (tipo authenticated)
+   */
+  getSignedDocumentUrl(storedUrl: string, expiresInSeconds = 3600): string {
+    try {
+      // Extract public_id from URL (works for both upload and authenticated types)
+      const match = storedUrl.match(/piums\/documents\/[^?#]+/);
+      if (!match) {
+        logger.warn('Could not extract public_id for signing', 'CLOUDINARY_PROVIDER', { storedUrl });
+        return storedUrl;
+      }
+      const publicId = match[0];
+      const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
+      return cloudinary.url(publicId, {
+        type: 'authenticated',
+        sign_url: true,
+        expires_at: expiresAt,
+        secure: true,
+      });
+    } catch (error: any) {
+      logger.warn('Failed to generate signed URL, returning raw', 'CLOUDINARY_PROVIDER', { error: error.message });
+      return storedUrl;
     }
   }
 
@@ -170,7 +196,7 @@ export class CloudinaryProvider {
           }
         }
       );
-      streamifier.createReadStream(buffer).pipe(uploadStream);
+      Readable.from(buffer).pipe(uploadStream);
     });
   }
 

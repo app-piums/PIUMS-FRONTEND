@@ -1,5 +1,6 @@
 import { PrismaClient, DayOfWeek } from '@prisma/client';
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
@@ -104,7 +105,7 @@ export const checkAvailability = async (
         };
       }
     } catch (error) {
-      console.error('Error checking reservations in booking-service:', error);
+      logger.error('Error checking reservations in booking-service', 'AVAILABILITY', { error: typeof error === 'string' ? error : (error as any)?.message });
       // Si falla la llamada, por seguridad asumimos no disponible
       return {
         available: false,
@@ -115,7 +116,7 @@ export const checkAvailability = async (
     // Si pasó todas las validaciones, está disponible
     return { available: true };
   } catch (error) {
-    console.error('Error checking availability:', error);
+    logger.error('Error checking availability', 'AVAILABILITY', { error: typeof error === 'string' ? error : (error as any)?.message });
     throw error;
   }
 };

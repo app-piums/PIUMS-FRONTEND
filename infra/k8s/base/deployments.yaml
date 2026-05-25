@@ -24,6 +24,7 @@ spec:
       containers:
         - name: gateway
           image: ghcr.io/app-piums/piums-platform/gateway:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           envFrom:
@@ -73,6 +74,7 @@ spec:
       containers:
         - name: auth-service
           image: ghcr.io/app-piums/piums-platform/auth-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4001
           envFrom:
@@ -122,6 +124,7 @@ spec:
       containers:
         - name: users-service
           image: ghcr.io/app-piums/piums-platform/users-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4002
           envFrom:
@@ -171,6 +174,7 @@ spec:
       containers:
         - name: artists-service
           image: ghcr.io/app-piums/piums-platform/artists-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4003
           envFrom:
@@ -220,6 +224,7 @@ spec:
       containers:
         - name: catalog-service
           image: ghcr.io/app-piums/piums-platform/catalog-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4004
           envFrom:
@@ -269,6 +274,7 @@ spec:
       containers:
         - name: payments-service
           image: ghcr.io/app-piums/piums-platform/payments-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4005
           envFrom:
@@ -318,6 +324,7 @@ spec:
       containers:
         - name: reviews-service
           image: ghcr.io/app-piums/piums-platform/reviews-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4006
           envFrom:
@@ -367,6 +374,7 @@ spec:
       containers:
         - name: notifications-service
           image: ghcr.io/app-piums/piums-platform/notifications-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4007
           envFrom:
@@ -416,6 +424,7 @@ spec:
       containers:
         - name: booking-service
           image: ghcr.io/app-piums/piums-platform/booking-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4008
           envFrom:
@@ -465,6 +474,7 @@ spec:
       containers:
         - name: search-service
           image: ghcr.io/app-piums/piums-platform/search-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4009
           envFrom:
@@ -514,6 +524,7 @@ spec:
       containers:
         - name: chat-service
           image: ghcr.io/app-piums/piums-platform/chat-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4010
           envFrom:

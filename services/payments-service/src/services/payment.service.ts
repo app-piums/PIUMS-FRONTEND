@@ -229,13 +229,29 @@ export class PaymentService {
 
     // Actualizar booking si corresponde
     if (payment.bookingId) {
-      await bookingClient.markPayment(
+      const marked = await bookingClient.markPayment(
         payment.bookingId,
         payment.amount,
         payment.paymentMethod || undefined,
         payment.stripePaymentIntentId || undefined,
         payment.paymentType === "DEPOSIT" ? "DEPOSIT" : "FULL_PAYMENT"
       );
+      if (!marked) {
+        // Payment recorded in DB but booking not updated — needs manual reconciliation.
+        // booking-service may have been temporarily unavailable.
+        logger.error(
+          "RECONCILIATION_NEEDED: markPayment falló tras registrar pago exitoso",
+          "PAYMENT_SERVICE",
+          {
+            paymentId: payment.id,
+            bookingId: payment.bookingId,
+            amount: payment.amount,
+            currency: payment.currency,
+            paymentType: payment.paymentType,
+            stripePaymentIntentId: payment.stripePaymentIntentId || null,
+          }
+        );
+      }
     }
 
     // Enviar notificación
@@ -358,69 +374,108 @@ export class PaymentService {
     reason?: string;
     metadata?: any;
   }) {
-    // Buscar pago
-    const payment = await prisma.payment.findUnique({
+    // Pre-check: validar que el pago exista y pertenezca al usuario antes de abrir la transacción
+    const paymentCheck = await prisma.payment.findUnique({
       where: { id: data.paymentId },
-      include: { refunds: true },
     });
 
-    if (!payment) {
+    if (!paymentCheck) {
       throw new AppError(404, "Pago no encontrado");
     }
 
-    if (payment.userId !== data.requestedBy) {
+    if (paymentCheck.userId !== data.requestedBy) {
       throw new AppError(403, "No tienes permiso para reembolsar este pago");
     }
 
-    if (payment.status !== "SUCCEEDED") {
+    if (paymentCheck.status !== "SUCCEEDED") {
       throw new AppError(400, "Solo se pueden reembolsar pagos exitosos");
     }
 
-    // Calcular monto disponible para reembolso
-    const refundedAmount = payment.refunds
-      .filter((r) => r.status === "SUCCEEDED")
-      .reduce((sum, r) => sum + r.amount, 0);
+    // Dentro de la transacción: re-leer con bloqueo, verificar disponibilidad y reservar
+    // creando el refund en estado PENDING como lock optimista.
+    const { refundRecord, payment, refundAmount } = await prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.findUnique({
+        where: { id: data.paymentId },
+        include: { refunds: { where: { status: { not: "FAILED" } } } },
+      });
 
-    const availableForRefund = payment.amount - refundedAmount;
+      if (!payment) {
+        throw new AppError(404, "Pago no encontrado");
+      }
 
-    if (availableForRefund <= 0) {
-      throw new AppError(400, "Este pago ya ha sido reembolsado completamente");
-    }
+      const alreadyRefunded = payment.refunds.reduce((sum, r) => sum + r.amount, 0);
+      const availableForRefund = payment.amount - alreadyRefunded;
 
-    const refundAmount = data.amount
-      ? Math.min(data.amount, availableForRefund)
-      : availableForRefund;
+      if (availableForRefund <= 0) {
+        throw new AppError(400, "Este pago ya ha sido reembolsado completamente");
+      }
 
-    // Crear refund en Stripe
-    const stripeRefund = await stripeProvider.createRefund({
-      paymentIntentId: payment.stripePaymentIntentId || undefined,
-      chargeId: payment.stripeChargeId || undefined,
-      amount: refundAmount,
-      reason: "requested_by_customer",
-      metadata: {
-        paymentId: payment.id,
-        requestedBy: data.requestedBy,
-        ...data.metadata,
-      },
+      const refundAmount = data.amount
+        ? Math.min(data.amount, availableForRefund)
+        : availableForRefund;
+
+      if (refundAmount > availableForRefund) {
+        throw new AppError(409, `Solo quedan ${availableForRefund} centavos disponibles para reembolso`);
+      }
+
+      // Crear registro PENDING como reserva atómica — impide que una segunda solicitud
+      // concurrente cuente el mismo monto como disponible hasta que el estado cambie.
+      const refundRecord = await tx.refund.create({
+        data: {
+          paymentId: payment.id,
+          requestedBy: data.requestedBy,
+          amount: refundAmount,
+          currency: payment.currency,
+          status: "PENDING",
+          reason: data.reason,
+          metadata: data.metadata,
+        },
+      });
+
+      return { refundRecord, payment, refundAmount };
     });
 
-    // Registrar refund
-    const refund = await prisma.refund.create({
-      data: {
-        paymentId: payment.id,
-        stripeRefundId: stripeRefund.id,
-        requestedBy: data.requestedBy,
+    // Fuera de la transacción: llamar a Stripe (las transacciones no pueden esperar I/O externo)
+    let stripeRefund: Awaited<ReturnType<typeof stripeProvider.createRefund>>;
+    try {
+      stripeRefund = await stripeProvider.createRefund({
+        paymentIntentId: payment.stripePaymentIntentId || undefined,
+        chargeId: payment.stripeChargeId || undefined,
         amount: refundAmount,
-        currency: payment.currency,
+        reason: "requested_by_customer",
+        metadata: {
+          paymentId: payment.id,
+          requestedBy: data.requestedBy,
+          ...data.metadata,
+        },
+      });
+    } catch (stripeErr: any) {
+      // Stripe falló — marcar el registro PENDING como FAILED para liberar el monto reservado
+      await prisma.refund.update({
+        where: { id: refundRecord.id },
+        data: { status: "FAILED" },
+      });
+      logger.error("Error al crear refund en Stripe", "PAYMENT_SERVICE", {
+        refundId: refundRecord.id,
+        paymentId: payment.id,
+        error: stripeErr.message,
+      });
+      throw stripeErr;
+    }
+
+    // Actualizar el registro con datos reales de Stripe
+    const refund = await prisma.refund.update({
+      where: { id: refundRecord.id },
+      data: {
+        stripeRefundId: stripeRefund.id,
         status: this.mapStripeRefundStatus(stripeRefund.status ?? 'pending'),
-        reason: data.reason,
-        metadata: data.metadata,
         processedAt: stripeRefund.status === "succeeded" ? new Date() : undefined,
       },
     });
 
     // Actualizar estado del pago
-    const newRefundedAmount = refundedAmount + refundAmount;
+    const previousRefundedAmount = payment.refunds.reduce((sum, r) => sum + r.amount, 0);
+    const newRefundedAmount = previousRefundedAmount + refundAmount;
     const newStatus =
       newRefundedAmount >= payment.amount
         ? "FULLY_REFUNDED"
@@ -623,7 +678,7 @@ export class PaymentService {
     userId: string;
     userEmail?: string;
     bookingId: string;
-    amount: number;
+    amount?: number;
     currency?: string;
     countryCode?: string;
     description?: string;
@@ -632,13 +687,21 @@ export class PaymentService {
   }) {
     const currency = data.currency || process.env.DEFAULT_CURRENCY || "USD";
 
-    // Validate booking belongs to user
-    if (data.bookingId) {
-      const booking = await bookingClient.getBooking(data.bookingId);
-      if (!booking) throw new AppError(404, "Reserva no encontrada");
-      if (booking.clientId !== data.userId) {
-        throw new AppError(403, "No tienes permiso para pagar esta reserva");
-      }
+    // Validate booking belongs to user and compute authoritative amount server-side
+    const booking = await bookingClient.getBooking(data.bookingId);
+    if (!booking) throw new AppError(404, "Reserva no encontrada");
+    if (booking.clientId !== data.userId) {
+      throw new AppError(403, "No tienes permiso para pagar esta reserva");
+    }
+
+    // Compute amount the booking actually owes — ignore client-supplied value
+    const remainingAmount = booking.totalPrice - (booking.paidAmount ?? 0);
+    const serverAmount = (booking.anticipoRequired && (booking.paymentStatus === 'PENDING' || booking.paymentStatus === 'CONFIRMED') && booking.anticipoAmount)
+      ? booking.anticipoAmount
+      : remainingAmount;
+
+    if (serverAmount <= 0) {
+      throw new AppError(400, 'Esta reserva ya está completamente pagada');
     }
 
     const { getProvider } = await import("../utils/payment-router");
@@ -646,7 +709,7 @@ export class PaymentService {
 
     const result = await provider.createCheckout({
       bookingId: data.bookingId,
-      amount: data.amount,
+      amount: serverAmount,
       currency,
       description: data.description,
       userId: data.userId,
@@ -671,15 +734,13 @@ export class PaymentService {
         stripePaymentIntentId: result.providerRef,
         userId: data.userId,
         bookingId: data.bookingId,
-        amount: data.amount,
+        amount: serverAmount,
         currency,
         status: intentStatus,
         clientSecret: result.clientSecret,
         description: data.description,
         metadata: { provider: result.provider, ...data.metadata },
       },
-    }).catch((err: any) => {
-      logger.error("Error guardando paymentIntent en DB", "PAYMENT_SERVICE", { error: err.message });
     });
 
     logger.info("Checkout iniciado", "PAYMENT_SERVICE", {
@@ -703,12 +764,21 @@ export class PaymentService {
   }) {
     const currency = data.currency || process.env.DEFAULT_CURRENCY || "USD";
 
+    // Cap amount to the authoritative purchase total to prevent under-payment manipulation
+    const purchase = await bookingClient.getBooking(data.purchaseId).catch(() => null);
+    if (purchase && purchase.clientId !== data.userId && (purchase as any).buyerId !== data.userId) {
+      throw new AppError(403, 'No tienes permiso para iniciar el pago de esta compra');
+    }
+    const serverAmount = purchase?.totalPrice != null
+      ? Math.min(data.amount, purchase.totalPrice)
+      : data.amount;
+
     const { getProvider } = await import("../utils/payment-router");
     const provider = await getProvider(data.countryCode);
 
     const result = await provider.createCheckout({
       bookingId: data.purchaseId,
-      amount: data.amount,
+      amount: serverAmount,
       currency,
       userId: data.userId,
       userEmail: data.userEmail,
@@ -782,15 +852,29 @@ export class PaymentService {
       return { success: false, responseCode: data.responseCode };
     }
 
-    const rawAmount = parseFloat(data.amount);
-    const amountCents = isNaN(rawAmount) ? 0 : Math.round(rawAmount * 100);
-
     // Verificar que no se haya procesado ya este orderNumber
     const existing = await (prisma as any).paymentIntent.findFirst({
       where: { stripePaymentIntentId: data.orderNumber },
     }).catch(() => null);
 
     if (!existing) {
+      // Ignore URL-provided amount — derive authoritative amount from server-side booking record
+      const booking = await bookingClient.getBooking(data.bookingId);
+      if (!booking) {
+        logger.error("Tilopay redirect: booking not found", "PAYMENT_SERVICE", { bookingId: data.bookingId });
+        return { success: false, responseCode: data.responseCode };
+      }
+      if (booking.clientId !== data.userId) {
+        logger.error("Tilopay redirect: ownership check failed", "PAYMENT_SERVICE", { bookingId: data.bookingId, userId: data.userId });
+        throw new AppError(403, 'No tienes permiso para confirmar este pago');
+      }
+      const isAnticipo = booking.anticipoRequired &&
+        ['PENDING', 'CONFIRMED'].includes(booking.paymentStatus) &&
+        booking.anticipoAmount > 0;
+      const amountCents = isAnticipo
+        ? booking.anticipoAmount
+        : Math.max(0, booking.totalPrice - (booking.paidAmount || 0));
+
       await (prisma as any).paymentIntent.create({
         data: {
           stripePaymentIntentId: data.orderNumber,
@@ -801,18 +885,28 @@ export class PaymentService {
           status: "SUCCEEDED",
           metadata: { provider: "TILOPAY", auth: data.auth },
         },
-      }).catch((err: any) =>
-        logger.error("Error guardando paymentIntent Tilopay", "PAYMENT_SERVICE", { error: err.message })
-      );
+      });
 
       // No pasar paymentType — booking-service determina ANTICIPO_PAID vs FULLY_PAID
       // comparando el monto contra anticipoAmount / totalPrice del booking.
-      await bookingClient.markPayment(
+      const tilopayMarked = await bookingClient.markPayment(
         data.bookingId,
         amountCents,
         "TILOPAY",
         data.orderNumber,
       );
+      if (!tilopayMarked) {
+        logger.error(
+          "RECONCILIATION_NEEDED: Tilopay markPayment falló tras registrar pago",
+          "PAYMENT_SERVICE",
+          {
+            bookingId: data.bookingId,
+            orderNumber: data.orderNumber,
+            amountCents,
+            userId: data.userId,
+          }
+        );
+      }
 
       // Guardar token de tarjeta para futuros cobros con un toque
       if (data.cardHash) {

@@ -406,7 +406,7 @@ export class ChatService {
     const { fcmToken } = await tokenRes.json() as { fcmToken: string | null };
     if (!fcmToken) return;
 
-    await fetch(`${notifUrl}/api/notifications/internal/push`, {
+    const pushRes = await fetch(`${notifUrl}/api/notifications/internal/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
       body: JSON.stringify({
@@ -416,6 +416,9 @@ export class ChatService {
         data: { type: 'NEW_MESSAGE', conversationId: chatId },
       }),
     });
+    if (!pushRes.ok) {
+      logger.warn('Push notification delivery failed', 'CHAT_SERVICE', { status: pushRes.status, conversationId: chatId });
+    }
   }
 
   async getUnreadCount(userId: string) {

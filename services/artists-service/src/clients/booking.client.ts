@@ -76,6 +76,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings?${params.toString()}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "GET",
           headers,
         }
@@ -114,6 +115,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/stats?artistId=${artistId}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -168,6 +170,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/confirm`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers,
           body: JSON.stringify({ artistId }),
@@ -206,6 +209,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/status`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "PATCH",
           headers,
           body: JSON.stringify({ status: "COMPLETED", artistId }),
@@ -249,6 +253,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/reject`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers,
           body: JSON.stringify({ artistId, reason }),
@@ -292,6 +297,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/cancel`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers,
           body: JSON.stringify({ artistId, reason }),

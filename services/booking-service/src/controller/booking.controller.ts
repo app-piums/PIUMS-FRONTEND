@@ -70,11 +70,11 @@ export class BookingController {
       const booking = await bookingService.getBookingById(id);
 
       // Verificar permisos: solo cliente, artista o admin pueden ver
-      const userId = req.user?.id;
+      const userId = req.user!.id;
       if (
-        userId &&
         booking.clientId !== userId &&
-        booking.artistId !== userId
+        booking.artistId !== userId &&
+        req.user!.role !== 'admin'
       ) {
         return res.status(403).json({ message: "No tienes permiso para ver esta reserva" });
       }
@@ -348,9 +348,11 @@ export class BookingController {
   async blockSlot(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const validatedData = blockSlotSchema.parse(req.body);
-      
+      const artistId = await this.resolveArtistId(req.user!.id);
+
       const slot = await bookingService.blockSlot({
         ...validatedData,
+        artistId,  // override whatever came in the body so users can only block their own calendar
         startTime: new Date(validatedData.startTime),
         endTime: new Date(validatedData.endTime),
       });
@@ -405,18 +407,14 @@ export class BookingController {
   async updateArtistConfig(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const artistId = req.params.artistId as string;
-      const userId = req.user!.id;
+      const myArtistId = await this.resolveArtistId(req.user!.id);
 
-      // Verificar que el usuario sea el artista
-      if (artistId !== userId) {
-        return res.status(403).json({
-          message: "No tienes permiso para modificar esta configuración",
-        });
+      if (artistId !== myArtistId) {
+        return res.status(403).json({ message: 'No tienes permiso para modificar esta configuración' });
       }
 
       const validatedData = availabilityConfigSchema.parse(req.body);
       const config = await bookingService.updateArtistConfig(artistId, validatedData);
-
       res.json(config);
     } catch (error) {
       next(error);
@@ -427,14 +425,24 @@ export class BookingController {
 
   async getBookingStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { artistId, clientId } = req.query;
-
-      // Verificar permisos
       const userId = req.user!.id;
-      if (artistId && artistId !== userId && clientId && clientId !== userId) {
-        return res.status(403).json({
-          message: "No tienes permiso para ver estas estadísticas",
-        });
+      const role = req.user!.role;
+      const { artistId, clientId, startDate, endDate } = req.query as any;
+
+      // Artists can only query their own stats; clients their own; admins anything
+      if (artistId) {
+        if (role === 'admin') {
+          // admin may query any artistId — allow
+        } else {
+          const myArtistId = await this.resolveArtistId(userId).catch(() => null);
+          if (myArtistId !== artistId) {
+            return res.status(403).json({ message: 'No tienes permiso para ver estas estadísticas' });
+          }
+        }
+      }
+
+      if (clientId && clientId !== userId && role !== 'admin') {
+        return res.status(403).json({ message: 'No tienes permiso para ver estas estadísticas' });
       }
 
       const stats = await bookingService.getBookingStats(
@@ -448,9 +456,12 @@ export class BookingController {
     }
   }
 
-  async getUserStats(req: Request, res: Response, next: NextFunction) {
+  async getUserStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { userId } = req.params;
+      if (req.user!.id !== userId && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: 'No tienes permiso para ver estas estadísticas' });
+      }
       const stats = await bookingService.getUserStats(userId as string);
       res.json(stats);
     } catch (error) {

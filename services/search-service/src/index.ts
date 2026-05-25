@@ -82,4 +82,8 @@ process.on('SIGINT', () => {
   });
 });
 
+process.on('unhandledRejection', (reason: any) => {
+  logger.error(`Unhandled promise rejection: ${reason?.message}`);
+});
+
 export default app;

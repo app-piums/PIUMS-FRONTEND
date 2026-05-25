@@ -5,7 +5,7 @@ import { AppError } from "./errorHandler";
 import { logger } from "../utils/logger";
 
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error('FATAL: JWT_SECRET no definido en producción');
+  logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
   process.exit(1);
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production';

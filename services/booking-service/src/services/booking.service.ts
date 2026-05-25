@@ -272,14 +272,25 @@ export class BookingService {
         },
       });
 
-      // Redeem the coupon (fire-and-forget — don't fail the booking if this fails)
+      // Redeem the coupon synchronously — the booking exists with the discount applied,
+      // so failing silently here would allow the coupon to be reused without being consumed.
       if (validatedCouponId) {
-        paymentsClient.redeemCoupon({
-          couponId: validatedCouponId,
-          userId: data.clientId,
-          bookingId: booking.id,
-          discountApplied: couponDiscountAmount,
-        }).catch(err => logger.warn('Error redimiendo cupón tras crear booking', 'BOOKING_SERVICE', { error: err.message }));
+        try {
+          await paymentsClient.redeemCoupon({
+            couponId: validatedCouponId,
+            userId: data.clientId,
+            bookingId: booking.id,
+            discountApplied: couponDiscountAmount,
+          });
+        } catch (err: any) {
+          logger.error(
+            'Error redimiendo cupón — descuento aplicado pero cupón no marcado como usado, requiere revisión manual',
+            'BOOKING_SERVICE',
+            { couponCode: data.couponCode, couponId: validatedCouponId, bookingId: booking.id, error: err.message }
+          );
+          // No lanzar excepción: la reserva es válida y el pago puede proceder.
+          // Registrar para reconciliación manual.
+        }
       }
     }
 
@@ -459,7 +470,8 @@ export class BookingService {
     const page = filters.page || 1;
     const limit = filters.limit || 20;
     const skip = (page - 1) * limit;
-    const sortField = filters.sortBy || 'scheduledDate';
+    const SORTABLE_FIELDS = ['scheduledDate', 'createdAt', 'updatedAt', 'totalPrice', 'status'];
+    const sortField = SORTABLE_FIELDS.includes(filters.sortBy || '') ? filters.sortBy! : 'scheduledDate';
     const sortOrder = filters.sortOrder || 'asc';
 
     const where: any = {};
@@ -917,14 +929,14 @@ export class BookingService {
         .catch(err => logger.error("Error cerrando conversación de chat", "BOOKING_SERVICE", { error: err.message }));
     }
 
-    // Iniciar reembolso si hay monto a devolver
+    // Iniciar reembolso si hay monto a devolver — await: si falla, se propaga al caller
     if (refundAmount > 0 && booking.paidAmount > 0) {
-      paymentsClient.createRefundInternal({
+      await paymentsClient.createRefundInternal({
         bookingId: id,
         userId: booking.clientId,
         reason: isClient ? 'client_cancelled' : 'artist_cancelled',
         amount: refundAmount,
-      }).catch(err => logger.error('Error iniciando reembolso', 'BOOKING_SERVICE', { error: err.message }));
+      });
     }
 
     // Enviar notificaciones de cancelación
@@ -1008,8 +1020,10 @@ export class BookingService {
       throw new AppError(400, `No se puede reportar no-show en estado: ${booking.status}`);
     }
 
-    if (booking.scheduledDate > new Date()) {
-      throw new AppError(400, "No puedes reportar un no-show antes de la fecha de la reserva");
+    // Require at least 30 minutes past the scheduled start before reporting no-show
+    const gracePeriodMs = 30 * 60 * 1000;
+    if (booking.scheduledDate.getTime() + gracePeriodMs > Date.now()) {
+      throw new AppError(400, "No puedes reportar un no-show hasta 30 minutos después del inicio de la reserva");
     }
 
     // Actualizar estado del booking
@@ -1096,13 +1110,15 @@ export class BookingService {
       });
     }
 
-    // 2. Crédito de compensación: max(18% × paidAmount, $20 USD)
-    await paymentsClient.createCredit({
-      userId: booking.clientId,
-      bookingId,
-      paidAmount: booking.paidAmount,
-      reason: "NO_SHOW_COMPENSATION",
-    });
+    // 2. Crédito de compensación: max(18% × paidAmount, $20 USD) — solo si el cliente pagó algo
+    if (booking.paidAmount > 0) {
+      await paymentsClient.createCredit({
+        userId: booking.clientId,
+        bookingId,
+        paidAmount: booking.paidAmount,
+        reason: "NO_SHOW_COMPENSATION",
+      });
+    }
 
     // 3. Shadow ban al artista
     await artistsClient.shadowBan(booking.artistId, `No-show en reserva #${booking.code || bookingId}`);
@@ -1405,6 +1421,24 @@ export class BookingService {
   ) {
     const booking = await this.getBookingById(id);
 
+    // Validar transición de estado (state machine)
+    const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+      PENDING:            ['CONFIRMED', 'REJECTED', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+      CONFIRMED:          ['IN_PROGRESS', 'NO_SHOW', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+      PAYMENT_PENDING:    ['PAYMENT_COMPLETED', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+      PAYMENT_COMPLETED:  ['IN_PROGRESS', 'NO_SHOW', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+      ANTICIPO_PAID:      ['IN_PROGRESS', 'NO_SHOW', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+      FULLY_PAID:         ['IN_PROGRESS', 'NO_SHOW', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+      IN_PROGRESS:        ['COMPLETED', 'NO_SHOW'],
+      DELIVERED:          ['COMPLETED'],
+      RESCHEDULED:        ['CONFIRMED', 'CANCELLED_ARTIST', 'CANCELLED_CLIENT'],
+    };
+
+    const allowedNext = ALLOWED_TRANSITIONS[booking.status] ?? [];
+    if (!allowedNext.includes(newStatus)) {
+      throw new AppError(400, `Transición de estado no permitida: ${booking.status} → ${newStatus}`);
+    }
+
     // Verificar permisos (solo el artista puede cambiar ciertos estados)
     if (
       newStatus === "IN_PROGRESS" ||
@@ -1518,40 +1552,51 @@ export class BookingService {
   ) {
     const booking = await this.getBookingById(id);
 
-    const newPaidAmount = booking.paidAmount + amount;
-    let newPaymentStatus: PaymentStatus = "PENDING";
+    const updated = await prisma.$transaction(async (tx) => {
+      // Atomically increment paidAmount to avoid read-modify-write race conditions
+      // when concurrent callbacks (e.g. Tilopay server callback + redirect confirm) fire simultaneously
+      const afterIncrement = await tx.booking.update({
+        where: { id },
+        data: { paidAmount: { increment: amount } },
+      });
 
-    // Determinar el nuevo status de pago basado en el tipo de pago
-    if (paymentType === 'DEPOSIT') {
-      newPaymentStatus = "ANTICIPO_PAID";
-    } else if (paymentType === 'FULL_PAYMENT' || newPaidAmount >= booking.totalPrice) {
-      newPaymentStatus = "FULLY_PAID";
-    } else if (booking.anticipoRequired && booking.anticipoAmount) {
-      if (newPaidAmount >= booking.totalPrice) {
-        newPaymentStatus = "FULLY_PAID";
-      } else if (newPaidAmount >= booking.anticipoAmount) {
+      const newPaidAmount = afterIncrement.paidAmount;
+
+      // Determine status from the actual (post-increment) paidAmount
+      let newPaymentStatus: PaymentStatus = "PENDING";
+      if (paymentType === 'DEPOSIT') {
         newPaymentStatus = "ANTICIPO_PAID";
-      }
-    } else {
-      if (newPaidAmount >= booking.totalPrice) {
+      } else if (paymentType === 'FULL_PAYMENT' || newPaidAmount >= booking.totalPrice) {
         newPaymentStatus = "FULLY_PAID";
+      } else if (booking.anticipoRequired && booking.anticipoAmount) {
+        if (newPaidAmount >= booking.totalPrice) {
+          newPaymentStatus = "FULLY_PAID";
+        } else if (newPaidAmount >= booking.anticipoAmount) {
+          newPaymentStatus = "ANTICIPO_PAID";
+        }
+      } else {
+        if (newPaidAmount >= booking.totalPrice) {
+          newPaymentStatus = "FULLY_PAID";
+        }
       }
-    }
 
-    const updated = await prisma.booking.update({
-      where: { id },
-      data: {
-        paidAmount: newPaidAmount,
-        paymentStatus: newPaymentStatus,
-        paymentMethod: paymentMethod || booking.paymentMethod,
-        providerPaymentId: paymentIntentId || booking.providerPaymentId,
-        paidAt: newPaymentStatus === "FULLY_PAID" ? new Date() : booking.paidAt,
-        anticipoPaidAt:
-          newPaymentStatus === "ANTICIPO_PAID" && !booking.anticipoPaidAt
-            ? new Date()
-            : booking.anticipoPaidAt,
-      },
+      return tx.booking.update({
+        where: { id },
+        data: {
+          paymentStatus: newPaymentStatus,
+          paymentMethod: paymentMethod || afterIncrement.paymentMethod,
+          providerPaymentId: paymentIntentId || afterIncrement.providerPaymentId,
+          paidAt: newPaymentStatus === "FULLY_PAID" ? new Date() : afterIncrement.paidAt,
+          anticipoPaidAt:
+            newPaymentStatus === "ANTICIPO_PAID" && !afterIncrement.anticipoPaidAt
+              ? new Date()
+              : afterIncrement.anticipoPaidAt,
+        },
+      });
     });
+
+    const newPaidAmount = updated.paidAmount;
+    const newPaymentStatus = updated.paymentStatus;
 
     logger.info("Pago registrado", "BOOKING_SERVICE", {
       bookingId: id,
@@ -1653,10 +1698,8 @@ export class BookingService {
       },
     });
 
-    // Liberar payout hold inmediatamente
-    paymentsClient.schedulePayoutHold(bookingId, null).catch(err =>
-      logger.error('Error liberando payout hold', 'BOOKING_SERVICE', { bookingId, error: err.message })
-    );
+    // Liberar payout hold inmediatamente — await: si falla, la entrega no queda confirmada
+    await paymentsClient.schedulePayoutHold(bookingId, null);
 
     // Notificar al artista en background
     ;(async () => {
@@ -2543,13 +2586,6 @@ export class BookingService {
       throw new AppError(404, "Enlace de confirmación inválido");
     }
 
-    if (request.status !== "PENDING_CLIENT") {
-      if (request.status === "CONFIRMED") {
-        throw new AppError(400, "Este cambio de fecha ya fue confirmado");
-      }
-      throw new AppError(400, "Este enlace ya no es válido");
-    }
-
     if (request.tokenExpiresAt && request.tokenExpiresAt < new Date()) {
       await prisma.rescheduleRequest.update({
         where: { id: request.id },
@@ -2558,11 +2594,18 @@ export class BookingService {
       throw new AppError(410, "El enlace de confirmación ha expirado. Por favor solicita un nuevo cambio de fecha.");
     }
 
-    // Apply the new date and mark as rescheduled
-    await prisma.rescheduleRequest.update({
-      where: { id: request.id },
+    // Atomic update: only succeeds if status is still PENDING_CLIENT (concurrent-request guard)
+    const { count } = await prisma.rescheduleRequest.updateMany({
+      where: { id: request.id, status: "PENDING_CLIENT" },
       data: { status: "CONFIRMED", clientConfirmedAt: new Date(), confirmationToken: null },
     });
+
+    if (count === 0) {
+      if (request.status === "CONFIRMED") {
+        throw new AppError(400, "Este cambio de fecha ya fue confirmado");
+      }
+      throw new AppError(400, "Este enlace ya no es válido");
+    }
 
     const updatedBooking = await prisma.booking.update({
       where: { id: request.bookingId },

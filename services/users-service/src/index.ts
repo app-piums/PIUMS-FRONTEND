@@ -8,6 +8,7 @@ import healthRoutes from "./routes/health.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { apiLimiter } from "./middleware/rateLimiter";
 import { logger } from "./utils/logger";
+import { runPurgeJob } from "./services/purge.service";
 
 const app = express();
 
@@ -34,8 +35,29 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4002;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Users Service running on http://localhost:${PORT}`, "SERVER");
   logger.info(`Health check: http://localhost:${PORT}/health`, "SERVER");
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`, "SERVER");
+
+  // Purge job: anonymize soft-deleted users older than 90 days — runs once per day
+  const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  setInterval(() => {
+    runPurgeJob().catch((err: any) =>
+      logger.error('Purge job failed', 'SERVER', { error: err?.message })
+    );
+  }, PURGE_INTERVAL_MS);
+  // Also run once on startup (catches anything overdue from downtime)
+  runPurgeJob().catch((err: any) =>
+    logger.error('Purge job (startup) failed', 'SERVER', { error: err?.message })
+  );
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  server.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
 });

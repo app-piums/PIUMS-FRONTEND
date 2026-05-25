@@ -97,11 +97,16 @@ const runPostingExpiration = async () => {
 runPostingExpiration();
 setInterval(runPostingExpiration, 6 * 60 * 60 * 1000);
 
-app.listen(PORT, () => {
-  logger.info(`🚀 Catalog Service running on port ${PORT}`, "SERVER", {
+const server = app.listen(PORT, () => {
+  logger.info(`Catalog Service running on port ${PORT}`, "SERVER", {
     port: PORT,
     nodeEnv: process.env.NODE_ENV || "development",
   });
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  server.close(() => process.exit(0));
 });
 
 // Manejo de errores no capturados

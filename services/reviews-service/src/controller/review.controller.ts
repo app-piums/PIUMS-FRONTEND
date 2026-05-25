@@ -161,7 +161,7 @@ export class ReviewController {
 
   async getPendingReports(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      // TODO: Verificar que el usuario es admin
+      if (req.user.role !== 'admin') return next(new AppError(403, 'Admin only'));
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const estado = req.query.estado as string | undefined;

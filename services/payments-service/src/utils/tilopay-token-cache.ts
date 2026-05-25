@@ -28,11 +28,11 @@ export async function getTilopayToken(): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiuser: TILOPAY_API_USER, password: TILOPAY_API_SECRET }),
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    logger.error('Tilopay token request failed', 'TILOPAY_TOKEN_CACHE', { status: res.status, body });
+    logger.error('Tilopay token request failed', 'TILOPAY_TOKEN_CACHE', { status: res.status });
     throw new Error(`Tilopay authentication failed: HTTP ${res.status}`);
   }
 

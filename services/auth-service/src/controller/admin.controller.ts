@@ -234,18 +234,41 @@ export const deleteUser = async (req: Request, res: Response, next: NextFunction
     const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
     const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
     const usersUrl = process.env.USERS_SERVICE_URL || 'http://users-service:4002';
+
+    // Collect KYC document URLs stored in auth-service to purge from Cloudinary
+    const docUrls = [
+      existing.documentFrontUrl,
+      existing.documentBackUrl,
+      existing.documentSelfieUrl,
+    ].filter(Boolean) as string[];
+
     if (internalSecret) {
       await Promise.allSettled([
         fetch(`${artistsUrl}/artists/internal/by-auth/${id}`, {
           method: 'DELETE',
           headers: { 'x-internal-secret': internalSecret },
+          signal: AbortSignal.timeout(10_000),
         }),
         fetch(`${usersUrl}/users/internal/by-auth/${id}`, {
           method: 'DELETE',
           headers: { 'x-internal-secret': internalSecret },
+          signal: AbortSignal.timeout(10_000),
         }),
-      ]);
+        // Purge KYC documents from Cloudinary via users-service
+        docUrls.length > 0 && fetch(`${usersUrl}/users/internal/cloudinary-purge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+          body: JSON.stringify({ urls: docUrls }),
+          signal: AbortSignal.timeout(10_000),
+        }),
+      ].filter(Boolean) as Promise<any>[]);
     }
+
+    // Anonymize audit logs — null out userId to sever PII link before hard delete
+    await prisma.auditLog.updateMany({
+      where: { userId: id },
+      data: { userId: null },
+    });
 
     await prisma.user.delete({ where: { id } });
 
@@ -1034,8 +1057,9 @@ export const completePayout = async (req: Request, res: Response, next: NextFunc
       headers: {
         'Content-Type': 'application/json',
         'x-internal-secret': internalSecret ?? '',
+        'x-admin-id': adminId ?? '',
       },
-      body: JSON.stringify({ transferReference, completedByAdmin: adminId }),
+      body: JSON.stringify({ transferReference }),
     });
     const data = await response.json() as any;
     res.status(response.status).json(data);

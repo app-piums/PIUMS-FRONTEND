@@ -45,7 +45,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4008;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Reviews Service running on port ${PORT}`, "SERVER", {
     port: PORT,
     nodeEnv: process.env.NODE_ENV || "development",
@@ -55,10 +55,14 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on("SIGTERM", () => {
   logger.info("SIGTERM recibido, cerrando servidor...", "SERVER");
-  process.exit(0);
+  server.close(() => process.exit(0));
 });
 
 process.on("SIGINT", () => {
   logger.info("SIGINT recibido, cerrando servidor...", "SERVER");
-  process.exit(0);
+  server.close(() => process.exit(0));
+});
+
+process.on("unhandledRejection", (reason: any) => {
+  logger.error("Unhandled promise rejection", "SERVER", { reason: reason?.message });
 });

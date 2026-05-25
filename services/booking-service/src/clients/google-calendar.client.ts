@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger';
+
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4001';
 
 export interface CalendarEventInput {
@@ -32,11 +34,14 @@ class GoogleCalendarClient {
 
   async updateEvent(userId: string, eventId: string, updates: Partial<CalendarEventInput>): Promise<void> {
     try {
-      await fetch(`${AUTH_SERVICE_URL}/internal/calendar/event/${eventId}`, {
+      const res = await fetch(`${AUTH_SERVICE_URL}/internal/calendar/event/${eventId}`, {
         method: 'PUT',
         headers: this.headers(),
         body: JSON.stringify({ userId, updates }),
       });
+      if (!res.ok) {
+        logger.warn(`Calendar updateEvent failed: ${res.status}`, 'CALENDAR_CLIENT', { eventId });
+      }
     } catch {
       // Calendar sync is best-effort
     }
@@ -44,11 +49,14 @@ class GoogleCalendarClient {
 
   async deleteEvent(userId: string, eventId: string): Promise<void> {
     try {
-      await fetch(`${AUTH_SERVICE_URL}/internal/calendar/event/${eventId}`, {
+      const res = await fetch(`${AUTH_SERVICE_URL}/internal/calendar/event/${eventId}`, {
         method: 'DELETE',
         headers: this.headers(),
         body: JSON.stringify({ userId }),
       });
+      if (!res.ok) {
+        logger.warn(`Calendar deleteEvent failed: ${res.status}`, 'CALENDAR_CLIENT', { eventId });
+      }
     } catch {
       // Calendar sync is best-effort
     }

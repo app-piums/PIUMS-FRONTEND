@@ -26,11 +26,10 @@ export class ReviewService {
       throw new AppError(404, "Booking no encontrado");
     }
 
-    // Verificar que el booking esté en un estado que permita reseña
-    // Permitimos CONFIRMED, ACCEPTED (según UI) y COMPLETED
-    const allowedStatuses = ["CONFIRMED", "ACCEPTED", "PAYMENT_COMPLETED", "COMPLETED"];
+    // Only allow reviews on bookings where the service was actually delivered
+    const allowedStatuses = ["COMPLETED", "PAYMENT_COMPLETED", "FULLY_PAID"];
     if (!allowedStatuses.includes(booking.status)) {
-      throw new AppError(400, `Solo puedes dejar una reseña en reservas confirmadas o completadas (Estado actual: ${booking.status})`);
+      throw new AppError(400, `Solo puedes dejar una reseña en reservas completadas (Estado actual: ${booking.status})`);
     }
 
     // Verificar que el booking pertenezca al cliente

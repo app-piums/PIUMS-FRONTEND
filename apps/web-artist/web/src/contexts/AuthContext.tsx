@@ -133,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error("[AUTH] Error al resolver perfil de artista:", e);
           }
         } else {
-          console.log("[AUTH] Usuario autenticado:", userData?.email, "Role:", userData?.role);
+          console.log("[AUTH] Usuario autenticado. Role:", userData?.role);
         }
 
         setUser(userData);

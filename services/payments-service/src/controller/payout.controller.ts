@@ -7,6 +7,11 @@ export class PayoutController {
 
   async createPayout(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden crear payouts manualmente" });
+      }
+
       const {
         artistId,
         bookingId,
@@ -50,6 +55,11 @@ export class PayoutController {
 
   async processPayout(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden procesar payouts" });
+      }
+
       const id = req.params['id'] as string;
 
       const payout = await payoutService.processPayout(id);
@@ -113,6 +123,11 @@ export class PayoutController {
 
   async getArtistPayouts(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden consultar payouts de otros artistas" });
+      }
+
       const artistId = req.params['artistId'] as string;
       const { status, fromDate, toDate } = req.query;
 
@@ -174,6 +189,11 @@ export class PayoutController {
 
   async getArtistPayoutStats(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden consultar estadísticas de payouts de otros artistas" });
+      }
+
       const artistId = req.params['artistId'] as string;
 
       const stats = await payoutService.getArtistPayoutStats(artistId);

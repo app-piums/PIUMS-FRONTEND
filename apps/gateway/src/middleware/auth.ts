@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { logger } from "../utils/logger";
 
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
+  process.exit(1);
+}
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_CHANGE_ME";
 
 export interface AuthRequest extends Request {
@@ -51,7 +55,7 @@ export const authMiddleware = (
       ...decoded,
     };
 
-    logger.debug(`User authenticated: ${decoded.email}`, "AUTH_MIDDLEWARE");
+    logger.debug(`User authenticated: id=${decoded.id} role=${decoded.role}`, "AUTH_MIDDLEWARE");
     
     next();
   } catch (error: any) {

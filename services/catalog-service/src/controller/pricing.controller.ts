@@ -5,6 +5,7 @@ import {
   validateServicePricing,
   PriceCalculationInput,
 } from '../services/pricing.service';
+import { logger } from '../utils/logger';
 
 /**
  * POST /api/pricing/calculate
@@ -24,7 +25,7 @@ export const calculatePrice = async (req: Request, res: Response) => {
 
     return res.json(quote);
   } catch (error: any) {
-    console.error('Error calculating price:', error);
+    logger.error('Error calculating price', 'PRICING', { error: typeof error === 'string' ? error : error?.message });
     return res.status(500).json({
       error: error.message || 'Internal server error',
     });
@@ -43,7 +44,7 @@ export const getPricingSummary = async (req: Request, res: Response) => {
 
     return res.json(summary);
   } catch (error: any) {
-    console.error('Error getting pricing summary:', error);
+    logger.error('Error getting pricing summary', 'PRICING', { error: typeof error === 'string' ? error : error?.message });
     return res.status(404).json({
       error: error.message || 'Service not found',
     });
@@ -62,7 +63,7 @@ export const validatePricing = async (req: Request, res: Response) => {
 
     return res.json(validation);
   } catch (error: any) {
-    console.error('Error validating pricing:', error);
+    logger.error('Error validating pricing', 'PRICING', { error: typeof error === 'string' ? error : error?.message });
     return res.status(500).json({
       error: 'Internal server error',
     });

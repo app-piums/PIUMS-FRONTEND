@@ -80,7 +80,7 @@ async function createUserAndRespond(
     },
   });
 
-  logger.info("Usuario registrado", "AUTH_CONTROLLER", { userId: user.id, email: user.email, role: user.role });
+  logger.info("Usuario registrado", "AUTH_CONTROLLER", { userId: user.id, role: user.role });
 
   // Crear perfil en users-service (fire-and-forget)
   usersClient.createUserProfile({
@@ -218,7 +218,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     });
 
     if (!user) {
-      logger.warn("Intento de login con email no registrado", "AUTH_CONTROLLER", { email });
+      logger.warn("Intento de login con email no registrado", "AUTH_CONTROLLER");
       throw new AppError(401, "Credenciales inválidas");
     }
 
@@ -267,10 +267,9 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         },
       });
 
-      logger.warn("Intento de login con contraseña incorrecta", "AUTH_CONTROLLER", { 
-        userId: user.id, 
-        email,
-        failedAttempts 
+      logger.warn("Intento de login con contraseña incorrecta", "AUTH_CONTROLLER", {
+        userId: user.id,
+        failedAttempts
       });
 
       throw new AppError(401, "Credenciales inválidas");
@@ -286,15 +285,20 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       },
     });
 
-    logger.info("Login exitoso", "AUTH_CONTROLLER", { userId: user.id, email });
+    logger.info("Login exitoso", "AUTH_CONTROLLER", { userId: user.id });
 
-    // Dual-role support: honor requested role (from the frontend that called
-    // login) so a user can sign into either client or artist dashboard.
+    // Dual-role support: allow role selection only for users who already have that role.
+    // A 'cliente' cannot self-upgrade to 'artista'/'ambos' via the login endpoint.
     const requestedRole = typeof (req.body as any)?.role === 'string' ? (req.body as any).role : undefined;
-    let effectiveRole = requestedRole || user.role;
+    let effectiveRole = user.role; // DB role is the source of truth
 
-    // Ensure artist profile exists when logging into the artist dashboard.
-    if (effectiveRole === 'artista') {
+    if (user.role === 'ambos' && requestedRole && ['artista', 'cliente'].includes(requestedRole)) {
+      effectiveRole = requestedRole;
+    }
+
+    // Ensure artist profile exists for users who are already artists or dual-role.
+    // Never bootstrap or upgrade clients who merely sent role: 'artista' in the body.
+    if (user.role === 'artista' || user.role === 'ambos') {
       try {
         const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
         const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
@@ -312,12 +316,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
               avatar: user.avatar ?? undefined,
             }),
           });
-
-          // If user was a pure "cliente" logging into the artist app, upgrade to dual role.
-          if (user.role === 'cliente') {
-            await prisma.user.update({ where: { id: user.id }, data: { role: 'ambos' } });
-            effectiveRole = 'ambos';
-          }
         }
       } catch (bootstrapErr: any) {
         logger.warn(`Artist bootstrap on login failed: ${bootstrapErr.message}`, 'AUTH_CONTROLLER');
@@ -425,7 +423,17 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
     // Verificar token
     const decoded = tokenService.verifyAccessToken(token);
 
-    // Buscar usuario
+    // Check JTI/session revocation — only when the token carries a jti claim
+    if (decoded.jti) {
+      const session = await prisma.session.findFirst({
+        where: { jti: decoded.jti, status: 'ACTIVE' },
+      });
+      if (!session) {
+        throw new AppError(401, 'Sesión revocada o expirada');
+      }
+    }
+
+    // Buscar usuario — excludes KYC document URLs and document number
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       select: {
@@ -438,11 +446,6 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
         avatar: true,
         ciudad: true,
         birthDate: true,
-        documentType: true,
-        documentNumber: true,
-        documentFrontUrl: true,
-        documentBackUrl: true,
-        documentSelfieUrl: true,
       },
     });
 
@@ -450,7 +453,7 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
       throw new AppError(401, "Usuario no encontrado");
     }
 
-    // Retornar información del usuario
+    // Retornar información del usuario (sin campos de documentos KYC)
     res.json(user);
   } catch (error: any) {
     next(error);
@@ -476,19 +479,7 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
       req.get('user-agent')
     );
 
-    // Si el email fue enviado, enviar notificación
-    if (result.emailSent && result.user) {
-      try {
-        await notificationsClient.sendPasswordResetEmail(
-          result.user.email,
-          result.user.nombre,
-          result.token
-        );
-      } catch (emailError: any) {
-        logger.error("Error enviando email de password reset", "AUTH_CONTROLLER", emailError);
-        // No revelamos el error al cliente por seguridad
-      }
-    }
+    // Email is sent inside passwordService.requestPasswordReset — no token handling here
 
     // Siempre devolver mensaje genérico (no revelar si el email existe)
     res.json({
@@ -900,7 +891,7 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
           passwordHash: null,
         },
       });
-      logger.info('New user via Firebase Google', 'AUTH_CONTROLLER', { userId: user.id, email });
+      logger.info('New user via Firebase Google', 'AUTH_CONTROLLER', { userId: user.id });
       notificationsClient.sendWelcomeEmail(user.email, user.nombre, role as any).catch(() => {});
     }
 
@@ -909,11 +900,9 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
       usersClient.syncUserAvatar(user.id, picture).catch(() => {});
     }
 
-    // Dual-role support: if this login is for the artist site (role='artista'),
-    // ensure an artist profile exists — regardless of whether the user was just
-    // created, or already existed as a client logging in to the artist app.
-    // The bootstrap endpoint is idempotent (returns existing if found).
-    if (role === 'artista') {
+    // Ensure artist profile exists for users who are already artists or dual-role.
+    // Only fires if the DB role is 'artista' or 'ambos'; never upgrades clients.
+    if (user.role === 'artista' || user.role === 'ambos') {
       try {
         const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
         const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
@@ -950,9 +939,12 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
       }
     }
 
-    // Issue PIUMS tokens — use the REQUESTED role so a user registered as
-    // 'cliente' can also log into the artist app (and vice versa).
-    const effectiveRole = role || user.role;
+    // Derive effective role from the stored DB role (source of truth).
+    // A 'cliente' cannot self-upgrade to 'artista'/'ambos' via Firebase login.
+    let effectiveRole: string = user.role;
+    if (user.role === 'ambos' && role && ['artista', 'cliente'].includes(role)) {
+      effectiveRole = role;
+    }
     const jti = crypto.randomUUID();
     const token = tokenService.signAccessToken({ id: user.id, email: user.email, role: effectiveRole, jti });
     const refreshToken = tokenService.signRefreshToken({ id: user.id, jti });
@@ -997,6 +989,79 @@ export const completeOnboarding = async (req: Request, res: Response, next: Next
     next(error);
   }
 };
+// ─────────────────────────────────────────────────────────────────────────
+// DELETE /auth/me  — el propio usuario elimina su cuenta
+// ─────────────────────────────────────────────────────────────────────────
+export const deleteSelfAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user!.id;
+    const { password } = req.body;
+
+    if (!password) {
+      throw new AppError(400, 'La contraseña es requerida');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new AppError(404, 'Usuario no encontrado');
+    }
+
+    // Password-less providers (Google-only) have no passwordHash; skip check.
+    if (user.passwordHash) {
+      const valid = await comparePassword(password, user.passwordHash);
+      if (!valid) {
+        throw new AppError(401, 'Contraseña incorrecta');
+      }
+    }
+
+    // Revoke all active sessions and refresh tokens
+    await prisma.session.updateMany({ where: { userId }, data: { status: 'REVOKED' } });
+    await prisma.refreshToken.updateMany({ where: { userId }, data: { isRevoked: true } });
+
+    // Best-effort cascades to artists-service and users-service
+    const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+    const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+    const usersUrl = process.env.USERS_SERVICE_URL || 'http://users-service:4002';
+    if (internalSecret) {
+      Promise.allSettled([
+        fetch(`${artistsUrl}/artists/internal/by-auth/${userId}`, {
+          method: 'DELETE',
+          headers: { 'x-internal-secret': internalSecret },
+        }),
+        fetch(`${usersUrl}/users/internal/by-auth/${userId}`, {
+          method: 'DELETE',
+          headers: { 'x-internal-secret': internalSecret },
+        }),
+      ]).catch(() => {});
+    }
+
+    // Hard delete the auth record
+    await prisma.user.delete({ where: { id: userId } });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'USER_SELF_DELETED',
+          entity: 'User',
+          entityId: userId,
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+          success: true,
+        },
+      });
+    } catch (_auditErr) {
+      // Non-blocking — user row is already gone
+    }
+
+    logger.info('User self-deleted account', 'AUTH_CONTROLLER', { userId });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────
 // PATCH /auth/fcm-token  — registra o actualiza el FCM token del dispositivo
 // ─────────────────────────────────────────────────────────────────────────

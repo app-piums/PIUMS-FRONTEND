@@ -289,6 +289,11 @@ export class CouponService {
       const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
       if (!coupon) throw new AppError(404, 'Cupón no encontrado');
 
+      // Re-check global limit inside the transaction to catch concurrent redemptions.
+      if (coupon.maxUses !== null && coupon.currentUses >= coupon.maxUses) {
+        throw new AppError(409, 'Este cupón ha alcanzado su límite de usos');
+      }
+
       const userUses = await tx.couponUse.count({ where: { couponId, userId } });
       if (userUses >= coupon.maxUsesPerUser) {
         throw new AppError(409, 'Ya has utilizado este cupón el máximo de veces permitido');
@@ -298,10 +303,16 @@ export class CouponService {
         data: { couponId, userId, bookingId, discountApplied },
       });
 
-      await tx.coupon.update({
-        where: { id: couponId },
+      // Optimistic-lock increment: only update if currentUses hasn't moved since
+      // we read it above. If another concurrent transaction already incremented,
+      // count === 0 and we abort — preventing the race condition on maxUses.
+      const updateResult = await tx.coupon.updateMany({
+        where: { id: couponId, currentUses: coupon.currentUses },
         data: { currentUses: { increment: 1 } },
       });
+      if (updateResult.count === 0) {
+        throw new AppError(409, 'Este cupón ha alcanzado su límite de usos');
+      }
 
       return use;
     });

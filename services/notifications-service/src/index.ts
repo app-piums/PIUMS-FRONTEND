@@ -65,12 +65,12 @@ app.use(errorHandler);
 // Start Server
 // ============================================================================
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Notifications service started on port ${PORT}`, 'SERVER', {
     port: PORT,
     env: process.env.NODE_ENV,
   });
-  
+
   logger.info('Features enabled:', 'SERVER', {
     email: process.env.ENABLE_EMAIL === 'true',
     sms: process.env.ENABLE_SMS === 'true',
@@ -84,10 +84,14 @@ app.listen(PORT, () => {
 
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
-  process.exit(0);
+  server.close(() => process.exit(0));
 });
 
 process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully', 'SERVER');
-  process.exit(0);
+  server.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
 });

@@ -90,7 +90,8 @@ router.post(
 
       // responseCode "00" = aprobado — Tilopay no siempre envía campo "status"
       const approved = responseCode === '00';
-      const providerRef = orderId || ourOrderNumber;
+      // Usar nuestro orderNumber como clave de idempotencia (misma clave que usa confirmTilopayRedirect)
+      const providerRef = ourOrderNumber || orderId;
 
       logger.info("Tilopay webhook recibido", "CALLBACK_TILOPAY", {
         orderId, orderNumber, responseCode, approved, bookingId,

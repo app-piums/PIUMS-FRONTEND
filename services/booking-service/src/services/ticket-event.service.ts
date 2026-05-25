@@ -233,7 +233,7 @@ export const ticketEventService = {
         data: { status: 'PAGADO', paidAt: new Date() },
       });
       if (couponId) {
-        await paymentsClient.redeemCoupon({ couponId, userId: data.buyerId, bookingId: purchase.id, discountApplied: discountCents }).catch(() => {});
+        await paymentsClient.redeemCoupon({ couponId, userId: data.buyerId, bookingId: purchase.id, discountApplied: discountCents });
       }
       return { purchase, redirectUrl: null };
     }
@@ -274,7 +274,7 @@ export const ticketEventService = {
         userId: purchase.buyerId,
         bookingId: purchaseId,
         discountApplied: purchase.discountCents,
-      }).catch(() => {});
+      });
     }
 
     return updated;

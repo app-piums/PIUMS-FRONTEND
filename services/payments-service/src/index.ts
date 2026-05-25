@@ -98,8 +98,8 @@ _prismaCouponCols.$executeRaw`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS "maxD
   .finally(() => _prismaCouponCols.$disconnect());
 
 // Start server
-app.listen(PORT, () => {
-  logger.info(`🚀 Payments Service running on port ${PORT}`, "SERVER", {
+const server = app.listen(PORT, () => {
+  logger.info(`Payments Service running on port ${PORT}`, "SERVER", {
     port: PORT,
     nodeEnv: process.env.NODE_ENV,
   });
@@ -113,14 +113,15 @@ app.listen(PORT, () => {
 });
 
 // Cron diario: notificar cupones que expiran en ~7 días
+const _prismaCron = new PrismaClient();
+
 setInterval(async () => {
   try {
-    const _prisma = new PrismaClient();
     const now = new Date();
     const in6days = new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000);
     const in8days = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000);
 
-    const expiringSoon = await (_prisma as any).coupon.findMany({
+    const expiringSoon = await (_prismaCron as any).coupon.findMany({
       where: {
         status: 'ACTIVE',
         deletedAt: null,
@@ -148,7 +149,6 @@ setInterval(async () => {
     if (expiringSoon.length > 0) {
       logger.info(`Cron: notified ${expiringSoon.length} expiring coupons`, 'COUPON_CRON');
     }
-    await _prisma.$disconnect();
   } catch (err: any) {
     logger.error("Error en cron de cupones", "COUPON_CRON", { error: err.message });
   }
@@ -167,10 +167,14 @@ setInterval(async () => {
 // Graceful shutdown
 process.on("SIGTERM", () => {
   logger.info("SIGTERM signal received: closing HTTP server", "SERVER");
-  process.exit(0);
+  server.close(() => process.exit(0));
 });
 
 process.on("SIGINT", () => {
   logger.info("SIGINT signal received: closing HTTP server", "SERVER");
-  process.exit(0);
+  server.close(() => process.exit(0));
+});
+
+process.on("unhandledRejection", (reason: any) => {
+  logger.error("Unhandled promise rejection", "SERVER", { reason: reason?.message });
 });

@@ -1,7 +1,10 @@
 import { Router } from 'express';
+import { PrismaClient } from '@prisma/client';
 import { searchController } from '../controller/search.controller';
 import { searchLimiter, autocompleteLimiter, indexLimiter } from '../middleware/rateLimiter';
 import { optionalAuth, requireAuth } from '../middleware/auth.middleware';
+
+const prisma = new PrismaClient();
 
 const router: Router = Router();
 
@@ -20,8 +23,6 @@ router.get('/index/status', requireAuth, searchController.getIndexStatus);
 // Remove an artist from the index by its id (artists-service id, same as ArtistIndex.id)
 router.delete('/index/artist/:id', requireAuth, async (req, res, next) => {
   try {
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
     const id = req.params.id as string;
     await prisma.artistIndex.deleteMany({ where: { id } });
     await prisma.serviceIndex.deleteMany({ where: { artistId: id } });

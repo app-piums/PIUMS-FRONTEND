@@ -48,7 +48,7 @@ export class PaymentsServiceClient {
   }): Promise<{ payouts: PayoutRow[]; total: number; page: number; totalPages: number }> {
     try {
       const qs = new URLSearchParams({ artistId, ...(params?.status && { status: params.status }), page: String(params?.page || 1), limit: String(params?.limit || 20) }).toString();
-      const response = await fetch(`${PAYMENTS_SERVICE_URL}/api/payouts/artists/${artistId}?${qs}`);
+      const response = await fetch(`${PAYMENTS_SERVICE_URL}/api/payouts/artists/${artistId}?${qs}`, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) return { payouts: [], total: 0, page: 1, totalPages: 0 };
       const data = await response.json() as any;
       return { payouts: data.payouts ?? data.data ?? [], total: data.total ?? 0, page: data.page ?? 1, totalPages: data.totalPages ?? 1 };
@@ -63,7 +63,7 @@ export class PaymentsServiceClient {
    */
   async getArtistPayoutStats(artistId: string): Promise<PayoutStats> {
     try {
-      const response = await fetch(`${PAYMENTS_SERVICE_URL}/api/payouts/artists/${artistId}/stats`);
+      const response = await fetch(`${PAYMENTS_SERVICE_URL}/api/payouts/artists/${artistId}/stats`, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) return { totalEarnings: 0, pendingAmount: 0, completedAmount: 0, currency: "USD", totalPayouts: 0, pendingCount: 0, completedCount: 0 };
       const data = await response.json() as any;
       return (data.data ?? data) as PayoutStats;
@@ -81,6 +81,7 @@ export class PaymentsServiceClient {
       const response = await fetch(
         `${PAYMENTS_SERVICE_URL}/api/payments/stats?artistId=${artistId}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "GET",
           headers: {
             "Content-Type": "application/json",

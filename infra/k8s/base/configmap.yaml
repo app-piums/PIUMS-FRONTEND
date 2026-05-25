@@ -20,8 +20,17 @@ data:
   SEARCH_SERVICE_URL: "http://search-service:4009"
   CHAT_SERVICE_URL: "http://chat-service:4010"
 
+  # Tilopay
+  TILOPAY_API_URL: "https://app.tilopay.com/api/v1"
+
+  # Rate limiting
+  RATE_LIMIT_MAX_REQUESTS: "100"
+
+  # Platform fee (percentage)
+  PLATFORM_FEE_PERCENTAGE: "18"
+
   # CORS — allowed browser origins that may call the gateway directly
-  ALLOWED_ORIGINS: "https://artist.piums.io,https://client.piums.io,https://admin.piums.io,https://piums.io,https://www.piums.io,https://backend.piums.io,http://localhost:3000,http://localhost:3001,http://localhost:3002"
+  ALLOWED_ORIGINS: "https://artist.piums.io,https://client.piums.io,https://admin.piums.io,https://piums.io,https://www.piums.io,https://backend.piums.io"
 
   # Frontend URLs
   FRONTEND_URL: "https://client.piums.io"

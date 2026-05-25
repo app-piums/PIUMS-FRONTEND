@@ -306,8 +306,7 @@ export class DisputeService {
     // Si la resolución no implica reembolso, reprogramar payout hold para liberar al artista
     const noPayoutResolutions: DisputeResolution[] = ["FULL_REFUND", "SUSPENSION", "BAN"];
     if (!noPayoutResolutions.includes(data.resolution)) {
-      paymentsClient.schedulePayoutHold(dispute.bookingId, new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        .catch(err => logger.error("Error reprogramando payout hold tras disputa", "DISPUTE_SERVICE", { error: err.message }));
+      await paymentsClient.schedulePayoutHold(dispute.bookingId, new Date(Date.now() + 60 * 60 * 1000).toISOString());
     }
 
     // Ejecutar acciones según la resolución
@@ -322,22 +321,22 @@ export class DisputeService {
     } else if (data.resolution === "FULL_REFUND" && data.refundAmount) {
       const booking = await prisma.booking.findUnique({ where: { id: dispute.bookingId }, select: { clientId: true } });
       if (booking) {
-        paymentsClient.createRefundInternal({
+        await paymentsClient.createRefundInternal({
           bookingId: dispute.bookingId,
           userId: booking.clientId,
           reason: "dispute_resolved_full_refund",
           amount: data.refundAmount,
-        }).catch(err => logger.error("Error creando reembolso tras disputa", "DISPUTE_SERVICE", { error: err.message }));
+        });
       }
     } else if (data.resolution === "CREDIT" && data.refundAmount) {
       const booking = await prisma.booking.findUnique({ where: { id: dispute.bookingId }, select: { clientId: true } });
       if (booking) {
-        paymentsClient.createCredit({
+        await paymentsClient.createCredit({
           userId: booking.clientId,
           bookingId: dispute.bookingId,
           paidAmount: data.refundAmount,
           reason: "DISPUTE_CREDIT",
-        }).catch(err => logger.error("Error creando crédito tras disputa", "DISPUTE_SERVICE", { error: err.message }));
+        });
       }
     } else if (data.resolution === "SUSPENSION" || data.resolution === "BAN") {
       artistsClient.shadowBan(dispute.reportedAgainst || "", `Disputa resuelta: ${data.resolution}`)

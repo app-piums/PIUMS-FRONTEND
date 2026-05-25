@@ -177,9 +177,10 @@ router.patch(
         return;
       }
       const id = req.params['id'] as string;
-      const body = req.body as { transferReference?: string; completedByAdmin?: string };
+      const body = req.body as { transferReference?: string };
       const transferReference = String(body.transferReference ?? '');
-      const completedByAdmin = body.completedByAdmin;
+      // Derive completedByAdmin from header set by auth-service (not from request body)
+      const completedByAdmin = req.headers['x-admin-id'] as string | undefined;
 
       if (!transferReference?.trim()) {
         res.status(400).json({ message: "transferReference es requerido" });

@@ -2,6 +2,8 @@
  * Cliente HTTP para comunicarse con artists-service
  */
 
+import { logger } from '../utils/logger';
+
 const ARTISTS_SERVICE_URL =
   process.env.ARTISTS_SERVICE_URL || "http://artists-service:4003";
 const SERVICE_TOKEN = process.env.JWT_SECRET;
@@ -21,6 +23,7 @@ export class ArtistsClient {
   async getArtist(artistId: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/artists/${artistId}`, {
+        signal: AbortSignal.timeout(10_000),
         method: "GET",
         headers: {
           Authorization: `Bearer ${this.serviceToken}`,
@@ -28,19 +31,13 @@ export class ArtistsClient {
       });
 
       if (!response.ok) {
-        console.error(
-          "[ArtistsClient] Error obteniendo artista:",
-          await response.text()
-        );
+        logger.error('Error obteniendo artista', 'ARTISTS_CLIENT', { error: await response.text() });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error(
-        "[ArtistsClient] Error de conexión con artists-service:",
-        error
-      );
+      logger.error('Error de conexion con artists-service', 'ARTISTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -57,6 +54,7 @@ export class ArtistsClient {
       const response = await fetch(
         `${this.baseUrl}/api/artists/${artistId}/stripe-account`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "GET",
           headers: {
             Authorization: `Bearer ${this.serviceToken}`,
@@ -65,10 +63,7 @@ export class ArtistsClient {
       );
 
       if (!response.ok) {
-        console.error(
-          "[ArtistsClient] Error obteniendo cuenta Stripe:",
-          await response.text()
-        );
+        logger.error('Error obteniendo cuenta Stripe', 'ARTISTS_CLIENT', { error: await response.text() });
         return null;
       }
 
@@ -78,10 +73,7 @@ export class ArtistsClient {
         canReceivePayouts: boolean;
       };
     } catch (error) {
-      console.error(
-        "[ArtistsClient] Error de conexión con artists-service:",
-        error
-      );
+      logger.error('Error de conexion con artists-service', 'ARTISTS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

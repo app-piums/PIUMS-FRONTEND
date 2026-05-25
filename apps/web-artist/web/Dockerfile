@@ -41,4 +41,5 @@ ENV PORT=3001
 ENV HOSTNAME="0.0.0.0"
 
 # Iniciar la aplicación desde el directorio standalone
+USER node
 CMD ["node", "apps/web-artist/web/server.js"]

@@ -4,6 +4,7 @@ import { logger } from "../utils/logger";
 import { stripeProvider } from "../providers/stripe.provider";
 import { tilopayProvider } from "../providers/tilopay.provider";
 import { bookingClient } from "../clients/booking.client";
+import { encryptToken, decryptToken } from "../utils/token-encrypt";
 
 const prisma = new PrismaClient();
 
@@ -199,12 +200,17 @@ export class PaymentMethodService {
     }
   ) {
     try {
-      // Use a prefixed token to avoid collisions between providers
-      const tokenKey = data.provider === 'TILOPAY' ? `tilopay_${data.token}` : data.token;
+      // Encrypt Tilopay card hash before storage; Stripe PM IDs are opaque references (not sensitive)
+      const rawToken = data.provider === 'TILOPAY' ? `tilopay_${encryptToken(data.token)}` : data.token;
+      const tokenKey = rawToken;
 
-      // Check if already saved (idempotent)
+      // Check if already saved (idempotent) — for Tilopay, match on userId+provider prefix
+      // since each new encryption of the same token produces a different ciphertext
+      const existingQuery = data.provider === 'TILOPAY'
+        ? { userId, stripePaymentMethodId: { startsWith: 'tilopay_' }, deletedAt: null }
+        : { userId, stripePaymentMethodId: tokenKey, deletedAt: null };
       const existing = await (prisma as any).paymentMethod.findFirst({
-        where: { userId, stripePaymentMethodId: tokenKey, deletedAt: null },
+        where: existingQuery,
       });
 
       if (existing) {
@@ -275,8 +281,9 @@ export class PaymentMethodService {
     const provider: string = (method as any).provider || 'STRIPE';
 
     if (provider === 'TILOPAY') {
-      // Strip the tilopay_ prefix to get the raw hash
-      const hash = method.stripePaymentMethodId.replace(/^tilopay_/, '');
+      // Strip the tilopay_ prefix and decrypt the stored card hash
+      const encryptedHash = method.stripePaymentMethodId.replace(/^tilopay_/, '');
+      const hash = decryptToken(encryptedHash);
       const result = await tilopayProvider.chargeToken({ hash, amount, currency, bookingId });
 
       if (!result.approved) {

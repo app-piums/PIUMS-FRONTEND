@@ -17,7 +17,7 @@ export interface ArtistRating {
 export const reviewsClient = {
   async getArtistRating(artistId: string): Promise<ArtistRating | null> {
     try {
-      const response = await fetch(`${REVIEWS_SERVICE_URL}/api/reviews/artists/${artistId}/rating`);
+      const response = await fetch(`${REVIEWS_SERVICE_URL}/api/reviews/artists/${artistId}/rating`, { signal: AbortSignal.timeout(10_000) });
 
       if (response.status === 404) {
         return null;

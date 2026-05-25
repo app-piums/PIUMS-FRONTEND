@@ -6,10 +6,8 @@ const router = Router();
 
 interface ServiceHealth {
   name: string;
-  url: string;
   status: "up" | "down";
   latency?: number;
-  error?: string;
 }
 
 const SERVICES = [
@@ -33,16 +31,13 @@ async function checkServiceHealth(service: { name: string; url: string }): Promi
     
     return {
       name: service.name,
-      url: service.url,
       status: "up",
       latency,
     };
   } catch (error: any) {
     return {
       name: service.name,
-      url: service.url,
       status: "down",
-      error: error.message,
     };
   }
 }
@@ -54,8 +49,6 @@ router.get("/", async (req: Request, res: Response) => {
     const gatewayHealth = {
       status: "up",
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
     };
 
     // Verificar health de todos los servicios
@@ -73,7 +66,6 @@ router.get("/", async (req: Request, res: Response) => {
         acc[service.name] = {
           status: service.status,
           latency: service.latency ? `${service.latency}ms` : undefined,
-          error: service.error,
         };
         return acc;
       }, {} as Record<string, any>),
@@ -86,7 +78,6 @@ router.get("/", async (req: Request, res: Response) => {
     res.status(500).json({
       status: "error",
       message: "Health check failed",
-      error: error.message,
     });
   }
 });

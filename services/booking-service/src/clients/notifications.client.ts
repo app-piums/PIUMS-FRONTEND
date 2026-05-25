@@ -2,6 +2,8 @@
  * Cliente HTTP para comunicarse con notifications-service
  */
 
+import { logger } from '../utils/logger';
+
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:4006';
 const SERVICE_TOKEN = process.env.JWT_SECRET; // Usamos el mismo secret para inter-service communication
 
@@ -54,6 +56,7 @@ export class NotificationsClient {
   async sendNotification(payload: SendNotificationPayload): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/notifications/send`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -64,13 +67,13 @@ export class NotificationsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[NotificationsClient] Error enviando notificación:', error);
+        logger.error('Error enviando notificacion', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[NotificationsClient] Error de conexión con notifications-service:', error);
+      logger.error('Error de conexion con notifications-service', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -81,6 +84,7 @@ export class NotificationsClient {
   async sendFromTemplate(payload: SendFromTemplatePayload): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/notifications/template`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -91,13 +95,13 @@ export class NotificationsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[NotificationsClient] Error enviando desde template:', error);
+        logger.error('Error enviando desde template', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[NotificationsClient] Error de conexión con notifications-service:', error);
+      logger.error('Error de conexion con notifications-service', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -108,6 +112,7 @@ export class NotificationsClient {
   async batchSend(payload: BatchSendPayload): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/notifications/batch`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,13 +123,13 @@ export class NotificationsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[NotificationsClient] Error en batch send:', error);
+        logger.error('Error en batch send', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[NotificationsClient] Error de conexión con notifications-service:', error);
+      logger.error('Error de conexion con notifications-service', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -146,6 +151,7 @@ export class NotificationsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
       const response = await fetch(`${this.baseUrl}/api/notifications/send-template-email`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,10 +169,10 @@ export class NotificationsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[NotificationsClient] Error enviando email confirmacion entrega:', error);
+        logger.error('Error enviando email confirmacion entrega', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       }
     } catch (error) {
-      console.error('[NotificationsClient] Error de conexion al enviar email confirmacion entrega:', error);
+      logger.error('Error de conexion al enviar email confirmacion entrega', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
     }
   }
 
@@ -174,16 +180,17 @@ export class NotificationsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
       const response = await fetch(`${this.baseUrl}${path}`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error(`[NotificationsClient] Error en ${path}:`, err);
+        logger.error(`Error en ${path}`, 'NOTIFICATIONS_CLIENT', { error: typeof err === 'string' ? err : (err as any)?.message });
       }
     } catch (error) {
-      console.error(`[NotificationsClient] Conexion fallida en ${path}:`, error);
+      logger.error(`Conexion fallida en ${path}`, 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
     }
   }
 
@@ -217,6 +224,7 @@ export class NotificationsClient {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
       const response = await fetch(`${this.baseUrl}/api/notifications/booking/delivery-confirmed-artist`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -227,10 +235,10 @@ export class NotificationsClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[NotificationsClient] Error enviando email artista delivery confirmed:', error);
+        logger.error('Error enviando email artista delivery confirmed', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       }
     } catch (error) {
-      console.error('[NotificationsClient] Error de conexion al enviar email artista delivery confirmed:', error);
+      logger.error('Error de conexion al enviar email artista delivery confirmed', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
     }
   }
 
@@ -240,12 +248,13 @@ export class NotificationsClient {
   async healthCheck(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'GET',
       });
 
       return response.ok;
     } catch (error) {
-      console.error('[NotificationsClient] Notifications service no disponible:', error);
+      logger.error('Notifications service no disponible', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return false;
     }
   }

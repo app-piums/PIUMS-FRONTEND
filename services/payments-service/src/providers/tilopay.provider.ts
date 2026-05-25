@@ -176,6 +176,16 @@ export class TilopayProvider implements IPaymentProvider {
       throw new Error(`Tilopay network error: ${networkErr.message}`);
     }
 
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      logger.error('Tilopay chargeToken failed', 'TILOPAY_PROVIDER', {
+        status: res.status,
+        bookingId: params.bookingId,
+        body: errBody,
+      });
+      throw new Error(`Tilopay chargeToken failed: HTTP ${res.status}`);
+    }
+
     const data = await res.json() as any;
     const responseCode: string = data.responseCode || data.response_code || '';
     const approved = responseCode === '00';
