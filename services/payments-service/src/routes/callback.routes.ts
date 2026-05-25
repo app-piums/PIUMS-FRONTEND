@@ -163,16 +163,20 @@ router.post(
         });
 
         if (bookingId) {
-          // Intentar notificar al cliente — el booking sigue en estado pendiente
-          notificationsClient.sendNotification({
-            userId: bookingId,  // fallback hasta tener userId real
-            type: "PAYMENT_REMAINING_FAILED",
-            channel: "IN_APP",
-            title: "Pago no procesado",
-            message: `Tu pago no pudo ser procesado (código ${responseCode}). Por favor intenta de nuevo.`,
-            data: { providerRef, bookingId, responseCode },
-            priority: "high",
-            category: "payment",
+          // Intentar notificar al cliente — lookup necesario para obtener clientId real
+          bookingClient.getBooking(bookingId).then(booking => {
+            const clientId = booking?.clientId;
+            if (!clientId) return;
+            notificationsClient.sendNotification({
+              userId: clientId,
+              type: "PAYMENT_REMAINING_FAILED",
+              channel: "IN_APP",
+              title: "Pago no procesado",
+              message: `Tu pago no pudo ser procesado (código ${responseCode}). Por favor intenta de nuevo.`,
+              data: { providerRef, bookingId, responseCode },
+              priority: "high",
+              category: "payment",
+            }).catch(() => {});
           }).catch(() => {});
         }
       }

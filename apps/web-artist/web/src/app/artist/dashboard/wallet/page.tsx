@@ -78,8 +78,6 @@ export default function WalletPage() {
       .finally(() => setLoading(false));
   }, [statusFilter, page]);
 
-  const currency = stats?.currency || 'USD';
-
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <DashboardSidebar />
@@ -100,7 +98,7 @@ export default function WalletPage() {
                 <div className="h-9 w-24 bg-orange-400/50 rounded-lg mt-1 animate-pulse" />
               ) : (
                 <p className="text-3xl font-bold mt-1">
-                  {currency} {centsToDisplay(stats?.totalEarnings ?? 0)}
+                  ${centsToDisplay(stats?.totalEarnings ?? 0)}
                 </p>
               )}
               <p className="text-xs text-orange-200 mt-1">{stats?.completedCount ?? 0} pagos completados</p>
@@ -111,7 +109,7 @@ export default function WalletPage() {
                 <div className="h-8 w-20 bg-gray-100 rounded-lg mt-1 animate-pulse" />
               ) : (
                 <p className="text-2xl font-bold text-yellow-600 mt-1">
-                  {currency} {centsToDisplay(stats?.pendingAmount ?? 0)}
+                  ${centsToDisplay(stats?.pendingAmount ?? 0)}
                 </p>
               )}
               <p className="text-xs text-gray-400 mt-1">{stats?.pendingCount ?? 0} pendientes</p>
@@ -122,7 +120,7 @@ export default function WalletPage() {
                 <div className="h-8 w-20 bg-gray-100 rounded-lg mt-1 animate-pulse" />
               ) : (
                 <p className="text-2xl font-bold text-gray-800 mt-1">
-                  {currency} {centsToDisplay(stats?.completedAmount ?? 0)}
+                  ${centsToDisplay(stats?.completedAmount ?? 0)}
                 </p>
               )}
               <p className="text-xs text-gray-400 mt-1">Histórico</p>
@@ -197,7 +195,7 @@ export default function WalletPage() {
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <p className="text-sm font-bold text-[#FF6B35]">
-                        {p.currency} {centsToDisplay((p as any).netAmount ?? p.amount)}
+                        ${centsToDisplay((p as any).netAmount ?? p.amount)}
                       </p>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[p.status] ?? 'bg-gray-100 text-gray-500'}`}>
                         {STATUS_LABELS[p.status] ?? p.status}

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.HTTPS_ENABLED === 'true',
       sameSite: 'strict',
-      maxAge: 3600, // 1 hora
+      maxAge: 604800, // 7 días
       path: '/',
     });
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         httpOnly: true,
         secure: process.env.HTTPS_ENABLED === 'true',
         sameSite: 'strict',
-        maxAge: 3600, // 1 hora
+        maxAge: 604800, // 7 días
         path: '/',
       });
     }

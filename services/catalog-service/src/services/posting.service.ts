@@ -7,8 +7,19 @@ import { chatClient } from '../clients/chat.client';
 
 const MAX_ACTIVE_APPLICATIONS = 10;
 const POSTING_EXPIRY_DAYS = 30;
+const MAX_MATCH_NOTIFICATIONS = 50;
 
 const prisma = new PrismaClient();
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 export class PostingService {
   // ==================== POSTINGS ====================
@@ -40,7 +51,97 @@ export class PostingService {
       },
     });
     logger.info(`Posting created: ${posting.id} by artist ${artistId}`, 'POSTING');
+
+    // Fire background matching — does not block the response
+    this.notifyMatchingArtists(posting, artistId).catch(err =>
+      logger.error('Error en matching de postulación', 'POSTING', { err: err?.message, postingId: posting.id })
+    );
+
     return posting;
+  }
+
+  private async notifyMatchingArtists(posting: any, creatorAuthId: string): Promise<void> {
+    if (!posting.category) return; // mínimo requerido para matching
+
+    // Resolve city coordinates if cityId provided
+    let cityLat: number | undefined;
+    let cityLng: number | undefined;
+    let cityName = '';
+    if (posting.cityId) {
+      const city = await prisma.city.findUnique({
+        where: { id: posting.cityId },
+        select: { latitude: true, longitude: true, name: true },
+      });
+      if (city) {
+        cityLat = city.latitude;
+        cityLng = city.longitude;
+        cityName = city.name;
+      }
+    }
+
+    // Search artists matching category and within coverageRadius of the event
+    const candidates = await artistsClient.searchArtists({
+      category: posting.category,
+      lat: cityLat,
+      lng: cityLng,
+      limit: MAX_MATCH_NOTIFICATIONS * 3, // fetch extra to account for filtering
+    });
+
+    // Exclude the creator of the posting
+    const filtered = candidates.filter((a: any) => a.authId !== creatorAuthId && a.id !== creatorAuthId);
+
+    // If eventDate provided, check availability (fail-open per artist)
+    let available = filtered;
+    if (posting.eventDate) {
+      const isoDate = posting.eventDate.toISOString().slice(0, 10);
+      const checks = await Promise.all(
+        filtered.map(async (a: any) => {
+          const isAvailable = await artistsClient.checkAvailabilityDate(a.authId ?? a.id, isoDate);
+          return { artist: a, isAvailable };
+        })
+      );
+      available = checks.filter(c => c.isAvailable).map(c => c.artist);
+    }
+
+    const targets = available.slice(0, MAX_MATCH_NOTIFICATIONS);
+    if (targets.length === 0) return;
+
+    // Build notification message
+    const parts: string[] = [];
+    parts.push(`${posting.role || posting.category}`);
+    if (cityName) parts.push(`en ${cityName}`);
+    if (posting.budgetMin || posting.budgetMax) {
+      const cur = posting.currency ?? 'GTQ';
+      const range = posting.budgetMin && posting.budgetMax
+        ? `${(posting.budgetMin / 100).toFixed(0)}–${(posting.budgetMax / 100).toFixed(0)} ${cur}`
+        : posting.budgetMax
+          ? `hasta ${(posting.budgetMax / 100).toFixed(0)} ${cur}`
+          : `desde ${(posting.budgetMin! / 100).toFixed(0)} ${cur}`;
+      parts.push(range);
+    }
+    if (posting.eventDate) {
+      const dateStr = posting.eventDate.toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+      parts.push(dateStr);
+    }
+    const message = parts.join(' · ');
+
+    const userIds = targets.map((a: any) => a.authId ?? a.id).filter(Boolean);
+    await notificationsClient.batchNotify(userIds, {
+      type: 'SYSTEM_NOTIFICATION',
+      title: 'Hay una oportunidad para ti',
+      message,
+      data: {
+        postingId: posting.id,
+        category: posting.category,
+        cityId: posting.cityId ?? null,
+        eventDate: posting.eventDate?.toISOString() ?? null,
+        budgetMin: posting.budgetMin ?? null,
+        budgetMax: posting.budgetMax ?? null,
+      },
+      priority: 'normal',
+    });
+
+    logger.info(`Notificados ${userIds.length} artistas para posting ${posting.id}`, 'POSTING');
   }
 
   async getPostings(params: {
@@ -49,10 +150,11 @@ export class PostingService {
     category?: string;
     cityId?: string;
     artistId?: string;
+    forArtistId?: string; // authId — personaliza relevancia y enriquece distancia
     page?: number;
     limit?: number;
   }) {
-    const { status = 'OPEN', role, category, cityId, artistId, page = 1, limit = 20 } = params;
+    const { status = 'OPEN', role, category, cityId, artistId, forArtistId, page = 1, limit = 20 } = params;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -73,10 +175,58 @@ export class PostingService {
       prisma.artistPosting.count({ where }),
     ]);
 
-    const postings = rawPostings.map(p => ({
-      ...p,
-      applicationCount: p.applications.length,
-    }));
+    // Batch-fetch cities for postings that have cityId
+    const cityIds = [...new Set(rawPostings.map((p: any) => p.cityId).filter(Boolean))] as string[];
+    const cityMap = new Map<string, { latitude: number; longitude: number; name: string }>();
+    if (cityIds.length > 0) {
+      const cities = await prisma.city.findMany({
+        where: { id: { in: cityIds } },
+        select: { id: true, latitude: true, longitude: true, name: true },
+      });
+      cities.forEach((c: any) => cityMap.set(c.id, c));
+    }
+
+    // Resolve artist profile for relevance enrichment
+    let artistProfile: any = null;
+    if (forArtistId) {
+      artistProfile = await artistsClient.getArtist(forArtistId).catch(() => null);
+    }
+
+    const postings = await Promise.all(
+      rawPostings.map(async (p: any) => {
+        const base = { ...p, applicationCount: p.applications.length };
+        if (!artistProfile) return base;
+
+        const city = p.cityId ? cityMap.get(p.cityId) : null;
+        const artistLat = artistProfile.baseLocationLat ?? artistProfile.lat ?? null;
+        const artistLng = artistProfile.baseLocationLng ?? artistProfile.lng ?? null;
+
+        let distanceKm: number | null = null;
+        if (city && artistLat != null && artistLng != null) {
+          distanceKm = Math.round(haversineKm(artistLat, artistLng, city.latitude, city.longitude) * 10) / 10;
+        }
+
+        let isAvailable: boolean | null = null;
+        if (p.eventDate) {
+          const isoDate = (p.eventDate as Date).toISOString().slice(0, 10);
+          isAvailable = await artistsClient.checkAvailabilityDate(forArtistId!, isoDate);
+        }
+
+        return { ...base, distanceKm, isAvailable, cityName: city?.name ?? null };
+      })
+    );
+
+    // Sort by relevance when forArtistId: available first, then by distance asc
+    if (forArtistId) {
+      postings.sort((a: any, b: any) => {
+        const aAvail = a.isAvailable === null ? 1 : a.isAvailable ? 0 : 2;
+        const bAvail = b.isAvailable === null ? 1 : b.isAvailable ? 0 : 2;
+        if (aAvail !== bAvail) return aAvail - bAvail;
+        const aDist = a.distanceKm ?? 9999;
+        const bDist = b.distanceKm ?? 9999;
+        return aDist - bDist;
+      });
+    }
 
     return { postings, total, page, limit };
   }
@@ -109,23 +259,23 @@ export class PostingService {
     });
 
     // Collect all unique applicant artist IDs across all postings
-    const allArtistIds = [...new Set(
-      postings.flatMap(p => p.applications.map(a => a.artistId))
+    const allArtistIds: string[] = [...new Set<string>(
+      (postings as any[]).flatMap((p: any) => (p.applications as any[]).map((a: any) => a.artistId as string))
     )];
 
     // Batch-resolve artist profiles (one request per unique artist, in parallel)
     const profileMap = new Map<string, any>();
     await Promise.all(
-      allArtistIds.map(async id => {
+      allArtistIds.map(async (id: string) => {
         const info = await artistsClient.getArtist(id).catch(() => null);
         if (info) profileMap.set(id, info);
       })
     );
 
-    return postings.map(p => ({
+    return (postings as any[]).map((p: any) => ({
       ...p,
       applicationCount: p.applications.length,
-      applications: p.applications.map(a => {
+      applications: (p.applications as any[]).map((a: any) => {
         const info = profileMap.get(a.artistId);
         return {
           ...a,
@@ -251,7 +401,7 @@ export class PostingService {
           },
         });
 
-    // Notify posting artist (in-app + email)
+    // Notify posting artist (in-app + email), enriched with distance
     const [applicantInfo, posterInfo] = await Promise.all([
       artistsClient.getArtist(artistId).catch(() => null),
       artistsClient.getArtist(posting.artistId).catch(() => null),
@@ -259,24 +409,44 @@ export class PostingService {
     const applicantName = (applicantInfo as any)?.displayName ?? (applicantInfo as any)?.nombre ?? 'Un artista';
     const posterEmail = (posterInfo as any)?.email ?? null;
 
+    // Calculate distance between applicant and event city
+    let distanceKm: number | null = null;
+    let isWithinCoverage: boolean | null = null;
+    const applicantLat = (applicantInfo as any)?.baseLocationLat ?? (applicantInfo as any)?.lat ?? null;
+    const applicantLng = (applicantInfo as any)?.baseLocationLng ?? (applicantInfo as any)?.lng ?? null;
+    if (applicantLat != null && applicantLng != null && posting.cityId) {
+      const city = await prisma.city.findUnique({
+        where: { id: posting.cityId },
+        select: { latitude: true, longitude: true },
+      });
+      if (city) {
+        distanceKm = Math.round(haversineKm(applicantLat, applicantLng, city.latitude, city.longitude) * 10) / 10;
+        const radius = (applicantInfo as any)?.coverageRadius ?? null;
+        isWithinCoverage = radius === null ? true : distanceKm <= radius;
+      }
+    }
+
+    const distancePart = distanceKm != null ? ` — está a ${distanceKm} km del evento` : '';
+    const notifMessage = `${applicantName} aplicó a tu postulación "${posting.title}"${distancePart}.`;
+
     await notificationsClient.sendBoth(
       {
         userId: posting.artistId,
         type: 'APPLICATION_RECEIVED',
         channel: 'IN_APP',
         title: 'Nueva postulación recibida',
-        message: `${applicantName} aplicó a tu postulación "${posting.title}".`,
-        data: { postingId, applicationId: application.id, applicantId: artistId },
+        message: notifMessage,
+        data: { postingId, applicationId: application.id, applicantId: artistId, distanceKm, isWithinCoverage },
         priority: 'normal',
       },
       posterEmail ? {
         userId: posting.artistId,
         type: 'APPLICATION_RECEIVED',
         title: 'Nueva postulación recibida',
-        message: `${applicantName} aplicó a tu postulación "${posting.title}". Revisa su perfil y responde.`,
+        message: `${notifMessage} Revisa su perfil y responde.`,
         emailTo: posterEmail,
         emailSubject: `Nueva postulación: ${posting.title}`,
-        data: { postingId, applicationId: application.id },
+        data: { postingId, applicationId: application.id, distanceKm, isWithinCoverage },
         priority: 'normal',
       } : undefined
     ).catch(err => logger.error('Error notificando aplicación', 'POSTING', err));

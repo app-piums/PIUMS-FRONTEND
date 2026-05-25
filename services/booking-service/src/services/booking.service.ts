@@ -658,12 +658,24 @@ export class BookingService {
 
         await notifyBookingConfirmed(notificationData);
 
+        const confirmedDate = new Date(notificationData.scheduledDate).toLocaleDateString('es-GT', { day: 'numeric', month: 'long', year: 'numeric' });
+        const confirmedMsg = `Tu reserva con ${notificationData.artistName} el ${confirmedDate} fue confirmada.`;
+        notificationsClient.sendNotification({
+          userId: booking.clientId,
+          type: 'BOOKING_CONFIRMED',
+          channel: 'IN_APP',
+          title: '¡Reserva Confirmada!',
+          message: confirmedMsg,
+          data: { bookingId: id },
+          priority: 'high',
+          category: 'booking',
+        }).catch(() => {});
         notificationsClient.sendNotification({
           userId: booking.clientId,
           type: 'BOOKING_CONFIRMED',
           channel: 'PUSH',
           title: '¡Reserva Confirmada!',
-          message: `Tu reserva con ${notificationData.artistName} ha sido confirmada`,
+          message: confirmedMsg,
           data: { bookingId: id },
           priority: 'high',
           category: 'booking',
@@ -932,7 +944,7 @@ export class BookingService {
         type: 'BOOKING_CANCELLED',
         channel: 'PUSH',
         title: 'Reserva Cancelada',
-        message: `El cliente ha cancelado una reserva`,
+        message: `El cliente canceló la reserva #${booking.code || id.slice(0, 8)}.`,
         data: { bookingId: id },
         priority: 'high',
         category: 'booking',
@@ -953,7 +965,7 @@ export class BookingService {
         type: 'BOOKING_CANCELLED',
         channel: 'PUSH',
         title: 'Reserva Cancelada',
-        message: `El artista ha cancelado tu reserva`,
+        message: `El artista canceló la reserva #${booking.code || id.slice(0, 8)}.`,
         data: { bookingId: id },
         priority: 'high',
         category: 'booking',
@@ -1154,7 +1166,7 @@ export class BookingService {
       type: "BOOKING_NO_SHOW_RESOLVED",
       channel: "IN_APP",
       title: "Reembolso y crédito procesados",
-      message: "Tu reembolso ha sido procesado y tienes un crédito de compensación disponible por 90 días.",
+      message: `Tu reembolso por la reserva #${booking.code || bookingId.slice(0, 8).toUpperCase()} fue procesado. Tienes un crédito de compensación disponible por 90 días.`,
       data: { bookingId },
       priority: "high",
       category: "booking",
@@ -1444,7 +1456,7 @@ export class BookingService {
             type: "SERVICE_COMPLETED",
             channel: "IN_APP",
             title: "Servicio completado",
-            message: `El artista marcó el servicio como completado. Confirma la entrega para liberar el pago o reporta un problema en las próximas 24 horas.`,
+            message: `El artista marcó la reserva #${booking.code || id} como completada. Confirma la entrega o reporta un problema en las próximas 24 horas.`,
             data: { bookingId: id },
             priority: "high",
             category: "booking",

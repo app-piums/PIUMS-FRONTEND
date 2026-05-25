@@ -142,34 +142,34 @@ function BookingSummary({ booking }: { booking: Booking }) {
         <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
           <div className="flex justify-between text-gray-600">
             <span>Servicio base</span>
-            <span className="font-medium">{booking.currency} {centsToDisplay(booking.servicePrice)}</span>
+            <span className="font-medium">${centsToDisplay(booking.servicePrice)}</span>
           </div>
           {booking.addonsPrice > 0 && (
             <div className="flex justify-between text-gray-600">
               <span>Add-ons</span>
-              <span className="font-medium">{booking.currency} {centsToDisplay(booking.addonsPrice)}</span>
+              <span className="font-medium">${centsToDisplay(booking.addonsPrice)}</span>
             </div>
           )}
           <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-800 text-base">
             <span>Total del servicio</span>
-            <span>{booking.currency} {centsToDisplay(booking.totalPrice)}</span>
+            <span>${centsToDisplay(booking.totalPrice)}</span>
           </div>
           {booking.anticipoRequired && booking.anticipoAmount != null && (
             <>
               <div className="border-t border-orange-200 pt-2 flex justify-between font-bold text-[#FF6B35] text-base">
                 <span>Anticipo a pagar ahora</span>
-                <span>{booking.currency} {centsToDisplay(booking.anticipoAmount)}</span>
+                <span>${centsToDisplay(booking.anticipoAmount)}</span>
               </div>
               <div className="flex justify-between text-gray-500 text-xs">
                 <span>Saldo restante (cobro 72h antes del evento)</span>
-                <span>{booking.currency} {centsToDisplay(booking.totalPrice - booking.anticipoAmount)}</span>
+                <span>${centsToDisplay(booking.totalPrice - booking.anticipoAmount)}</span>
               </div>
             </>
           )}
           {!booking.anticipoRequired && (
             <div className="border-t border-orange-200 pt-2 flex justify-between font-bold text-[#FF6B35] text-base">
               <span>A pagar ahora</span>
-              <span>{booking.currency} {centsToDisplay(booking.totalPrice)}</span>
+              <span>${centsToDisplay(booking.totalPrice)}</span>
             </div>
           )}
         </div>
@@ -247,8 +247,8 @@ function PaymentFormInner({ booking, bookingId }: { booking: Booking; bookingId:
           <div>
             <p className="text-sm font-semibold text-orange-800">Pago en dos partes</p>
             <p className="text-sm text-orange-700 mt-0.5">
-              Pagas el anticipo de <strong>{booking.currency} {centsToDisplay(booking.anticipoAmount)}</strong> ahora
-              para confirmar la reserva. El saldo restante (<strong>{booking.currency} {centsToDisplay(booking.totalPrice - booking.anticipoAmount)}</strong>) se cobrará automáticamente 72 horas antes del evento.
+              Pagas el anticipo de <strong>${centsToDisplay(booking.anticipoAmount)}</strong> ahora
+              para confirmar la reserva. El saldo restante (<strong>${centsToDisplay(booking.totalPrice - booking.anticipoAmount)}</strong>) se cobrará automáticamente 72 horas antes del evento.
             </p>
           </div>
         </div>
@@ -315,7 +315,7 @@ function PaymentFormInner({ booking, bookingId }: { booking: Booking; bookingId:
                 <div className="flex justify-between"><span className="text-gray-500">A nombre de</span><span className="font-medium text-gray-900">PIUMS S.A.</span></div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Monto</span>
-                  <span className="font-bold text-[#FF6B35]">{booking.currency} {centsToDisplay(amountDue)}</span>
+                  <span className="font-bold text-[#FF6B35]">${centsToDisplay(amountDue)}</span>
                 </div>
               </div>
             </div>
@@ -356,7 +356,7 @@ function PaymentFormInner({ booking, bookingId }: { booking: Booking; bookingId:
           ) : paymentMethod === 'card' ? (
             <>
               {booking.anticipoRequired ? 'Pagar Anticipo ' : 'Confirmar y Pagar '}
-              {booking.currency} {centsToDisplay(amountDue)}
+              ${centsToDisplay(amountDue)}
               <ArrowRightIcon className="h-5 w-5" />
             </>
           ) : (

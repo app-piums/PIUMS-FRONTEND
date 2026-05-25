@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
 
-    const isProduction = process.env.NODE_ENV === "production";
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.HTTPS_ENABLED === 'true',

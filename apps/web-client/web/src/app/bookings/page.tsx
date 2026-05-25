@@ -102,7 +102,7 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
               </div>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-lg font-bold text-[#FF6B35]">$${b.price.toLocaleString('en-US')}</p>
+              <p className="text-lg font-bold text-[#FF6B35]">${b.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               <p className="text-[11px] text-gray-400">{b.priceLabel}</p>
             </div>
           </div>
@@ -147,7 +147,7 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
                 <div>
                   <p className="text-xs font-semibold text-amber-800">Saldo restante pendiente</p>
                   <p className="text-xs text-amber-700">
-                    {b.currency} {((b.totalPriceCents - b.anticipoAmount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} se cobrará 72h antes del evento
+                    ${((b.totalPriceCents - b.anticipoAmount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} se cobrará 72h antes del evento
                   </p>
                 </div>
               </div>
@@ -420,7 +420,7 @@ export default function BookingsPage() {
     const paid = b.paidAmount ?? 0;
     let refundInfo = '';
     if (isConfirmed && paid > 0) {
-      refundInfo = `\nReembolso: ${b.currency ?? 'USD'} ${(Math.floor(paid * 0.5) / 100).toFixed(2)} (50% de lo pagado)`;
+      refundInfo = `\nReembolso: $${(Math.floor(paid * 0.5) / 100).toFixed(2)} (50% de lo pagado)`;
     }
     const reason = prompt(`¿Razón de la cancelación? (mínimo 10 caracteres)${refundInfo}`);
     if (reason === null) return;

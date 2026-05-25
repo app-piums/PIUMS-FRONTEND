@@ -14,13 +14,16 @@ export class PostingController {
 
   async getPostings(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { status, role, category, cityId, artistId, page, limit } = req.query as any;
+      const { status, role, category, cityId, artistId, forArtistId, page, limit } = req.query as any;
+      // forArtistId can come from query or auto-set from authenticated user
+      const resolvedForArtistId = forArtistId ?? (req.user?.id ?? undefined);
       const result = await postingService.getPostings({
         status,
         role,
         category,
         cityId,
         artistId,
+        forArtistId: resolvedForArtistId,
         page: page ? parseInt(page) : 1,
         limit: limit ? parseInt(limit) : 20,
       });

@@ -28,8 +28,8 @@ function toInvoice(b: Booking): Invoice {
     number: b.code ?? b.id.slice(0, 8).toUpperCase(),
     client: (b as any).clientName ?? 'Cliente',
     service: b.serviceName ?? 'Servicio',
-    amount: Math.round((b.totalPrice ?? 0) / 100),
-    currency: b.currency ?? 'GTQ',
+    amount: (b.totalPrice ?? 0) / 100,
+    currency: b.currency ?? 'USD',
     date: (b.scheduledDate ?? b.startAt ?? '').slice(0, 10),
     rawBooking: b,
     status,
@@ -66,7 +66,6 @@ export default function InvoicesPage() {
       : invoices.filter(inv => inv.status === activeFilter);
 
   const totalAmount = filtered.reduce((acc, inv) => acc + inv.amount, 0);
-  const displayCurrency = invoices[0]?.currency ?? 'GTQ';
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -178,7 +177,7 @@ export default function InvoicesPage() {
                         <div className="flex items-center justify-between sm:justify-end gap-4 pl-12 sm:pl-0 shrink-0">
                           <div className="text-right">
                             <p className="text-base font-bold text-gray-900">
-                              {inv.currency} {inv.amount.toLocaleString("en-US")}
+                              ${inv.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             <p className="text-xs text-gray-400">{inv.date}</p>
                           </div>
@@ -232,7 +231,7 @@ export default function InvoicesPage() {
                 <div className="px-4 sm:px-6 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                   <span className="text-sm text-gray-500">{filtered.length} factura{filtered.length !== 1 ? "s" : ""}</span>
                   <span className="text-sm font-semibold text-gray-900">
-                    Total: {displayCurrency} {totalAmount.toLocaleString("en-US")}
+                    Total: ${totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </>

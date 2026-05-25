@@ -162,6 +162,9 @@ importers:
       firebase:
         specifier: ^12.11.0
         version: 12.11.0
+      framer-motion:
+        specifier: ^12.0.0
+        version: 12.38.0(react-dom@19.2.3)(react@19.2.3)
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.2.3)
@@ -272,6 +275,9 @@ importers:
       firebase:
         specifier: ^12.11.0
         version: 12.11.0
+      framer-motion:
+        specifier: ^12.0.0
+        version: 12.38.0(react-dom@19.2.3)(react@19.2.3)
       i18next:
         specifier: ^23.11.5
         version: 23.16.8

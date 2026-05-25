@@ -33,6 +33,42 @@ export default function BookingConfirmationPage() {
     }
   }, [authLoading, isAuthenticated, router, bookingId]);
 
+  const loadBookingData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Cargar booking
+      const bookingData = await sdk.getBooking(bookingId);
+
+      if (!bookingData) {
+        setError('Reserva no encontrada');
+        return;
+      }
+
+      setBooking(bookingData);
+
+      // Cargar datos del artista y servicio en paralelo
+      const [artistData, servicesData] = await Promise.all([
+        sdk.getArtist(bookingData.artistId),
+        sdk.getArtistServices(bookingData.artistId),
+      ]);
+
+      setArtist(artistData);
+
+      // Encontrar el servicio específico
+      const serviceData = servicesData.find(s => s.id === bookingData.serviceId);
+      setService(serviceData || null);
+
+    } catch (err) {
+      console.error('Error loading booking:', err);
+      const message = err instanceof Error ? err.message : 'Error al cargar la reserva';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [bookingId]);
+
   // Procesar resultado del redirect de Tilopay si hay query params
   useEffect(() => {
     const responseCode = searchParams.get('responseCode');
@@ -64,42 +100,6 @@ export default function BookingConfirmationPage() {
         .catch(() => {});
     }
   }, [bookingId, searchParams, loadBookingData]);
-
-  const loadBookingData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Cargar booking
-      const bookingData = await sdk.getBooking(bookingId);
-      
-      if (!bookingData) {
-        setError('Reserva no encontrada');
-        return;
-      }
-
-      setBooking(bookingData);
-
-      // Cargar datos del artista y servicio en paralelo
-      const [artistData, servicesData] = await Promise.all([
-        sdk.getArtist(bookingData.artistId),
-        sdk.getArtistServices(bookingData.artistId),
-      ]);
-
-      setArtist(artistData);
-      
-      // Encontrar el servicio específico
-      const serviceData = servicesData.find(s => s.id === bookingData.serviceId);
-      setService(serviceData || null);
-
-    } catch (err) {
-      console.error('Error loading booking:', err);
-      const message = err instanceof Error ? err.message : 'Error al cargar la reserva';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId]);
 
   useEffect(() => {
     if (isAuthenticated && bookingId) {

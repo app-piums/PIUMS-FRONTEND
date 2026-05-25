@@ -245,7 +245,7 @@ export class PaymentService {
         type: "PAYMENT_RECEIVED",
         channel: "IN_APP",
         title: "Pago Recibido",
-        message: `Tu pago de $${(payment.amount / 100).toFixed(2)} ${payment.currency} ha sido procesado exitosamente`,
+        message: `Tu pago de $${(payment.amount / 100).toFixed(2)} ha sido procesado exitosamente`,
         data: {
           paymentId: payment.id,
           bookingId: payment.bookingId,
@@ -447,7 +447,7 @@ export class PaymentService {
         type: "PAYMENT_REFUNDED",
         channel: "IN_APP",
         title: "Reembolso Procesado",
-        message: `Se ha procesado un reembolso de $${(refundAmount / 100).toFixed(2)} ${payment.currency}`,
+        message: `Se ha procesado un reembolso de $${(refundAmount / 100).toFixed(2)}`,
         data: {
           refundId: refund.id,
           paymentId: payment.id,
@@ -575,7 +575,7 @@ export class PaymentService {
       type: "CREDIT_ISSUED",
       channel: "IN_APP",
       title: "Crédito disponible",
-      message: `Tienes un crédito de $${(creditAmount / 100).toFixed(2)} USD disponible por 90 días.`,
+      message: `Tienes un crédito de $${(creditAmount / 100).toFixed(2)} disponible por 90 días.`,
       data: { creditId: credit.id, amount: creditAmount },
     }).catch((err) => logger.error("Error sending credit notification", "CREDIT", err));
 

@@ -48,6 +48,21 @@ export class NotificationsClient {
     }
     await Promise.allSettled(tasks);
   }
+
+  // Send IN_APP + PUSH to a list of userIds in batches of 20
+  async batchNotify(userIds: string[], payload: Omit<SendNotificationPayload, 'userId' | 'channel'>): Promise<void> {
+    if (userIds.length === 0) return;
+    const CHUNK = 20;
+    for (let i = 0; i < userIds.length; i += CHUNK) {
+      const chunk = userIds.slice(i, i + CHUNK);
+      await Promise.allSettled(
+        chunk.flatMap(userId => [
+          this.sendNotification({ ...payload, userId, channel: 'IN_APP' }),
+          this.sendNotification({ ...payload, userId, channel: 'PUSH' }),
+        ])
+      );
+    }
+  }
 }
 
 export const notificationsClient = new NotificationsClient();

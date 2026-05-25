@@ -64,12 +64,13 @@ export class CollaboratorService {
     }).catch(err => logger.error('Error creando grupo al invitar', 'COLLABORATOR', err));
 
     // Notify the invited artist
+    const inviteDate = booking.scheduledDate.toLocaleDateString('es-GT', { day: 'numeric', month: 'long' });
     await notificationsClient.sendNotification({
       userId: targetArtistId,
       type: 'COLLABORATION_INVITE',
       channel: 'IN_APP',
       title: 'Invitación de colaboración',
-      message: `Te han invitado como ${role ?? 'colaborador'} para una reserva.`,
+      message: `Te han invitado como ${role ?? 'colaborador'} para la reserva #${booking.code ?? bookingId} el ${inviteDate}.`,
       data: { bookingId, collaboratorId: collaborator.id, role },
       priority: 'normal',
     }).catch(err => logger.error('Error enviando notif de invitación', 'COLLABORATOR', err));
@@ -118,8 +119,8 @@ export class CollaboratorService {
       channel: 'IN_APP',
       title: accept ? 'Invitación aceptada' : 'Invitación rechazada',
       message: accept
-        ? `Un artista aceptó colaborar en tu reserva.`
-        : `Un artista rechazó la invitación de colaboración.`,
+        ? `Un artista aceptó colaborar en la reserva #${collaborator.booking?.code ?? collaborator.bookingId}.`
+        : `Un artista rechazó la invitación para la reserva #${collaborator.booking?.code ?? collaborator.bookingId}.`,
       data: { bookingId: collaborator.bookingId, collaboratorId, accepted: accept },
       priority: 'normal',
     }).catch(err => logger.error('Error notificando respuesta', 'COLLABORATOR', err));
