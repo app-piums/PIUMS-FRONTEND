@@ -12,7 +12,7 @@ export const apiLimiter = rateLimit({
 // Rate limiter para creación de perfil de artista
 export const createArtistLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hora
-  max: process.env.NODE_ENV === "development" ? 50 : 3,
+  max: 50,
   message: "Límite de creación de perfiles alcanzado, intenta más tarde",
   standardHeaders: true,
   legacyHeaders: false,
@@ -21,7 +21,7 @@ export const createArtistLimiter = rateLimit({
 // Rate limiter para actualizaciones
 export const updateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hora
-  max: 20, // 20 actualizaciones por hora
+  max: 50,
   message: "Límite de actualizaciones alcanzado, intenta más tarde",
   standardHeaders: true,
   legacyHeaders: false,

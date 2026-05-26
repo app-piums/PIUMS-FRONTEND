@@ -13,7 +13,6 @@ const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     role?: string;
   };
 }
@@ -54,7 +53,6 @@ export const authenticateToken: RequestHandler = (
 
     const decoded = jwt.verify(token, JWT_SECRET) as {
       id: string;
-      email: string;
     };
 
     authReq.user = decoded;

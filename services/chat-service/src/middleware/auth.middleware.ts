@@ -11,7 +11,6 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     role?: string;
   };
   body: any;
@@ -41,7 +40,6 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
     req.user = {
       id: userId,
-      email: decoded.email,
       role: decoded.role,
     };
 
@@ -53,7 +51,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 };
 
 // Verificar token de WebSocket
-export const verifySocketToken = async (token: string): Promise<{ id: string; email: string; role?: string } | null> => {
+export const verifySocketToken = async (token: string): Promise<{ id: string; role?: string } | null> => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-only-secret-not-for-production') as any;
     let userId = decoded.id || decoded.userId;
@@ -67,7 +65,6 @@ export const verifySocketToken = async (token: string): Promise<{ id: string; em
 
     return {
       id: userId,
-      email: decoded.email,
       role: decoded.role,
     };
   } catch (error) {

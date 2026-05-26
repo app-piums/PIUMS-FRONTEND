@@ -11,7 +11,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_CHANGE_ME";
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     [key: string]: any;
   };
 }
@@ -51,7 +50,6 @@ export const authMiddleware = (
     // Adjuntar información del usuario al request
     req.user = {
       id: decoded.id,
-      email: decoded.email,
       ...decoded,
     };
 
@@ -102,7 +100,6 @@ export const optionalAuthMiddleware = (
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       req.user = {
         id: decoded.id,
-        email: decoded.email,
         ...decoded,
       };
     } catch (error) {

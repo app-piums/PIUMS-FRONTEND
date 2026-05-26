@@ -188,21 +188,24 @@ export default function ArtistOnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
 
   // Step 2: Creative Superpower
-  const [selectedDiscipline, setSelectedDiscipline] = useState<string | null>(null);
-  const [selectedTalentId, setSelectedTalentId] = useState<string | null>(null);
+  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
+  const [selectedTalentIds, setSelectedTalentIds] = useState<Record<string, string[]>>({});
   const [customRole, setCustomRole] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Step 3: Equipment (NEW)
+  // Step 3: Equipment
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
+  const [customEquipment, setCustomEquipment] = useState('');
 
-  // Step 4: Portfolio & Profile (was step 4)
+  // Step 4: Portfolio & Profile
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [shortBio, setShortBio] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [instagramHandle, setInstagramHandle] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
+  const [spotifyUrl, setSpotifyUrl] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
   const [extraLinks, setExtraLinks] = useState<string[]>([]);
 
   // Step 5 or 6: Service Setup (was step 5)
@@ -261,6 +264,13 @@ export default function ArtistOnboardingPage() {
     const provider = sessionStorage.getItem('auth_provider');
     setIsOAuthUser(['google', 'facebook', 'tiktok'].includes(provider ?? ''));
 
+    // If the cookie explicitly says onboarding is not done (set by login route),
+    // the user just logged in and is starting onboarding — don't redirect.
+    const cookieMap = Object.fromEntries(
+      document.cookie.split(';').map(c => c.trim().split('=').map(decodeURIComponent))
+    );
+    if (cookieMap['onboarding_completed'] === 'false') return;
+
     fetch('/api/artist/profile-check', { credentials: 'include' })
       .then(res => {
         if (res.ok) {
@@ -295,7 +305,21 @@ export default function ArtistOnboardingPage() {
       d.subtitle.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const equipmentSections = EQUIPMENT_BY_DISCIPLINE[selectedDiscipline ?? 'other'] ?? EQUIPMENT_BY_DISCIPLINE['other'];
+  const equipmentSections = (() => {
+    const merged: { section: string; items: string[] }[] = [];
+    for (const disc of selectedDisciplines) {
+      for (const section of (EQUIPMENT_BY_DISCIPLINE[disc] ?? [])) {
+        const existing = merged.find(s => s.section === section.section);
+        if (existing) {
+          const newItems = section.items.filter(i => !existing.items.includes(i));
+          existing.items = [...existing.items, ...newItems];
+        } else {
+          merged.push({ section: section.section, items: [...section.items] });
+        }
+      }
+    }
+    return merged;
+  })();
 
   const toggleEquipmentItem = (item: string) => {
     setSelectedEquipment((prev) =>
@@ -362,13 +386,14 @@ export default function ArtistOnboardingPage() {
 
   // Pre-fill Step 6 fields when talent or discipline changes
   useEffect(() => {
-    const suggestion = selectedTalentId ? SERVICE_SUGGESTIONS[selectedTalentId] : null;
+    const firstTalentId = Object.values(selectedTalentIds).flat()[0] ?? null;
+    const suggestion = firstTalentId ? SERVICE_SUGGESTIONS[firstTalentId] : null;
     if (suggestion) {
       setServiceName((prev) => prev || suggestion.name);
       setServiceCategory((prev) => prev || suggestion.category);
       setServiceDescription((prev) => prev || suggestion.description);
     }
-  }, [selectedTalentId, selectedDiscipline]);
+  }, [selectedTalentIds]);
 
   const handleFinish = async () => {
     if (hourlyRateMin > 0 && hourlyRateMax > 0 && hourlyRateMin > hourlyRateMax) {
@@ -399,17 +424,23 @@ export default function ArtistOnboardingPage() {
         animador:    'ANIMADOR',
         creator:     'CREADOR_CONTENIDO',
       };
-      const category = disciplineCategoryMap[selectedDiscipline || ''] || 'OTRO';
+      const primaryDiscipline = selectedDisciplines[0] || '';
+      const category = disciplineCategoryMap[primaryDiscipline] || 'OTRO';
 
-      // Build specialties: for OTRO, custom text goes first as the display label
-      const talentList = selectedTalentId ? TALENT_BY_DISCIPLINE[selectedDiscipline || ''] ?? [] : [];
-      const talentEntry = talentList.find(t => t.id === selectedTalentId);
+      // Build specialties from all selected disciplines and their talents
       const specialties: string[] = [];
       if (category === 'OTRO' && customRole.trim()) {
         specialties.push(customRole.trim());
       } else {
         specialties.push(category);
-        if (talentEntry) specialties.push(talentEntry.label);
+        for (const disc of selectedDisciplines) {
+          const talentList = TALENT_BY_DISCIPLINE[disc] ?? [];
+          const ids = selectedTalentIds[disc] ?? [];
+          for (const id of ids) {
+            const entry = talentList.find(t => t.id === id);
+            if (entry) specialties.push(entry.label);
+          }
+        }
         if (customRole.trim()) specialties.push(customRole.trim());
       }
 
@@ -419,9 +450,13 @@ export default function ArtistOnboardingPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ term: customRole.trim(), synonyms: [category.toLowerCase(), selectedDiscipline || ''] }),
+          body: JSON.stringify({ term: customRole.trim(), synonyms: [category.toLowerCase(), primaryDiscipline] }),
         }).catch(() => {});
       }
+
+      const allEquipment = customEquipment.trim()
+        ? [...selectedEquipment, customEquipment.trim()]
+        : selectedEquipment;
 
       const res = await fetch('/api/artist/create-profile', {
         method: 'POST',
@@ -430,10 +465,12 @@ export default function ArtistOnboardingPage() {
         body: JSON.stringify({
           category,
           specialties,
-          equipment: selectedEquipment,
+          equipment: allEquipment,
           bio: shortBio || undefined,
           instagram: instagramHandle || undefined,
           website: portfolioUrl || undefined,
+          spotify: spotifyUrl || undefined,
+          youtube: youtubeUrl || undefined,
           hourlyRateMin: hourlyRateMin > 0 ? hourlyRateMin : undefined,
           hourlyRateMax: hourlyRateMax > 0 ? hourlyRateMax : undefined,
           currency,
@@ -517,7 +554,8 @@ export default function ArtistOnboardingPage() {
       }
 
       document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
-      router.push('/artist/dashboard');
+      // Use full reload so the middleware reads the updated cookie server-side.
+      window.location.replace('/artist/dashboard');
     } catch (error) {
       console.error('Error completing onboarding:', error);
       toast.error('Hubo un error. Por favor intenta nuevamente.');
@@ -526,7 +564,7 @@ export default function ArtistOnboardingPage() {
     }
   };
 
-  const canContinueStep2 = selectedDiscipline !== null;
+  const canContinueStep2 = selectedDisciplines.length > 0;
   const canContinueStep5 = shortBio.trim().length > 0;
   const canContinueStep6 = serviceName.trim().length > 0 && serviceCategory && serviceDescription.trim().length > 0;
 
@@ -659,7 +697,7 @@ export default function ArtistOnboardingPage() {
               ¿Cuál es tu <span className="text-orange-600">superpoder creativo</span>?
             </h2>
             <p className="text-gray-600 mb-8">
-              Selecciona la disciplina que mejor describe tu enfoque profesional principal.
+              Selecciona todas las disciplinas que aplican a tu perfil. Puedes elegir más de una.
             </p>
             <div className="mb-8">
               <div className="relative">
@@ -676,71 +714,92 @@ export default function ArtistOnboardingPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              {filteredDisciplines.map((discipline) => (
-                <button
-                  key={discipline.id}
-                  onClick={() => {
-                    setSelectedDiscipline(discipline.id);
-                    setSelectedEquipment([]);
-                    setSelectedTalentId(null);
-                    setCustomRole('');
-                  }}
-                  className={`relative p-6 rounded-2xl border-2 transition-all text-left ${
-                    selectedDiscipline === discipline.id
-                      ? 'border-orange-500 bg-orange-50 shadow-md'
-                      : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-                  }`}
-                >
-                  {selectedDiscipline === discipline.id && (
-                    <div className="absolute top-3 right-3 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  )}
-                  <div className="mb-3 flex justify-center"><discipline.Icon size={28} /></div>
-                  <h3 className="font-semibold text-gray-900 mb-1">{discipline.name}</h3>
-                  {discipline.subtitle && <p className="text-xs text-gray-500">{discipline.subtitle}</p>}
-                </button>
-              ))}
+              {filteredDisciplines.map((discipline) => {
+                const isSelected = selectedDisciplines.includes(discipline.id);
+                return (
+                  <button
+                    key={discipline.id}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedDisciplines(prev => prev.filter(d => d !== discipline.id));
+                        setSelectedTalentIds(prev => {
+                          const next = { ...prev };
+                          delete next[discipline.id];
+                          return next;
+                        });
+                      } else {
+                        setSelectedDisciplines(prev => [...prev, discipline.id]);
+                      }
+                    }}
+                    className={`relative p-6 rounded-2xl border-2 transition-all text-left ${
+                      isSelected
+                        ? 'border-orange-500 bg-orange-50 shadow-md'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className="absolute top-3 right-3 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="mb-3 flex justify-center"><discipline.Icon size={28} /></div>
+                    <h3 className="font-semibold text-gray-900 mb-1">{discipline.name}</h3>
+                    {discipline.subtitle && <p className="text-xs text-gray-500">{discipline.subtitle}</p>}
+                  </button>
+                );
+              })}
             </div>
-            {/* Especialidad específica — aparece al seleccionar una disciplina */}
-            {selectedDiscipline && selectedDiscipline !== 'other' && (TALENT_BY_DISCIPLINE[selectedDiscipline]?.length ?? 0) > 0 && (
-              <div className="mb-8">
-                <p className="text-sm font-semibold text-gray-700 mb-3">
-                  ¿Cuál es tu especialidad dentro de esta disciplina? <span className="font-normal text-gray-500">(opcional)</span>
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {TALENT_BY_DISCIPLINE[selectedDiscipline].map((talent) => (
-                    <button
-                      key={talent.id}
-                      type="button"
-                      onClick={() => setSelectedTalentId(prev => prev === talent.id ? null : talent.id)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
-                        selectedTalentId === talent.id
-                          ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                          : 'bg-white text-gray-700 border-gray-300 hover:border-orange-400 hover:text-orange-600'
-                      }`}
-                    >
-                      {talent.label}
-                    </button>
-                  ))}
+            {/* Especialidades por disciplina — múltiple selección */}
+            {selectedDisciplines.filter(disc => disc !== 'other' && (TALENT_BY_DISCIPLINE[disc]?.length ?? 0) > 0).map(disc => {
+              const discInfo = creativeDisciplines.find(d => d.id === disc);
+              return (
+                <div key={disc} className="mb-6">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">
+                    Especialidades — {discInfo?.name} <span className="font-normal text-gray-500">(opcional, múltiple)</span>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {TALENT_BY_DISCIPLINE[disc].map((talent) => {
+                      const isSelected = (selectedTalentIds[disc] ?? []).includes(talent.id);
+                      return (
+                        <button
+                          key={talent.id}
+                          type="button"
+                          onClick={() => setSelectedTalentIds(prev => {
+                            const ids = prev[disc] ?? [];
+                            return {
+                              ...prev,
+                              [disc]: isSelected ? ids.filter(id => id !== talent.id) : [...ids, talent.id],
+                            };
+                          })}
+                          className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                            isSelected
+                              ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-orange-400 hover:text-orange-600'
+                          }`}
+                        >
+                          {talent.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
 
-            {/* Rol personalizado — para "Otro" o si no encuentran su especialidad */}
-            {selectedDiscipline && (selectedDiscipline === 'other' || selectedTalentId === null) && (
+            {/* Rol personalizado */}
+            {selectedDisciplines.length > 0 && (
               <div className="mb-8">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  {selectedDiscipline === 'other' ? 'Describe tu rol creativo' : '¿No encuentras tu especialidad? Escríbela'}
+                  ¿No encuentras tu especialidad? Escríbela
                   <span className="font-normal text-gray-500 ml-1">(opcional)</span>
                 </label>
                 <input
                   type="text"
                   value={customRole}
                   onChange={(e) => setCustomRole(e.target.value)}
-                  placeholder={selectedDiscipline === 'other' ? 'ej: Beatboxer, Poeta, Mago de close-up...' : 'ej: Bajista de sesión, Trombonista de jazz...'}
+                  placeholder="ej: Bajista de sesión, Trombonista de jazz, Beatboxer..."
                   maxLength={60}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 outline-none transition-all"
                 />
@@ -819,14 +878,14 @@ export default function ArtistOnboardingPage() {
                           key={item}
                           type="button"
                           onClick={() => toggleEquipmentItem(item)}
-                          className={`px-4 py-2 rounded-full text-sm font-medium border-2 transition-all ${
+                          className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium border-2 transition-all ${
                             selected
                               ? 'border-orange-500 bg-orange-50 text-orange-700'
                               : 'border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:bg-orange-50/50'
                           }`}
                         >
                           {selected && (
-                            <Check size={14} className="mr-1" />
+                            <Check size={14} className="mr-1 shrink-0" />
                           )}
                           {item}
                         </button>
@@ -835,6 +894,19 @@ export default function ArtistOnboardingPage() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Custom equipment free-text */}
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Otro equipo</h3>
+              <input
+                type="text"
+                placeholder="ej: Micrófono vintage, Mesa de mezclas profesional..."
+                value={customEquipment}
+                onChange={(e) => setCustomEquipment(e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+              />
+              <p className="text-xs text-gray-400 mt-1.5">Escribe equipo adicional que no esté en la lista</p>
             </div>
 
             <div className="flex items-center justify-between pt-8 border-t border-gray-200 mt-8">
@@ -849,7 +921,7 @@ export default function ArtistOnboardingPage() {
                   onClick={() => setCurrentStep(5)}
                   className="px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-semibold rounded-full hover:from-orange-600 hover:to-orange-700 transition-all flex items-center gap-2"
                 >
-                  {selectedEquipment.length > 0 ? `Continuar (${selectedEquipment.length} seleccionados)` : 'Continuar'}
+                  {(selectedEquipment.length > 0 || customEquipment.trim()) ? `Continuar (${selectedEquipment.length + (customEquipment.trim() ? 1 : 0)} seleccionados)` : 'Continuar'}
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
@@ -952,6 +1024,22 @@ export default function ArtistOnboardingPage() {
                   </div>
                   <input type="text" placeholder="Link de Portafolio (Behance, Dribbble, etc.)" value={portfolioUrl} onChange={(e) => setPortfolioUrl(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 outline-none" />
                 </div>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                    <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                    </svg>
+                  </div>
+                  <input type="text" placeholder="URL de Spotify (perfil de artista)" value={spotifyUrl} onChange={(e) => setSpotifyUrl(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 outline-none" />
+                </div>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                    <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                  </div>
+                  <input type="text" placeholder="URL de YouTube (canal)" value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 outline-none" />
+                </div>
                 {extraLinks.map((link, index) => (
                   <input key={index} type="text" placeholder="Enlace adicional (Spotify, SoundCloud, etc.)" value={link} onChange={(e) => handleExtraLinkChange(index, e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 outline-none" />
                 ))}
@@ -1025,6 +1113,20 @@ export default function ArtistOnboardingPage() {
                   </div>
                 </div>
               </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
+                <div className="flex gap-3">
+                  <svg className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z" />
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.077 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.077-2.354-1.253V5z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <h3 className="font-semibold text-blue-900 mb-1 text-sm">Comisión de plataforma</h3>
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      PIUMS cobra <strong>18% de comisión</strong> por cada reserva completada. El precio que ingresas es lo que paga el cliente. Tú recibes el <strong>82%</strong>.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Right side: Form */}
@@ -1092,6 +1194,22 @@ export default function ArtistOnboardingPage() {
                       />
                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">USD</span>
                     </div>
+                    {basePrice && parseFloat(basePrice) > 0 && (
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-green-700">Precio para el cliente</span>
+                          <span className="text-sm font-semibold text-green-800">${parseFloat(basePrice).toFixed(2)} USD</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-xs text-green-700">Comisión PIUMS (18%)</span>
+                          <span className="text-sm font-medium text-red-500">- ${(parseFloat(basePrice) * 0.18).toFixed(2)} USD</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1 pt-1 border-t border-green-200">
+                          <span className="text-xs font-semibold text-green-800">Tú recibes</span>
+                          <span className="text-sm font-bold text-green-700">${(parseFloat(basePrice) * 0.82).toFixed(2)} USD</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -1204,42 +1322,68 @@ export default function ArtistOnboardingPage() {
               </div>
 
               {/* Min / Max rate */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">Tarifa mínima (por hora)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">{currency}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      placeholder="0"
-                      value={hourlyRateMin || ''}
-                      onChange={e => setHourlyRateMin(Number(e.target.value))}
-                      className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 text-gray-900 placeholder-gray-500 outline-none"
-                    />
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-1">¿Cuánto cobras por tus servicios?</label>
+                <p className="text-xs text-gray-500 mb-3">Este rango aparece en tu perfil público para que los clientes sepan qué esperar antes de contactarte.</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-2">Precio mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">{currency}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0"
+                        value={hourlyRateMin || ''}
+                        onChange={e => setHourlyRateMin(Number(e.target.value))}
+                        className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 text-gray-900 placeholder-gray-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-2">Precio máximo</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">{currency}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0"
+                        value={hourlyRateMax || ''}
+                        onChange={e => setHourlyRateMax(Number(e.target.value))}
+                        className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 text-gray-900 placeholder-gray-500 outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">Tarifa máxima (por hora)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">{currency}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      placeholder="0"
-                      value={hourlyRateMax || ''}
-                      onChange={e => setHourlyRateMax(Number(e.target.value))}
-                      className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 text-gray-900 placeholder-gray-500 outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
 
-              {hourlyRateMin > 0 && hourlyRateMax > 0 && hourlyRateMin > hourlyRateMax && (
-                <p className="text-xs text-red-500 -mt-2">La tarifa mínima no puede ser mayor que la máxima</p>
-              )}
+                {hourlyRateMin > 0 && hourlyRateMax > 0 && hourlyRateMin > hourlyRateMax && (
+                  <p className="text-xs text-red-500 mt-2">El precio mínimo no puede ser mayor que el máximo</p>
+                )}
+
+                {/* Live preview */}
+                {(hourlyRateMin > 0 || hourlyRateMax > 0) && (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Así aparece en tu perfil</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-sm shrink-0">
+                        {(selectedDisciplines[0] ?? 'A').charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">Tu nombre de artista</p>
+                        <p className="text-xs text-gray-500">
+                          {hourlyRateMin > 0 && hourlyRateMax > 0
+                            ? `Desde $${hourlyRateMin} – $${hourlyRateMax} USD`
+                            : hourlyRateMin > 0
+                            ? `Desde $${hourlyRateMin} USD`
+                            : `Hasta $${hourlyRateMax} USD`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Coverage radius */}
               <div>
@@ -1379,25 +1523,39 @@ export default function ArtistOnboardingPage() {
                   {/* Time selects */}
                   {item.active ? (
                     <div className="flex items-center gap-2 flex-1">
-                      <select
-                        value={item.startTime}
-                        onChange={e => setWeeklyAvailability(prev => prev.map((d, i) => i === idx ? { ...d, startTime: e.target.value } : d))}
-                        className="flex-1 px-2 py-1.5 text-sm border border-orange-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400"
-                      >
-                        {['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'].map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                      <span className="text-gray-400 text-xs">a</span>
-                      <select
-                        value={item.endTime}
-                        onChange={e => setWeeklyAvailability(prev => prev.map((d, i) => i === idx ? { ...d, endTime: e.target.value } : d))}
-                        className="flex-1 px-2 py-1.5 text-sm border border-orange-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400"
-                      >
-                        {['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'].map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-orange-500 font-medium mb-0.5">Desde</p>
+                        <select
+                          value={item.startTime}
+                          onChange={e => { const v = e.target.value; setWeeklyAvailability(prev => prev.map((d, i) => i === idx ? { ...d, startTime: v } : d)); }}
+                          className="w-full px-2 py-1.5 text-sm text-gray-900 border border-orange-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400"
+                        >
+                          {Array.from({ length: 48 }, (_, i) => {
+                            const h = Math.floor(i / 2).toString().padStart(2, '0');
+                            const m = i % 2 === 0 ? '00' : '30';
+                            return `${h}:${m}`;
+                          }).map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <span className="text-gray-300 text-lg mt-4">—</span>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-orange-500 font-medium mb-0.5">Hasta</p>
+                        <select
+                          value={item.endTime}
+                          onChange={e => { const v = e.target.value; setWeeklyAvailability(prev => prev.map((d, i) => i === idx ? { ...d, endTime: v } : d)); }}
+                          className="w-full px-2 py-1.5 text-sm text-gray-900 border border-orange-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400"
+                        >
+                          {Array.from({ length: 48 }, (_, i) => {
+                            const h = Math.floor(i / 2).toString().padStart(2, '0');
+                            const m = i % 2 === 0 ? '00' : '30';
+                            return `${h}:${m}`;
+                          }).map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   ) : (
                     <span className="text-sm text-gray-400 flex-1">No disponible</span>

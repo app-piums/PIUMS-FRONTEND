@@ -117,7 +117,6 @@ export class ChatGateway {
       }
 
       socket.userId = user.id;
-      socket.email = user.email;
       socket.role = user.role;
       next();
     });

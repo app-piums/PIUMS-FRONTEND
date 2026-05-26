@@ -88,8 +88,11 @@ router.get("/internal/sessions/:jti", async (req, res) => {
   }
   try {
     const { jti } = req.params;
-    const session = await prisma.session.findFirst({ where: { jti, status: 'ACTIVE' } });
-    return res.json({ active: !!session });
+    const session = await prisma.session.findFirst({ where: { jti } });
+    // Fail-open when no session record exists (pre-session-tracking tokens).
+    // Only deny when a session EXISTS and is explicitly not ACTIVE.
+    const active = !session || session.status === 'ACTIVE';
+    return res.json({ active });
   } catch {
     return res.status(500).json({ error: 'Internal error' });
   }

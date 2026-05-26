@@ -34,6 +34,7 @@ WORKDIR /app/apps/web-artist/web/.next/standalone
 # Copiar archivos estáticos necesarios para standalone
 RUN cp -r ../static ./apps/web-artist/web/.next/static
 RUN cp -r ../../public ./apps/web-artist/web/public
+RUN mkdir -p ./apps/web-artist/web/.next/cache && chown -R node:node .
 
 # Exponer puerto
 EXPOSE 3001

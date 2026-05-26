@@ -1000,7 +1000,7 @@ Un pool nuevo se abre cada 24h. `$disconnect()` solo se llama si no hay excepci�
 | PII-H1 | **Alto** | Privacidad | Emails de usuarios loggeados a INFO en múltiples servicios | **Resuelto** — email reemplazado por userId en logs de auth.controller, gateway/routes y gateway/middleware |
 | PII-H2 | **Alto** | Privacidad | Emails en console.log en booking-service notifications | **Resuelto** — todos los `console.log/error` en `notifications.ts` reemplazados por `logger.info/error` sin email |
 | PII-H3 | **Alto** | Privacidad | changePassword no invalida sesiones existentes | **Resuelto** — `changePassword` en password.service.ts revoca todas las sesiones y refresh tokens activos |
-| PII-H4 | **Alto** | Privacidad | /auth/verify devuelve KYC URLs sin chequeo de revocación | **Resuelto** — campos KYC eliminados de la respuesta de `verify`; añadido chequeo JTI en sesiones |
+| PII-H4 | **Alto** | Privacidad | /auth/verify devuelve KYC URLs sin chequeo de revocación | **Resuelto** — campos KYC eliminados de la respuesta de `verify`; chequeo JTI fail-open (permite paso si no existe registro, deniega solo si sesión está REVOKED/EXPIRED) |
 | PII-H5 | **Alto** | Privacidad | Admin delete no elimina documentos Cloudinary ni anonimiza historial | **Resuelto** — users-service internal delete limpia avatar+coverPhoto; endpoint `/internal/cloudinary-purge` añadido; admin delete llama purge con KYC URLs; audit logs anonimizados (userId→null) antes del hard delete |
 | API-H1 | **Alto** | API/Auth | changeStatus sin state machine — transiciones a estados terminales | **Resuelto** — `ALLOWED_TRANSITIONS` map en `changeStatus` de booking.service.ts |
 | API-H2 | **Alto** | API/Auth | getBookingStats leak — single-param queries bypass authorization | **Resuelto** — chequeos independientes por parámetro; bypass para admin |
@@ -1022,11 +1022,11 @@ Un pool nuevo se abre cada 24h. `$disconnect()` solo se llama si no hay excepci�
 | FIN-M3 | Medio | Financiero | No-show credit emitido aunque paidAmount = 0 | **Resuelto** — `if (booking.paidAmount > 0)` guard añadido antes de `createCredit` |
 | FIN-M4 | Medio | Financiero | transfer/paypal no notifica al backend — booking queda en PENDING | Pendiente — requiere trabajo de feature (notificación manual pendiente admin) |
 | PII-M1 | Medio | Privacidad | savedCardToken de Tilopay en texto plano | **Resuelto** — AES-256-GCM implementado en `utils/token-encrypt.ts`; encripta al guardar, desencripta al leer. Requiere `PAYMENT_TOKEN_KEY` (64 hex chars) en producción |
-| PII-M2 | Medio | Privacidad | Email en claims del JWT (PII en token base64) | Pendiente — requiere refactor amplio (email usado en rotación de tokens y muchos callers) |
+| PII-M2 | Medio | Privacidad | Email en claims del JWT (PII en token base64) | **Resuelto** — `email` eliminado de `AccessTokenPayload` y de todos los `signAccessToken` calls; eliminado de los 10 auth middlewares (servicios + gateway); rutas OAuth de callback llaman `/api/auth/me` para obtener email desde DB; `userEmail` removido del payment controller (fallback a `noreply@piums.io`); ticket purchase obtiene email desde users-service internamente |
 | PII-M3 | Medio | Privacidad | Error body de Tilopay loggeado — puede incluir credenciales | **Resuelto** — eliminado `body` del log de error en tilopay-token-cache.ts; solo se logea `status` |
 | PII-M4 | Medio | Privacidad | getMe devuelve URLs públicas permanentes de documentos KYC | **Mitigado** — nuevas subidas usan `type: 'authenticated'` en Cloudinary; `getSignedDocumentUrl()` genera URLs firmadas con expiración de 1h; endpoint `/users/internal/cloudinary-sign` disponible. Documentos existentes requieren migración Cloudinary (deferred) |
 | PII-M5 | Medio | Privacidad | Soft-delete en users-service sin purge job | **Resuelto** — `purge.service.ts` en users-service: anonimiza usuarios con `deletedAt > 90 días` (email→`deleted_id@purged.invalid`, PII→null, Cloudinary limpiado). Corre diario vía `setInterval` y una vez al startup |
-| PII-M6 | Medio | Privacidad | Ningún middleware verifica revocación de sesiones por JTI | **Resuelto (parcial)** — `GET /auth/internal/sessions/:jti` en auth-service; `jtiVerifier.ts` con cache 60s en booking-service y payments-service; `requireActiveSession` aplicado a rutas sensibles (POST /bookings, PATCH /bookings/:id/status, POST ticket-purchase, POST /checkout, POST /ticket-checkout, POST /payouts). Fail-open si auth-service no responde. |
+| PII-M6 | Medio | Privacidad | Ningún middleware verifica revocación de sesiones por JTI | **Resuelto (parcial)** — `GET /auth/internal/sessions/:jti` en auth-service; `jtiVerifier.ts` con cache 60s en booking-service y payments-service; `requireActiveSession` aplicado a rutas sensibles (POST /bookings, PATCH /bookings/:id/status, POST ticket-purchase, POST /checkout, POST /ticket-checkout, POST /payouts). Fail-open si auth-service no responde o si no existe registro de sesión (compatibilidad con tokens emitidos antes del deploy). Solo deniega si la sesión existe con status REVOKED/EXPIRED. |
 | API-M1 | Medio | API/Auth | updateAddon pasa data sin validar a Prisma | **Resuelto** — `addonSchema.parse(req.body)` aplicado en `updateAddon` del catalog controller |
 | API-M2 | Medio | API/Auth | sortBy de query sin validar en Prisma orderBy | **Resuelto** — allowlist `SORTABLE_FIELDS` validada en `getBookings` de booking.service.ts |
 | API-M3 | Medio | API/Auth | reportNoShow sin período de gracia | **Resuelto** — 30 minutos de gracia: `scheduledDate + 30min > now` lanza AppError |
@@ -1115,14 +1115,14 @@ Todos los items accionables fueron resueltos el 2026-05-26.
 | ID | Estado |
 |---|---|
 | API-M4 | **Resuelto** — ver tracker arriba |
-| PII-M6 | **Resuelto (parcial)** — rutas sensibles cubiertos; otros servicios (catalog, artists, reviews, users) aún hacen verificación local sin JTI check |
+| PII-M6 | **Resuelto (parcial)** — rutas sensibles cubiertos; chequeo JTI fail-open para compatibilidad con tokens pre-deploy; otros servicios (catalog, artists, reviews, users) aún hacen verificación local sin JTI check |
 | OPS-M1 | **Resuelto** — ver tracker arriba |
 
 ### Requieren infra o refactor mayor
 
 | ID | Descripción | Bloqueante |
 |---|---|---|
-| PII-M2 | Email en claims del JWT (PII en token base64) | Requiere remover `email` de `signAccessToken` y actualizar todos los callers: chat-service, artists-service, booking-service, ticket-event |
+| ~~PII-M2~~ | ~~Email en claims del JWT~~ | **Resuelto** 2026-05-26 |
 | INF-M2 | K8s Secrets sin cifrado en reposo | `EncryptionConfiguration` en etcd — cambio de infra del cluster |
 | INF-M3 | Tags `:latest` en producción (`imagePullPolicy: Always` ya aplicado) | Pipeline CI/CD que substituya tag por SHA en cada deploy |
 | FIN-M4 | Pagos por transfer/paypal no notifican al backend | Feature de confirmación manual por admin |

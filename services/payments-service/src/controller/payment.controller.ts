@@ -73,7 +73,6 @@ export class PaymentController {
       const result = await paymentService.initCheckout({
         bookingId,
         userId,
-        userEmail: req.user!.email,
         currency: currency || 'USD',
         countryCode,
         description,
@@ -104,7 +103,6 @@ export class PaymentController {
       const result = await paymentService.initTicketCheckout({
         purchaseId,
         userId,
-        userEmail: req.user!.email,
         amount,
         currency: currency || 'USD',
         countryCode,

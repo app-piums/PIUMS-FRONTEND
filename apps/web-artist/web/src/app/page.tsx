@@ -39,7 +39,7 @@ const STEPS = [
 
 const PERKS = [
   "Sé tu propio jefe",
-  "18% de comisión, sin cuota mensual",
+  "Sin cuota mensual",
   "Tu precio, tus reglas",
   "Sin exclusividad",
 ];
@@ -123,7 +123,7 @@ export default async function Home() {
                 </span>
               </>
             }
-            subtitle="Gestiona reservas, cobra en USD y crece tu negocio creativo en Guatemala. 18% de comisión, sin cuota mensual."
+            subtitle="Gestiona reservas, cobra en USD y crece tu negocio creativo en Guatemala. Sin cuota mensual."
             ctaPrimary={{ label: "Crear mi perfil gratis", href: "/register/artist" }}
             ctaSecondary={{ label: "Ya tengo cuenta", href: "/login" }}
             perks={PERKS}
@@ -407,21 +407,23 @@ export default async function Home() {
                 style={{ background: "radial-gradient(ellipse at 0% 50%, rgba(255,107,53,0.06) 0%, transparent 60%)" }}
               />
               <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between">
-                <div>
-                  <p className="text-xs mb-2 uppercase" style={{ color: "rgba(255,107,53,0.7)", letterSpacing: "0.08em" }}>
+                <div className="flex-1">
+                  <p className="text-xs mb-3 uppercase font-semibold" style={{ color: "rgba(255,107,53,0.7)", letterSpacing: "0.10em" }}>
                     Potencial de ingresos
                   </p>
-                  <p className="text-base" style={{ color: "rgba(255,255,255,0.55)" }}>
-                    Si cobras{" "}
-                    <span className="font-semibold" style={{ color: "#fafafa" }}>$200 por servicio</span>
-                    {" "}y recibes{" "}
-                    <span className="font-semibold" style={{ color: "#fafafa" }}>5 reservas al mes</span>
+                  <p className="text-base leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+                    Con tan solo{" "}
+                    <span className="font-semibold" style={{ color: "#fafafa" }}>5 servicios al mes</span>
+                    {" "}puedes llegar a ganar hasta
+                  </p>
+                  <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.28)" }}>
+                    * Aplican condiciones. Los resultados pueden variar.
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-4xl font-bold tracking-tight" style={{ color: "#FF6B35" }}>$1,000</p>
-                  <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>USD / mes</p>
-                  <p className="text-xs mt-2 font-medium" style={{ color: "rgba(255,107,53,0.55)" }}>
+                  <p className="text-5xl font-bold tracking-tight" style={{ color: "#FF6B35" }}>$820</p>
+                  <p className="text-sm mt-1 font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>USD al mes*</p>
+                  <p className="text-xs mt-2 font-semibold" style={{ color: "rgba(255,107,53,0.6)" }}>
                     3× el salario promedio en Guatemala
                   </p>
                 </div>

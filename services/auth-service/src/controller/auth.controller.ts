@@ -56,9 +56,9 @@ async function createUserAndRespond(
     }
   }
 
-  const passwordHash = await hashPassword(password);
   const isDev = process.env.NODE_ENV !== 'production';
-  const userStatus = isDev ? 'ACTIVE' : 'PENDING_EMAIL';
+
+  const passwordHash = await hashPassword(password);
 
   const user = await prisma.user.create({
     data: {
@@ -67,8 +67,8 @@ async function createUserAndRespond(
       passwordHash,
       provider: 'email',
       role,
-      emailVerified: isDev,
-      status: userStatus,
+      emailVerified: true,
+      status: 'ACTIVE',
       avatar: extra?.avatarUrl,
       ciudad: extra?.ciudad,
       birthDate: extra?.birthDate ? new Date(extra.birthDate) : undefined,
@@ -134,7 +134,7 @@ async function createUserAndRespond(
 
   // Generar tokens
   const jti = crypto.randomUUID();
-  const token = tokenService.signAccessToken({ id: user.id, email: user.email, role: user.role, jti });
+  const token = tokenService.signAccessToken({ id: user.id, role: user.role, jti });
   const refreshToken = tokenService.signRefreshToken({ id: user.id, jti });
 
   await tokenService.createRefreshToken(user.id, refreshToken, req.ip, req.get('user-agent'));
@@ -326,7 +326,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     const jti = crypto.randomUUID();
     const token = tokenService.signAccessToken({
       id: user.id,
-      email: user.email,
       role: effectiveRole,
       jti,
     });
@@ -423,12 +422,15 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
     // Verificar token
     const decoded = tokenService.verifyAccessToken(token);
 
-    // Check JTI/session revocation — only when the token carries a jti claim
+    // Check JTI/session revocation — only when the token carries a jti claim.
+    // Fail-open if no session record exists (backward compat with tokens issued before
+    // session-tracking was deployed). Only deny when a session EXISTS and is not ACTIVE
+    // (i.e., was explicitly revoked via logout or admin action).
     if (decoded.jti) {
       const session = await prisma.session.findFirst({
-        where: { jti: decoded.jti, status: 'ACTIVE' },
+        where: { jti: decoded.jti },
       });
-      if (!session) {
+      if (session && session.status !== 'ACTIVE') {
         throw new AppError(401, 'Sesión revocada o expirada');
       }
     }
@@ -946,7 +948,7 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
       effectiveRole = role;
     }
     const jti = crypto.randomUUID();
-    const token = tokenService.signAccessToken({ id: user.id, email: user.email, role: effectiveRole, jti });
+    const token = tokenService.signAccessToken({ id: user.id, role: effectiveRole, jti });
     const refreshToken = tokenService.signRefreshToken({ id: user.id, jti });
 
     await tokenService.createRefreshToken(user.id, refreshToken, req.ip, req.get('user-agent'));

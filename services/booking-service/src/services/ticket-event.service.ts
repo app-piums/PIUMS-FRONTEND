@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { generateTicketEventCode, generateTicketPurchaseCode } from './ticket-code.service';
 import { paymentsClient } from '../clients/payments.client';
+import { usersClient } from '../clients/users.client';
 
 const prisma = new PrismaClient();
 
@@ -161,8 +162,8 @@ export const ticketEventService = {
     eventId: string;
     tierId: string;
     buyerId: string;
-    buyerEmail: string;
-    buyerName: string;
+    buyerEmail?: string;
+    buyerName?: string;
     quantity: number;
     couponCode?: string;
     returnUrl?: string;
@@ -176,6 +177,10 @@ export const ticketEventService = {
     if (tier.ticketEvent.status !== 'PUBLICADO') throw Object.assign(new Error('El evento no esta disponible'), { statusCode: 400 });
     if (data.quantity < 1) throw Object.assign(new Error('La cantidad debe ser al menos 1'), { statusCode: 400 });
     if (data.quantity > tier.maxPerOrder) throw Object.assign(new Error(`Solo se pueden comprar hasta ${tier.maxPerOrder} boletos por orden`), { statusCode: 400 });
+
+    const buyerInfo = await usersClient.getUser(data.buyerId);
+    const resolvedEmail = buyerInfo?.email || data.buyerEmail || 'unknown@piums.io';
+    const resolvedName = buyerInfo?.nombre || buyerInfo?.fullName || data.buyerName || resolvedEmail;
 
     const subtotalCents = tier.priceCents * data.quantity;
     let discountCents = 0;
@@ -201,8 +206,8 @@ export const ticketEventService = {
           ticketEventId: data.eventId,
           tierId: data.tierId,
           buyerId: data.buyerId,
-          buyerEmail: data.buyerEmail,
-          buyerName: data.buyerName,
+          buyerEmail: resolvedEmail,
+          buyerName: resolvedName,
           quantity: data.quantity,
           subtotalCents,
           discountCents: 0,
@@ -250,7 +255,7 @@ export const ticketEventService = {
     const checkoutResult = await paymentsClient.initTicketCheckout({
       purchaseId: purchase.id,
       userId: data.buyerId,
-      userEmail: data.buyerEmail,
+      userEmail: resolvedEmail,
       amount: totalCents,
       currency: tier.currency,
       returnUrl: data.returnUrl,

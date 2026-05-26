@@ -4,7 +4,6 @@ import { AppError } from './errorHandler';
 
 interface JWTPayload {
   userId: string;
-  email: string;
   role?: string;
 }
 

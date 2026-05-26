@@ -11,7 +11,6 @@ interface RefreshTokenPayload {
 
 interface AccessTokenPayload {
   id: string;
-  email: string;
   jti: string;
   role?: string;
 }
@@ -214,7 +213,7 @@ export class TokenService {
       // Obtener usuario para generar nuevo access token
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, role: true },
+        select: { id: true, role: true },
       });
 
       if (!user) {
@@ -225,7 +224,6 @@ export class TokenService {
       const jti = crypto.randomUUID();
       const newAccessToken = this.signAccessToken({
         id: user.id,
-        email: user.email,
         role: user.role,
         jti,
       });

@@ -76,7 +76,11 @@ export async function POST(request: NextRequest) {
         const profileRes = await fetch(`${ARTISTS_SERVICE_URL}/artists/dashboard/me`, {
           headers: { Authorization: `Bearer ${data.token}` },
         });
-        hasProfile = profileRes.ok;
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          // Only consider onboarding complete if the artist has filled in essential fields
+          hasProfile = !!(profileData?.artist?.artistName && profileData?.artist?.hourlyRateMin);
+        }
       } catch { /* si falla el check, forzar onboarding por seguridad */ }
 
       responseWithCookies.cookies.set('onboarding_completed', hasProfile ? 'true' : 'false', {

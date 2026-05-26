@@ -49,22 +49,22 @@ export async function POST(request: NextRequest) {
     });
     let data = await res.json().catch(() => ({}));
 
-    // If the artist already exists (bootstrap stub from Google signup), update instead.
-    if (res.status === 409) {
+    // 409 = already exists (bootstrap stub); 429 = rate-limited — both cases: update existing profile.
+    if (res.status === 409 || res.status === 429) {
       const meRes = await fetch(`${ARTISTS_SERVICE_URL}/artists/dashboard/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (meRes.ok) {
-        const meData = await meRes.json().catch(() => ({}));
-        const artistId = meData?.artist?.id ?? meData?.id;
-        if (artistId) {
-          res = await fetch(`${ARTISTS_SERVICE_URL}/artists/${artistId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify(payload),
-          });
-          data = await res.json().catch(() => ({}));
-        }
+      const meData = await meRes.json().catch(() => ({}));
+      const artistId = meData?.artist?.id ?? meData?.id;
+      if (artistId) {
+        res = await fetch(`${ARTISTS_SERVICE_URL}/artists/${artistId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        data = await res.json().catch(() => ({}));
+      } else {
+        return NextResponse.json({ message: 'No se pudo obtener el perfil existente' }, { status: 503 });
       }
     }
 

@@ -69,7 +69,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 }) => {
   // Calcular valores con fallbacks
   const displayProfileViews = profileViews || (bookingsThisMonth * 45);
-  const pendingPayouts = Math.round(totalRevenue * 0.15);
+  const pendingPayouts = Math.round(totalRevenue * 0.18);
   const ratingDisplay = Number.isFinite(averageRating) ? `${averageRating.toFixed(1)}/5` : 'N/D';
   const reviewsHelper = totalReviews > 0 ? `${totalReviews} reseñas recibidas` : 'Sin reseñas aún';
   const bookingsHelper = `${pendingBookings} pendientes · ${confirmedBookings} confirmadas`;

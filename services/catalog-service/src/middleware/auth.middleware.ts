@@ -12,7 +12,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
   };
 }
 
@@ -35,7 +34,6 @@ export const authenticateToken = (
 
     const decoded = jwt.verify(token, JWT_SECRET) as {
       id: string;
-      email: string;
     };
 
     req.user = decoded;

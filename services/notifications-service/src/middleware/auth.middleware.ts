@@ -4,7 +4,6 @@ import { AppError } from './errorHandler';
 
 interface JwtPayload {
   id: string;
-  email: string;
 }
 
 declare global {

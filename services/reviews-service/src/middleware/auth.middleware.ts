@@ -11,7 +11,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production
 
 interface JwtPayload {
   id: string;
-  email: string;
   role: string;
 }
 

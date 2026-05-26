@@ -37,8 +37,9 @@ export default function OAuthCallbackPage() {
           sessionStorage.setItem('auth_provider', provider);
         }
 
-        // Decode JWT to get user info (basic decode without verification - verification happens on backend)
         try {
+          document.cookie = `auth_token=${token}; path=/; SameSite=strict; max-age=86400`;
+
           const base64Url = token.split('.')[1];
           const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
           const jsonPayload = decodeURIComponent(
@@ -49,22 +50,31 @@ export default function OAuthCallbackPage() {
           );
           const decoded = JSON.parse(jsonPayload);
 
-          // Update auth context with user info
-          const user = {
-            id: decoded.id,
-            email: decoded.email,
-            name: decoded.name || null,
-            nombre: decoded.name || decoded.nombre || decoded.email?.split('@')[0] || '',
-            role: decoded.role || 'user',
-          };
+          try {
+            const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              login({ ...meData.user, token });
+            } else {
+              login({
+                id: decoded.id,
+                email: '',
+                nombre: decoded.name || decoded.nombre || '',
+                role: decoded.role || 'user',
+              });
+            }
+          } catch {
+            login({
+              id: decoded.id,
+              email: '',
+              nombre: decoded.name || decoded.nombre || '',
+              role: decoded.role || 'user',
+            });
+          }
 
-          login(user);
-
-          // Redirect to home or dashboard
           router.push('/');
         } catch (decodeError) {
           console.error('Error decoding token:', decodeError);
-          // Even if decode fails, token is saved, redirect to home
           router.push('/');
         }
       } catch (err) {

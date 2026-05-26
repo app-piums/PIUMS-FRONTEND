@@ -14,7 +14,6 @@ const prisma = new PrismaClient();
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     role?: string;
   };
 }
@@ -38,7 +37,6 @@ export const authenticateToken = (
 
     const decoded = jwt.verify(token, JWT_SECRET) as {
       id: string;
-      email: string;
       role?: string;
     };
 

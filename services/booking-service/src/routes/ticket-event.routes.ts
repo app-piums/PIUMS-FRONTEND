@@ -77,8 +77,6 @@ router.post('/ticket-events/:id/purchase', authenticateToken, requireActiveSessi
       eventId: req.params['id'] as string,
       tierId,
       buyerId: user.id,
-      buyerEmail: user.email,
-      buyerName: user.name || user.email,
       quantity,
       couponCode,
       returnUrl,
