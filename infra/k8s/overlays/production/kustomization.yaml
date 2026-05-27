@@ -3,7 +3,7 @@ kind: Kustomization
 
 namespace: piums
 
-bases:
+resources:
   - ../../base
 
 commonLabels:

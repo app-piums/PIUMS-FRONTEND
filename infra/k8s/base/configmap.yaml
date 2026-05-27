@@ -34,6 +34,13 @@ data:
 
   # Frontend URLs
   FRONTEND_URL: "https://client.piums.io"
+  CLIENT_APP_URL: "https://client.piums.io"
+  ARTIST_APP_URL: "https://artist.piums.io"
+  ADMIN_APP_URL: "https://admin.piums.io"
+  ENABLE_EMAIL: "true"
+
+  # Google Calendar OAuth callback
+  GOOGLE_CALENDAR_CALLBACK_URL: "https://backend.piums.io/api/auth/google-calendar/callback"
 
   # Email
   EMAIL_FROM_NAME: "Piums"

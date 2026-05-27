@@ -14,6 +14,9 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 if (!STRIPE_SECRET_KEY) {
   logger.warn("STRIPE_SECRET_KEY no configurada", "STRIPE_PROVIDER");
 }
+if (!STRIPE_WEBHOOK_SECRET) {
+  logger.warn("STRIPE_WEBHOOK_SECRET no configurada — los webhooks de Stripe serán rechazados", "STRIPE_PROVIDER");
+}
 
 export const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2025-02-24.acacia",

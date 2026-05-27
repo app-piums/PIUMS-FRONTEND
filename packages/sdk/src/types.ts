@@ -101,6 +101,12 @@ export interface Service {
   basePrice: number;
   duration: number;
   isActive: boolean;
+  isMainService?: boolean;
+  isOnSale?: boolean;
+  currency?: string;
+  whatIsIncluded?: string[];
+  pricingType?: string;
+  status?: string;
   createdAt: string;
 }
 
@@ -110,10 +116,21 @@ export interface Booking {
   code: string;
   userId: string;
   artistId: string;
+  serviceId?: string;
   status: BookingStatus;
+  paymentStatus?: string;
   scheduledAt: string;
+  scheduledDate?: string;
+  durationMinutes?: number;
+  location?: string;
+  clientNotes?: string;
   totalAmount: number;
+  totalPrice?: number;
+  servicePrice?: number;
+  addonsPrice?: number;
   currency: string;
+  anticipoRequired?: boolean;
+  anticipoAmount?: number;
   quoteSnapshot?: any;
   createdAt: string;
 }
@@ -121,9 +138,17 @@ export interface Booking {
 export enum BookingStatus {
   PENDING = 'PENDING',
   CONFIRMED = 'CONFIRMED',
+  PAYMENT_PENDING = 'PAYMENT_PENDING',
+  PAYMENT_COMPLETED = 'PAYMENT_COMPLETED',
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
+  DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
+  CANCELLED_CLIENT = 'CANCELLED_CLIENT',
+  CANCELLED_ARTIST = 'CANCELLED_ARTIST',
+  REJECTED = 'REJECTED',
+  NO_SHOW = 'NO_SHOW',
+  RESCHEDULED = 'RESCHEDULED',
 }
 
 export interface CreateBookingRequest {

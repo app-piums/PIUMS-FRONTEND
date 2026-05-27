@@ -279,28 +279,41 @@ END:VCALENDAR`;
           </div>
         )}
 
-        {/* Success Header */}
-        <Card className="mb-6">
-          <CardContent className="text-center py-8">
-            <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              ¡Reserva Confirmada!
-            </h1>
-            <p className="text-gray-600 mb-4">
-              Tu reserva ha sido creada exitosamente. Hemos enviado los detalles a tu correo.
-            </p>
-            {booking.code && (
-              <div className="inline-block bg-gray-100 px-6 py-3 rounded-lg">
-                <p className="text-sm text-gray-600 mb-1">Código de Reserva</p>
-                <p className="text-2xl font-bold text-gray-900 font-mono">{booking.code}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Status Header */}
+        {(() => {
+          const isPending = (booking as any).paymentStatus === 'PAYMENT_PENDING' || (booking as any).paymentStatus === 'PENDING';
+          return (
+            <Card className="mb-6">
+              <CardContent className="text-center py-8">
+                <div className={`h-16 w-16 ${isPending ? 'bg-yellow-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  {isPending ? (
+                    <svg className="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  {isPending ? 'Reserva Creada — Pago Pendiente' : '¡Reserva Confirmada!'}
+                </h1>
+                <p className="text-gray-600 mb-4">
+                  {isPending
+                    ? 'Tu reserva fue registrada. Completa el pago con los datos que te enviamos al correo para confirmarla.'
+                    : 'Tu reserva ha sido creada exitosamente. Hemos enviado los detalles a tu correo.'}
+                </p>
+                {booking.code && (
+                  <div className="inline-block bg-gray-100 px-6 py-3 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Código de Reserva</p>
+                    <p className="text-2xl font-bold text-gray-900 font-mono">{booking.code}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
           {/* Booking Details */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
