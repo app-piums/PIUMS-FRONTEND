@@ -499,11 +499,12 @@ export default function ArtistBookingsPage() {
                                 e.stopPropagation();
                                 // requestId comes from rescheduleRequests — fetch inline
                                 fetch(`/api/bookings/${booking.id}/reschedule-requests`)
-                                  .then(r => r.json())
+                                  .then(r => r.ok ? r.json() : Promise.reject(r.status))
                                   .then(d => {
                                     const pending = (d.requests || []).find((r: any) => r.status === 'PENDING_ARTIST');
                                     if (pending) void handleRespondReschedule(pending.id, true, booking.id);
-                                  });
+                                  })
+                                  .catch(() => toast.error('Error al obtener la solicitud'));
                               }}
                               disabled={processingBookingId === booking.id}
                               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 active:scale-95 transition-all disabled:bg-gray-300 disabled:cursor-not-allowed"
@@ -518,11 +519,12 @@ export default function ArtistBookingsPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 fetch(`/api/bookings/${booking.id}/reschedule-requests`)
-                                  .then(r => r.json())
+                                  .then(r => r.ok ? r.json() : Promise.reject(r.status))
                                   .then(d => {
                                     const pending = (d.requests || []).find((r: any) => r.status === 'PENDING_ARTIST');
                                     if (pending) void handleRespondReschedule(pending.id, false, booking.id);
-                                  });
+                                  })
+                                  .catch(() => toast.error('Error al obtener la solicitud'));
                               }}
                               disabled={processingBookingId === booking.id}
                               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border-2 border-red-500 hover:bg-red-50 active:scale-95 transition-all disabled:opacity-50"

@@ -84,7 +84,7 @@ export default function ArtistSettingsPage() {
   const [calendarLoading, setCalendarLoading] = useState(false);
 
   useEffect(() => {
-    sdk.getCalendarStatus().then(({ enabled }) => setCalendarEnabled(enabled));
+    sdk.getCalendarStatus().then(({ enabled }) => setCalendarEnabled(enabled)).catch(() => {});
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendarConnected') === 'true') {

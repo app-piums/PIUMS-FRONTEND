@@ -283,6 +283,34 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
+  // Reschedule: email confirmation link (PÚBLICO — sin auth, viene del correo)
+  // ============================================================================
+  app.use(
+    "/api/reschedule-requests/confirm",
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/reschedule-requests/confirm" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
+  // Reschedule: respuestas del artista (PROTEGIDO)
+  // booking-service handles /api/reschedule-requests/*
+  // ============================================================================
+  app.use(
+    "/api/reschedule-requests",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/reschedule-requests" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
   // Disputes (PROTEGIDO) — booking-service handles /api/disputes/*
   // ============================================================================
   app.use(

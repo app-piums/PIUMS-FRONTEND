@@ -525,10 +525,14 @@ export default function PostulacionesPage() {
   };
 
   const handleApplicationRespond = async (appId: string, accept: boolean) => {
-    const { application } = await sdk.respondToApplication(appId, accept);
-    await fetchMyPostings();
-    if (accept && (application as any).chatGroupId) {
-      router.push(`/chat/grupo?groupId=${(application as any).chatGroupId}`);
+    try {
+      const { application } = await sdk.respondToApplication(appId, accept);
+      await fetchMyPostings();
+      if (accept && (application as any).chatGroupId) {
+        router.push(`/chat/grupo?groupId=${(application as any).chatGroupId}`);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al responder la postulación');
     }
   };
 
