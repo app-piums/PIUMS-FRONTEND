@@ -8,7 +8,7 @@ import { Loading } from '@/components/Loading';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
 import {
   BarChart2, CalendarClock, ShieldCheck, ClipboardList,
-  CalendarDays, Music, Wallet, Settings, LucideIcon
+  CalendarDays, Music, Wallet, Settings, Users, Mic2, LucideIcon
 } from 'lucide-react';
 
 const QUICK_STEPS: { Icon: LucideIcon; label: string }[] = [
@@ -20,6 +20,8 @@ const QUICK_STEPS: { Icon: LucideIcon; label: string }[] = [
   { Icon: Music,         label: 'Tus servicios' },
   { Icon: Wallet,        label: 'Billetera e ingresos' },
   { Icon: Settings,      label: 'Configuración' },
+  { Icon: Users,         label: 'Mi Banda' },
+  { Icon: Mic2,          label: 'Audiciones abiertas' },
 ];
 
 export default function ArtistTutorialPage() {
@@ -56,7 +58,7 @@ export default function ArtistTutorialPage() {
 
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Tour para Artistas</h1>
             <p className="text-gray-500 mb-2 leading-relaxed">
-              Tour interactivo de <span className="font-semibold text-gray-700">16 pasos</span> que recorre cada herramienta de gestión artística.
+              Tour interactivo de <span className="font-semibold text-gray-700">18 pasos</span> que recorre cada herramienta de gestión artística.
             </p>
             <p className="text-sm text-gray-400 mb-8">Tiempo estimado: ~2 minutos</p>
 

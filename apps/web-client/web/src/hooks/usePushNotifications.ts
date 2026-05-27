@@ -5,7 +5,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { messaging } from '@/lib/firebase';
 
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-const SW_PATH = '/firebase-messaging-sw.js';
+const SW_PATH = '/sw.js';
 const TOKEN_CACHE_KEY = 'fcm_token';
 
 export type PushPermission = 'default' | 'granted' | 'denied';

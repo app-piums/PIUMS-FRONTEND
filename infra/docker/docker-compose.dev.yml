@@ -266,7 +266,7 @@ services:
       # Email config — Resend (set RESEND_API_KEY to activate)
       ENABLE_EMAIL: "true"
       ENABLE_PUSH: "true"
-      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: '{"type":"service_account","project_id":"piums-artista","private_key_id":"REDACTED_KEY_ID","private_key":"-----BEGIN PRIVATE KEY-----\nPRIVATE_KEY_REDACTED\nRRLLMxyLqJmLBnykvkREGJJeuqoiVHFxrnacUt77p1XSibL8xea+OT7q+ARjPRXI\nMr3PgygZKySl4zvFqACO22/JHp2IYUvpt7ZgEkrGPogj0A5llkZGkR8mXDnOxTpx\nJwR7AHayX/CILcCpA3qHUFOlSezuyl7ZWwnKAI7S/7lclirQlUQFBRbEI6DOzwt9\noNSl7GLI/8Q1WQCwpj5tnyojWcCu14bozyxPXhGaIunVHSJjl762r/SXIjjdK4Dy\nt/psWMR++p2M6k0kw8vqYOSK2ADaW0XQTH/QXn/q9MeCThmAH0w1sz+cqSCZyxVO\nrS128HvdAgMBAAECggEABFzZJrcvJNNNDpocmoUOmNQR4mtTAVilsCYuCSNGOdE/\nUkN8eD00UH3zULhrPwUhtPEXrH956HwHGOwsLF8J3e+Tqo48Wi0JRgLcUZf7mEsr\nCWNH2qjJO41d7hWkGPqpqRuzZGgXO5ftdTh12gHahleRk/YV5AUU+gn2ntIC4d0Z\ngK4QegSNOCDpbDEiXW51dKLIMjVhUg6ThYbEwcYmSQ2gCAi2ZKdbY3CFypCQfzE7\njPPVlzyfwLggt8XuekYuatddCQeWGSnHeV7RM8XhSUyS9Ho1IkkqEx/k+a0DHdPL\nk8z8/4I9XlP/LnQkk/xzT+CrQ4XDKaSPMEZZqZCSQQKBgQDrpyoHChvydgbNDia8\nfBPrij+q1l867fvq4zPvOSO/bE/17YsAnSrc4ovyvfRszwhAGZ0FqJ0Fw/GEelay\nV2l6lUuAYHEZdPVgnnWG8AIAuDxeegotcGKnEZWaRkovzji8bBYQ5WwAEHqiBoqw\nMQ6E53PTnwOUc1UDhljj67BIGQKBgQDeLYJ4S/lCgqu6qYbEqJbKi5MYPsiDR8Gg\nCPnYgdwJsDSNJxLGU56IN/SX4je4RJMT3lMDS+NKlWQKLfmqPd5Mu55Xkzxz3uUS\nM5xw0GAXy4ehZioszH8cARX7+L6/UHRREJteWJeDC6tP4m784QGGa+qcqlKm/pec\nbw0/q82aZQKBgHnjSv+9INt2ZOonSa3wV7VbGrdYjoVClyzVPAWefnkCoxFHPsCg\nio0ZuN1jl0u4gkH1fZxxrFZRFVk6liFEyVAYbKcIOze5oTnKfGvBNKf+o2sSoLUE\nDmLv23uio7i6Z+o91eQDZqtZ2rR3wcCEf0gLF4P8GbPtO6nJEa1COTnxAoGBAMaR\nrBLx6+Pqv6sDysRG3QZHen7n1fOnFUF/5DUB0vQBvOYO7vO8Vmruf7ejYiNZfo36\nXP0MPScyn4eNkZ76zoyL/rfMivIQW3FKGV6mjcuWhzDUC4ugdVZFDi32Ih0AvgSZ\nsBLBYSCpNEIgYQu32dIW70d33okL79rLUe7/ELIVAoGAOsYR1im8d7wKbaMcR65A\nkIKv0DktmJNFMf9hq13IItDE02Pv/jvnozKZuTx+5yks8cCcJKP3kjQdt6Ir7kpS\nAqAu5zUgmyhvVGnKNiVHdOCWM3k1yCMIJSDRKUHdGbMT0KkrOy8Jym0vHD38zZTs\n603wXQvTRMeqToDTZMqpzJQ=\n-----END PRIVATE KEY-----\n","client_email":"firebase-adminsdk-fbsvc@piums-artista.iam.gserviceaccount.com","client_id":"115514379388391443140","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40piums-artista.iam.gserviceaccount.com","universe_domain":"googleapis.com"}'
       RESEND_API_KEY: "RESEND_KEY_REDACTED"
       EMAIL_FROM: noreply@piums.io
       EMAIL_FROM_NAME: Piums
@@ -382,6 +382,7 @@ services:
       dockerfile: apps/web-client/web/Dockerfile
       args:
         GATEWAY_INTERNAL_URL: http://host.docker.internal:80
+        NEXT_PUBLIC_FIREBASE_VAPID_KEY: BC9q3ezyHhjl0G7a7AJU8Az_CH4-tQc4-ENArfGrO5gEer-nSF7RjJYmmCR213XvPnlC9R6gqGnLf3VmkfVjJjU
     container_name: piums-web-client
     ports:
       - "3000:3000"
@@ -411,6 +412,7 @@ services:
       dockerfile: apps/web-artist/web/Dockerfile
       args:
         GATEWAY_INTERNAL_URL: http://host.docker.internal:80
+        NEXT_PUBLIC_FIREBASE_VAPID_KEY: BC9q3ezyHhjl0G7a7AJU8Az_CH4-tQc4-ENArfGrO5gEer-nSF7RjJYmmCR213XvPnlC9R6gqGnLf3VmkfVjJjU
     container_name: piums-web-artist
     ports:
       - "3001:3001"

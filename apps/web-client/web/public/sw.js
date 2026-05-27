@@ -193,26 +193,29 @@ async function syncBookings() {
 
 // Push notifications
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push notification received:', event);
-  
-  const data = event.data?.json() || {};
-  const title = data.title || 'Piums';
+  let payload = {};
+  try {
+    payload = event.data?.json() ?? {};
+  } catch {
+    payload = {};
+  }
+
+  // FCM sends {notification:{title,body}, data:{...}}; direct sends {title,body}
+  const notif = payload.notification ?? payload;
+  const extra = payload.data ?? {};
+  const title = notif.title ?? extra.title ?? 'Piums';
+  const body = notif.body ?? extra.body ?? 'Tienes una nueva notificación';
+
   const options = {
-    body: data.body || 'Tienes una nueva notificación',
+    body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-72x72.png',
-    tag: data.tag || 'default',
-    data: data.url || '/',
+    tag: extra.tag ?? 'piums-push',
+    data: extra.url ?? '/',
     vibrate: [200, 100, 200],
     actions: [
-      {
-        action: 'open',
-        title: 'Ver',
-      },
-      {
-        action: 'close',
-        title: 'Cerrar',
-      },
+      { action: 'open', title: 'Ver' },
+      { action: 'close', title: 'Cerrar' },
     ],
   };
 
