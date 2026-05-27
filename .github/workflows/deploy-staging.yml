@@ -116,7 +116,7 @@ jobs:
     
     environment:
       name: staging
-      url: https://staging.piums.com
+      url: https://staging.piums.io
     
     steps:
       - name: Checkout code
@@ -170,7 +170,7 @@ jobs:
       - name: Health check
         run: |
           sleep 10
-          curl -f https://staging.piums.com/health || exit 1
+          curl -f https://staging.piums.io/health || exit 1
 
       - name: Cleanup SSH keys
         if: always()
@@ -190,25 +190,25 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Test Gateway
-        run: curl -f https://staging.piums.com/health
+        run: curl -f https://staging.piums.io/health
 
       - name: Test Auth Service
-        run: curl -f https://staging.piums.com/api/auth/health
+        run: curl -f https://staging.piums.io/api/auth/health
 
       - name: Test Users Service
-        run: curl -f https://staging.piums.com/api/users/health
+        run: curl -f https://staging.piums.io/api/users/health
 
       - name: Test Artists Service
-        run: curl -f https://staging.piums.com/api/artists/health
+        run: curl -f https://staging.piums.io/api/artists/health
 
       - name: Test Catalog Service
-        run: curl -f https://staging.piums.com/api/catalog/health
+        run: curl -f https://staging.piums.io/api/catalog/health
 
       - name: Test Booking Service
-        run: curl -f https://staging.piums.com/api/bookings/health
+        run: curl -f https://staging.piums.io/api/bookings/health
 
       - name: Test Payments Service
-        run: curl -f https://staging.piums.com/api/payments/health
+        run: curl -f https://staging.piums.io/api/payments/health
 
   # ============================================================================
   # Rollback (on failure)

@@ -61,6 +61,9 @@ jobs:
             "search-service"
             "chat-service"
             "gateway"
+            "web-client"
+            "web-artist"
+            "web-admin"
           )
 
           MISSING=0
@@ -198,6 +201,9 @@ jobs:
           scp -i ~/.ssh/prod_key \
             infra/docker/docker-compose.prod.yml \
             ${{ secrets.PRODUCTION_SERVER_USER }}@${{ secrets.PRODUCTION_SERVER_HOST }}:/opt/piums-blue/docker-compose.yml
+          scp -i ~/.ssh/prod_key \
+            infra/nginx/nginx.conf \
+            ${{ secrets.PRODUCTION_SERVER_USER }}@${{ secrets.PRODUCTION_SERVER_HOST }}:/opt/piums-blue/nginx.conf
 
       - name: Copy environment file to blue
         run: |
@@ -245,17 +251,17 @@ jobs:
         run: sleep 30
 
       - name: Check Gateway
-        run: curl -sf https://blue.piums.com/health
+        run: curl -sf https://blue.piums.io/health
 
       - name: Check Auth Service
-        run: curl -sf https://blue.piums.com/api/auth/health
+        run: curl -sf https://blue.piums.io/api/auth/health
 
       - name: Check critical backend services
         run: |
           SERVICES=("users" "artists" "catalog" "bookings" "payments")
           for service in "${SERVICES[@]}"; do
             echo "Checking $service..."
-            curl -sf https://blue.piums.com/api/$service/health || exit 1
+            curl -sf https://blue.piums.io/api/$service/health || exit 1
             echo "OK: $service"
           done
 
@@ -280,13 +286,13 @@ jobs:
 
       - name: Run integration smoke tests
         env:
-          API_BASE_URL: https://blue.piums.com
+          API_BASE_URL: https://blue.piums.io
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
         run: |
           echo "Running backend smoke tests against blue environment"
           # Auth flow
-          TOKEN=$(curl -sf -X POST https://blue.piums.com/api/auth/login \
+          TOKEN=$(curl -sf -X POST https://blue.piums.io/api/auth/login \
             -H "Content-Type: application/json" \
             -d "{\"email\":\"$TEST_USER_EMAIL\",\"password\":\"$TEST_USER_PASSWORD\"}" \
             | jq -r '.token')
@@ -300,7 +306,7 @@ jobs:
           # Authenticated endpoint check
           STATUS=$(curl -so /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $TOKEN" \
-            https://blue.piums.com/api/users/me)
+            https://blue.piums.io/api/users/me)
 
           if [ "$STATUS" != "200" ]; then
             echo "ERROR: Users smoke test failed - status $STATUS"
@@ -322,7 +328,7 @@ jobs:
 
     environment:
       name: production
-      url: https://piums.com
+      url: https://piums.io
 
     steps:
       - name: Configure SSH
@@ -361,7 +367,7 @@ jobs:
           echo "Monitoring production for 5 minutes..."
           for i in {1..10}; do
             echo "Check $i/10..."
-            curl -sf https://piums.com/health || exit 1
+            curl -sf https://piums.io/health || exit 1
             sleep 30
           done
           echo "Monitoring complete — deployment is stable"
@@ -451,7 +457,7 @@ jobs:
           echo " Monitor     : ${{ needs.monitor.result }}"
           echo " Image Tag   : ${{ needs.pre-deploy.outputs.image_tag }}"
           echo " Commit      : ${{ github.sha }}"
-          echo " URL         : https://piums.com"
+          echo " URL         : https://piums.io"
           echo "==========================================="
           # TODO: Add Slack/Teams notification
           # curl -X POST -H 'Content-type: application/json' \

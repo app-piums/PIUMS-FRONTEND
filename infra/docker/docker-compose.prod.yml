@@ -388,7 +388,7 @@ services:
     image: ${DOCKER_REGISTRY:-ghcr.io/app-piums}/piums-web-client:${IMAGE_TAG:-latest}
     container_name: piums-web-client-prod
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       NODE_ENV: production
       GATEWAY_INTERNAL_URL: http://gateway:3000
@@ -442,6 +442,46 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  web-admin:
+    image: ${DOCKER_REGISTRY:-ghcr.io/app-piums}/piums-web-admin:${IMAGE_TAG:-latest}
+    container_name: piums-web-admin-prod
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: production
+      GATEWAY_INTERNAL_URL: http://gateway:3000
+      NEXT_PUBLIC_CHAT_SERVICE_URL: ${API_URL}
+    depends_on:
+      - gateway
+    networks:
+      - piums-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: piums-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - gateway
+      - web-client
+      - web-artist
+      - web-admin
+    networks:
+      - piums-network
+    restart: always
+
 # ============================================================================
 # Networks
 # ============================================================================
@@ -458,4 +498,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  nginx_logs:
     driver: local
