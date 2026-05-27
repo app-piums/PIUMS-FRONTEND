@@ -117,8 +117,7 @@ export const inviteMember = async (bandId: string, adminId: string, artistId: st
   if (existing) {
     if (existing.status === "ACTIVE") throw new AppError(409, "El artista ya es miembro de la banda");
     if (existing.status === "PENDING") throw new AppError(409, "El artista ya tiene una invitación pendiente");
-    await prisma.bandMember.update({ where: { id: existing.id }, data: { status: "PENDING", role } });
-    return existing;
+    return await prisma.bandMember.update({ where: { id: existing.id }, data: { status: "PENDING", role } });
   }
 
   const member = await prisma.bandMember.create({ data: { bandId, artistId, role, status: "PENDING" } });

@@ -212,6 +212,16 @@ export const setupRoutes = (app: Express) => {
     })
   );
 
+  app.use(
+    "/api/bands",
+    createProxyMiddleware({
+      target: process.env.ARTISTS_SERVICE_URL || "http://localhost:4003",
+      changeOrigin: true,
+      pathRewrite: { "^": "/bands" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
   // ============================================================================
   // Catalog Service (PÚBLICO en su mayoría)
   // ============================================================================

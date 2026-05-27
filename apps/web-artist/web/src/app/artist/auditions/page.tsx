@@ -51,7 +51,7 @@ export default function AuditionsPage() {
   const handleApply = async (openingId: string) => {
     setApplying(openingId);
     try {
-      const res = await fetch(`/api/bands/openings/${openingId}`, {
+      const res = await fetch(`/api/bands/openings/${openingId}/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
