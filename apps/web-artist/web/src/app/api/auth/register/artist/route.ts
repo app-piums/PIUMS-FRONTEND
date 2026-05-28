@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       if (response.status === 409) {
         return NextResponse.json(
-          { message: "Este correo electrónico ya está registrado" },
+          { message: data.message || "Este correo electrónico ya está registrado" },
           { status: 409 }
         );
       }

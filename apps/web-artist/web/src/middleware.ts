@@ -29,18 +29,27 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Si es una ruta protegida y el usuario NO es artista, redirigir a home
-  // IMPORTANTE: Usar request.url para mantener el mismo puerto
-  // El backend devuelve 'artista' en español
-  if (isProtectedRoute && token && userRole && userRole !== 'artista') {
+  const isArtistRole = userRole === 'artista' || userRole === 'ambos';
+
+  // Usuarios con solo rol 'cliente': pueden acceder a onboarding para crear perfil de artista.
+  // Cualquier otra ruta protegida los manda a onboarding.
+  if (isProtectedRoute && token && userRole === 'cliente') {
+    if (!request.nextUrl.pathname.startsWith('/artist/onboarding')) {
+      return NextResponse.redirect(new URL('/artist/onboarding', request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Otros roles que no son artista ni cliente: bloquear completamente
+  if (isProtectedRoute && token && userRole && !isArtistRole) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Si el usuario está autenticado como artista pero no ha completado onboarding
+  // Si el usuario está autenticado como artista (o ambos) pero no ha completado onboarding
   // y NO está en la ruta de onboarding, redirigir a onboarding
   if (
     token &&
-    userRole === 'artista' &&
+    isArtistRole &&
     onboardingCompleted !== 'true' &&
     !request.nextUrl.pathname.startsWith('/artist/onboarding')
   ) {
@@ -50,7 +59,7 @@ export function middleware(request: NextRequest) {
   // Si ya completó onboarding e intenta acceder a /artist/onboarding, redirigir al dashboard
   if (
     token &&
-    userRole === 'artista' &&
+    isArtistRole &&
     onboardingCompleted === 'true' &&
     request.nextUrl.pathname.startsWith('/artist/onboarding')
   ) {

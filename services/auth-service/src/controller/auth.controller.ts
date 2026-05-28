@@ -180,10 +180,55 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /auth/register/artist  → rol fijo: artista
+// Si el email ya existe como 'cliente', verifica password y upgradea a 'ambos'.
 // ─────────────────────────────────────────────────────────────────────────
 export const registerArtist = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { nombre, email, password, ciudad, birthDate, avatarUrl, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl } = registerArtistSchema.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+
+    if (existingUser) {
+      if (existingUser.role === 'artista' || existingUser.role === 'ambos') {
+        throw new AppError(409, "Este correo ya está registrado como artista");
+      }
+
+      // El usuario existe como 'cliente' → verificar password y promover a 'ambos'
+      if (existingUser.role === 'cliente') {
+        const validPassword = await comparePassword(password, existingUser.passwordHash ?? '');
+        if (!validPassword) {
+          throw new AppError(409, "Este correo ya está registrado. Usa la misma contraseña de tu cuenta de cliente para vincular tu perfil de artista.");
+        }
+
+        const updatedUser = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: 'ambos' },
+        });
+
+        // Bootstrap artist profile
+        const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+        const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+        if (internalSecret) {
+          await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+            body: JSON.stringify({ authId: updatedUser.id, email: updatedUser.email, nombre: updatedUser.nombre }),
+          }).catch(() => {});
+        }
+
+        const jti = crypto.randomUUID();
+        const token = tokenService.signAccessToken({ id: updatedUser.id, role: 'artista', jti });
+        const refreshToken = tokenService.signRefreshToken({ id: updatedUser.id, jti });
+        await tokenService.createRefreshToken(updatedUser.id, refreshToken, req.ip, req.get('user-agent'));
+        await prisma.session.create({
+          data: { jti, userId: updatedUser.id, ipAddress: req.ip, userAgent: req.get('user-agent'), expiresAt: new Date(Date.now() + 3600 * 1000) },
+        });
+
+        const { passwordHash: _, ...userResponse } = updatedUser;
+        return res.status(201).json({ user: { ...userResponse, role: 'artista' }, token, refreshToken, message: 'Perfil de artista vinculado exitosamente.' });
+      }
+    }
+
     await createUserAndRespond(req, res, nombre, email, password, 'artista', {
       ciudad, birthDate, avatarUrl, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl,
     });
@@ -195,10 +240,44 @@ export const registerArtist = async (req: Request, res: Response, next: NextFunc
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /auth/register/client  → rol fijo: cliente
+// Si el email ya existe como 'artista', verifica password y upgradea a 'ambos'.
 // ─────────────────────────────────────────────────────────────────────────
 export const registerClient = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { nombre, email, password, ciudad, birthDate } = registerClientSchema.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+
+    if (existingUser) {
+      if (existingUser.role === 'cliente' || existingUser.role === 'ambos') {
+        throw new AppError(409, "Este correo ya está registrado como cliente");
+      }
+
+      // El usuario existe como 'artista' → verificar password y promover a 'ambos'
+      if (existingUser.role === 'artista') {
+        const validPassword = await comparePassword(password, existingUser.passwordHash ?? '');
+        if (!validPassword) {
+          throw new AppError(409, "Este correo ya está registrado. Usa la misma contraseña de tu cuenta de artista para vincular tu perfil de cliente.");
+        }
+
+        const updatedUser = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: 'ambos' },
+        });
+
+        const jti = crypto.randomUUID();
+        const token = tokenService.signAccessToken({ id: updatedUser.id, role: 'cliente', jti });
+        const refreshToken = tokenService.signRefreshToken({ id: updatedUser.id, jti });
+        await tokenService.createRefreshToken(updatedUser.id, refreshToken, req.ip, req.get('user-agent'));
+        await prisma.session.create({
+          data: { jti, userId: updatedUser.id, ipAddress: req.ip, userAgent: req.get('user-agent'), expiresAt: new Date(Date.now() + 3600 * 1000) },
+        });
+
+        const { passwordHash: _, ...userResponse } = updatedUser;
+        return res.status(201).json({ user: { ...userResponse, role: 'cliente' }, token, refreshToken, message: 'Perfil de cliente vinculado exitosamente.' });
+      }
+    }
+
     await createUserAndRespond(req, res, nombre, email, password, 'cliente', { ciudad, birthDate });
   } catch (error: any) {
     logger.error("Error en registro de cliente", "AUTH_CONTROLLER", { message: error.message });
@@ -850,13 +929,47 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
       where: { OR: [{ googleId }, { email }] },
     });
 
+    let isRoleUpgrade = false;
+
     if (user) {
       // Actualizar googleId y avatar desde Google en cada login
       const needsUpdate =
         !user.googleId ||
         (picture && user.avatar !== picture) ||
         (name && (!user.nombre || user.nombre === user.email.split('@')[0]));
-      if (needsUpdate) {
+
+      // Dual-role upgrade via OAuth: Google already proves identity so no password needed.
+      // cliente → artista app: upgrade to 'ambos'
+      // artista → cliente app: upgrade to 'ambos'
+      const isOppositeRole =
+        (user.role === 'cliente' && role === 'artista') ||
+        (user.role === 'artista' && role === 'cliente');
+
+      if (isOppositeRole) {
+        isRoleUpgrade = true;
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            role: 'ambos',
+            googleId: user.googleId ?? googleId,
+            provider: user.provider ?? 'google',
+            avatar: picture ?? user.avatar ?? undefined,
+          },
+        });
+
+        // Bootstrap artist profile when upgrading to artista
+        if (role === 'artista') {
+          const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+          const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+          if (internalSecret) {
+            await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+              body: JSON.stringify({ authId: user.id, email: user.email, nombre: user.nombre, avatar: user.avatar ?? undefined }),
+            }).catch(() => {});
+          }
+        }
+      } else if (needsUpdate) {
         user = await prisma.user.update({
           where: { id: user.id },
           data: {
@@ -966,7 +1079,13 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
 
     logger.info('Firebase Google login success', 'AUTH_CONTROLLER', { userId: user.id, role: effectiveRole });
 
-    return res.json({ user: userResponse, token, refreshToken, isNewUser: !user.lastLoginAt || user.lastLoginAt.getTime() === user.createdAt.getTime() });
+    return res.json({
+      user: userResponse,
+      token,
+      refreshToken,
+      isNewUser: !user.lastLoginAt || user.lastLoginAt.getTime() === user.createdAt.getTime(),
+      isRoleUpgrade,
+    });
   } catch (error: any) {
     next(error);
   }

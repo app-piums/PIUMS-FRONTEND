@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Para artistas: verificar si ya tienen perfil para no forzarles al onboarding en cada login.
-    if (data.user?.role === 'artista') {
+    if (data.user?.role === 'artista' || data.user?.role === 'ambos') {
       const ARTISTS_SERVICE_URL = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
       let hasProfile = false;
       try {

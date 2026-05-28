@@ -579,7 +579,11 @@ export default function ArtistOnboardingPage() {
       }
 
       document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
-      // Use full reload so the middleware reads the updated cookie server-side.
+
+      // Refresh token so user_role cookie reflects any role upgrade (cliente→ambos)
+      await fetch('/api/auth/refresh-token', { method: 'POST', credentials: 'include' }).catch(() => {});
+
+      // Full reload so the middleware reads updated cookies server-side.
       window.location.replace('/artist/dashboard');
     } catch (error) {
       console.error('Error completing onboarding:', error);

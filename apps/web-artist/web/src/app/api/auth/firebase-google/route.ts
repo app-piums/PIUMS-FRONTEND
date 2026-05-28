@@ -55,10 +55,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // For new users, set onboarding cookie to false so middleware routes them to onboarding.
-    // For returning users, leave the cookie untouched — the middleware will rely on the existing
-    // cookie value, and the onboarding page's profile-check will set it to true if needed.
-    if (data.isNewUser) {
+    // Set onboarding cookie to false for new users or role upgrades (cliente→artista),
+    // since they haven't completed the artist onboarding yet.
+    if (data.isNewUser || data.isRoleUpgrade) {
       response.cookies.set('onboarding_completed', 'false', {
         httpOnly: false,
         secure: process.env.HTTPS_ENABLED === 'true',

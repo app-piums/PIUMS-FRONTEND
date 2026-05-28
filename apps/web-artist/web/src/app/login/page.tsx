@@ -19,7 +19,7 @@ interface FieldError {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, user, isLoading: authLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +28,18 @@ export default function LoginPage() {
   const [generalError, setGeneralError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  const handleLogoutAndSwitch = async () => {
+    setLogoutLoading(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      if (typeof window !== "undefined") window.localStorage.removeItem("token");
+      sdk.setAuthToken(null);
+    } catch {}
+    // Full reload to clear all in-memory state and cookies
+    window.location.reload();
+  };
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -118,16 +130,13 @@ export default function LoginPage() {
       if (data.user) login(data.user);
 
       const role = data.user?.role;
+      // Para 'cliente': el servidor no setea onboarding_completed, lo hacemos aquí.
+      // Para 'artista'/'ambos': el servidor ya lo calculó correctamente — no sobreescribir.
       if (role === "cliente") {
-        const clientUrl = `${window.location.protocol}//${window.location.hostname}:3000`;
-        window.location.href = `${clientUrl}/dashboard`;
-      } else {
-        if (role === "artista") {
-          document.cookie = "onboarding_completed=false; path=/; max-age=86400; SameSite=strict";
-        }
-        const redirect = new URLSearchParams(window.location.search).get("redirect");
-        router.push(redirect || "/artist/dashboard");
+        document.cookie = "onboarding_completed=false; path=/; max-age=86400; SameSite=strict";
       }
+      const redirect = new URLSearchParams(window.location.search).get("redirect");
+      router.push(redirect || "/artist/dashboard");
     } catch (err: unknown) {
       setGeneralError(getErrorMessage(err));
     } finally {
@@ -153,6 +162,37 @@ export default function LoginPage() {
                 <p className="mt-1 text-sm text-white/60">Inicia sesión en tu portal de artista</p>
               </div>
             </div>
+
+            {/* Sesión activa conflictiva */}
+            {!authLoading && user && (
+              <div className="rounded-xl bg-amber-500/20 border border-amber-400/30 px-4 py-4 space-y-3">
+                <p className="text-sm text-amber-200 font-medium">
+                  Ya tienes una sesión activa{user.role === 'cliente' ? ' como cliente' : ''} en este navegador.
+                </p>
+                <p className="text-xs text-amber-300/70">
+                  Para iniciar sesión con otra cuenta, cierra la sesión actual primero.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleLogoutAndSwitch}
+                    disabled={logoutLoading}
+                    className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                  >
+                    {logoutLoading ? "Cerrando sesión..." : "Cerrar sesión"}
+                  </button>
+                  {user.role === 'artista' || user.role === 'ambos' ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push("/artist/dashboard")}
+                      className="flex-1 py-2 rounded-lg border border-white/20 text-white text-xs font-semibold hover:bg-white/10 transition-colors"
+                    >
+                      Ir al dashboard
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            )}
 
             {/* Error general */}
             {generalError && (

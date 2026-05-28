@@ -113,14 +113,8 @@ export default function LoginPage() {
       }
       if (data.user) login(data.user);
 
-      const role = data.user?.role;
-      if (role === "artista") {
-        const artistUrl = `${window.location.protocol}//${window.location.hostname}:3001`;
-        window.location.href = `${artistUrl}/artist/dashboard`;
-      } else {
-        const redirect = new URLSearchParams(window.location.search).get("redirect");
-        window.location.href = redirect || "/dashboard";
-      }
+      const redirect = new URLSearchParams(window.location.search).get("redirect");
+      window.location.href = redirect || "/dashboard";
     } catch (err) {
       const message = err instanceof Error ? err.message : t("errorGeneral");
       setGeneralError(message);

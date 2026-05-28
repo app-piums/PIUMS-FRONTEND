@@ -9,7 +9,6 @@ const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 // Static assets to cache on install
 const STATIC_ASSETS = [
   '/',
-  '/offline',
   '/manifest.json',
   '/icons/icon.svg',
 ];
@@ -176,6 +175,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         console.log('[SW] Failed to fetch:', request.url);
+        return new Response('', { status: 408, statusText: 'Request Timeout' });
       })
   );
 });

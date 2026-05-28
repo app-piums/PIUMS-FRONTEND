@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
         // 🔒 Manejar error 409 (email duplicado) específicamente
         if (response.status === 409) {
           return NextResponse.json(
-            { message: "Este correo electrónico ya está registrado" },
+            { message: data.message || "Este correo electrónico ya está registrado" },
             { status: 409 }
           );
         }

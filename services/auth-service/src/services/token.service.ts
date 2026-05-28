@@ -264,6 +264,7 @@ export class TokenService {
       return {
         token: newAccessToken,
         refreshToken: newRefreshToken,
+        role: user.role,
       };
     } catch (error: any) {
       logger.error('Error rotating refresh token', 'TOKEN_SERVICE', error);
