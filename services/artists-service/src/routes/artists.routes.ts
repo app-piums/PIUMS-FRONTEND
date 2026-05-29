@@ -98,7 +98,7 @@ router.get("/internal/by-auth/:authId", async (req, res, next) => {
     const { authId } = req.params;
     const artist = await prisma.artist.findUnique({
       where: { authId },
-      select: { id: true, authId: true, artistName: true, nombre: true, email: true, avatar: true, category: true },
+      select: { id: true, authId: true, artistName: true, nombre: true, email: true, avatar: true, category: true, verificationStatus: true },
     });
     if (!artist || (artist as any).deletedAt) {
       return res.status(404).json({ error: 'Artist not found' });
@@ -111,6 +111,7 @@ router.get("/internal/by-auth/:authId", async (req, res, next) => {
       email: artist.email,
       avatar: (artist as any).avatar,
       category: (artist as any).category,
+      verificationStatus: artist.verificationStatus,
     });
   } catch (error) {
     next(error);

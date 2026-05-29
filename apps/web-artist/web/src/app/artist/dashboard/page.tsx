@@ -44,9 +44,13 @@ export default function ArtistDashboardPage() {
         artistCountryRef.current = profile?.country ?? null;
         setArtistProfile(profile);
         if (profile?.id) {
-          sdk.getArtistServices(profile.id)
-            .then((services) => setArtistServices(services))
-            .catch(() => { /* non-critical */ });
+          try {
+            const services = await sdk.getArtistServices(profile.id);
+            setArtistServices(services || []);
+          } catch (err) {
+            console.error('Error loading artist services:', err);
+            setArtistServices([]);
+          }
         }
       }
       if (bookingsData.status === 'fulfilled') {
@@ -125,12 +129,19 @@ export default function ArtistDashboardPage() {
       <div className="min-h-screen bg-gray-50 flex">
         <DashboardSidebar />
         <main className="flex-1 p-4 pt-20 sm:p-8 lg:pt-8">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-bold text-red-800 mb-2">Error</h2>
-            <p className="text-red-600 mb-4">{error}</p>
+          <div className="max-w-md mx-auto mt-16 bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
+            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">No se pudo cargar el dashboard</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Tuvimos un problema al conectar con el servidor. Esto es temporal — intenta de nuevo en unos segundos.
+            </p>
             <button
               onClick={loadDashboardData}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-xl transition-colors"
             >
               Reintentar
             </button>
@@ -396,66 +407,6 @@ export default function ArtistDashboardPage() {
             </div>
           </div>
 
-          {/* Revenue Overview Chart */}
-          <div id="artist-dashboard-revenue" className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Resumen de Ingresos</h3>
-              <select className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
-                <option>Últimos 6 meses</option>
-                <option>Últimos 12 meses</option>
-                <option>Este año</option>
-              </select>
-            </div>
-            
-            <div className="relative h-64">
-              <svg className="w-full h-full" viewBox="0 0 800 250">
-                <defs>
-                  <linearGradient id="revenueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#fb923c" stopOpacity="0.3"/>
-                    <stop offset="100%" stopColor="#fb923c" stopOpacity="0.05"/>
-                  </linearGradient>
-                </defs>
-                
-                {/* Y-axis labels */}
-                <text x="10" y="20" className="text-xs fill-gray-500">Q15k</text>
-                <text x="10" y="80" className="text-xs fill-gray-500">Q10k</text>
-                <text x="10" y="140" className="text-xs fill-gray-500">Q5k</text>
-                <text x="18" y="200" className="text-xs fill-gray-500">Q0</text>
-                
-                {/* Chart area */}
-                <path
-                  d="M 80 180 L 180 140 L 280 160 L 380 100 L 480 120 L 580 60 L 680 80"
-                  fill="none"
-                  stroke="#fb923c"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-                
-                <path
-                  d="M 80 180 L 180 140 L 280 160 L 380 100 L 480 120 L 580 60 L 680 80 L 680 200 L 80 200 Z"
-                  fill="url(#revenueGradient)"
-                />
-                
-                {/* Data points */}
-                <circle cx="80" cy="180" r="5" fill="#fb923c" />
-                <circle cx="180" cy="140" r="5" fill="#fb923c" />
-                <circle cx="280" cy="160" r="5" fill="#fb923c" />
-                <circle cx="380" cy="100" r="5" fill="#fb923c" />
-                <circle cx="480" cy="120" r="5" fill="#fb923c" />
-                <circle cx="580" cy="60" r="5" fill="#fb923c" />
-                <circle cx="680" cy="80" r="5" fill="#fb923c" />
-                
-                {/* X-axis labels */}
-                <text x="65" y="230" className="text-xs fill-gray-500">JAN</text>
-                <text x="165" y="230" className="text-xs fill-gray-500">FEB</text>
-                <text x="265" y="230" className="text-xs fill-gray-500">MAR</text>
-                <text x="365" y="230" className="text-xs fill-gray-500">APR</text>
-                <text x="465" y="230" className="text-xs fill-gray-500">MAY</text>
-                <text x="565" y="230" className="text-xs fill-gray-500">JUN</text>
-                <text x="665" y="230" className="text-xs fill-gray-500">JUL</text>
-              </svg>
-            </div>
-          </div>
 
           {/* Upcoming Gigs Calendar */}
           <div id="artist-dashboard-gigs" className="bg-white rounded-2xl border border-gray-200 p-6">

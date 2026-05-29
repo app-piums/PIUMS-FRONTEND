@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { toast } from '@/lib/toast';
 
 function getAuthHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? window.localStorage.getItem('token') : null;
@@ -76,7 +77,7 @@ export default function PaymentsTab() {
 
   async function handleDelete(id: string) {
     if (methods.length <= 1) {
-      alert('Debes tener al menos una tarjeta guardada.');
+      toast.warning('Debes tener al menos una tarjeta guardada.');
       return;
     }
     if (!confirm('¿Eliminar esta tarjeta?')) return;

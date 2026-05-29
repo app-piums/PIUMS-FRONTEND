@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { sdk } from '@piums/sdk';
+import { toast } from '@/lib/toast';
 import type { BookingCollaborator } from '@piums/sdk';
 import InviteCollaboratorModal from './InviteCollaboratorModal';
 
@@ -47,7 +48,7 @@ export default function CollaborationPanel({ bookingId, isLeadArtist }: Props) {
       await sdk.cancelCollaborator(bookingId, artistId);
       load();
     } catch (err: any) {
-      alert(err.message);
+      toast.error('No se pudo cancelar al colaborador. Intenta de nuevo.');
     }
   };
 

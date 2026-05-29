@@ -264,8 +264,9 @@ export default function ArtistServicesPage() {
       try {
         const list = await sdk.listDayOffers(serviceId, artistId!);
         setOffersMap((prev) => ({ ...prev, [serviceId]: list }));
-      } catch { /* ignore */ }
-      finally { setLoadingOffers(false); }
+      } catch {
+        setOffersMap((prev) => ({ ...prev, [serviceId]: [] }));
+      } finally { setLoadingOffers(false); }
     }
   };
 

@@ -61,7 +61,7 @@ export default function WalletPage() {
     setStatsLoading(true);
     sdk.getMyPayoutStats()
       .then(s => setStats(s))
-      .catch(() => {})
+      .catch(() => setStats(null))
       .finally(() => setStatsLoading(false));
   }, []);
 

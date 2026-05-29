@@ -166,12 +166,19 @@ export default function LoginPage() {
             {/* Sesión activa conflictiva */}
             {!authLoading && user && (
               <div className="rounded-xl bg-amber-500/20 border border-amber-400/30 px-4 py-4 space-y-3">
-                <p className="text-sm text-amber-200 font-medium">
-                  Ya tienes una sesión activa{user.role === 'cliente' ? ' como cliente' : ''} en este navegador.
-                </p>
-                <p className="text-xs text-amber-300/70">
-                  Para iniciar sesión con otra cuenta, cierra la sesión actual primero.
-                </p>
+                <div className="flex items-start gap-2.5">
+                  <svg className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                  <div className="space-y-1">
+                    <p className="text-sm text-amber-200 font-medium leading-snug">
+                      Hay una sesión{user.role === 'cliente' ? ' de cliente' : ''} activa en este navegador
+                    </p>
+                    <p className="text-xs text-amber-300/70 leading-relaxed">
+                      Si tu sesión expiró o quieres iniciar con otra cuenta, ciérrala primero para continuar.
+                    </p>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -179,9 +186,9 @@ export default function LoginPage() {
                     disabled={logoutLoading}
                     className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
                   >
-                    {logoutLoading ? "Cerrando sesión..." : "Cerrar sesión"}
+                    {logoutLoading ? "Cerrando sesión..." : "Cerrar sesión actual"}
                   </button>
-                  {user.role === 'artista' || user.role === 'ambos' ? (
+                  {(user.role === 'artista' || user.role === 'ambos') && (
                     <button
                       type="button"
                       onClick={() => router.push("/artist/dashboard")}
@@ -189,7 +196,7 @@ export default function LoginPage() {
                     >
                       Ir al dashboard
                     </button>
-                  ) : null}
+                  )}
                 </div>
               </div>
             )}

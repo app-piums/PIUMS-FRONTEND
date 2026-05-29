@@ -111,6 +111,27 @@ router.post(
 );
 
 /**
+ * GET  /api/bookings/:id/replacement       — obtener estado de búsqueda de reemplazo
+ * POST /api/bookings/:id/replacement/accept — el cliente acepta buscar reemplazo
+ * POST /api/bookings/:id/replacement/decline — el cliente rechaza la búsqueda
+ */
+router.get(
+  "/bookings/:id/replacement",
+  authenticateToken,
+  bookingController.getReplacementSearch.bind(bookingController)
+);
+router.post(
+  "/bookings/:id/replacement/accept",
+  authenticateToken,
+  bookingController.acceptReplacement.bind(bookingController)
+);
+router.post(
+  "/bookings/:id/replacement/decline",
+  authenticateToken,
+  bookingController.declineReplacement.bind(bookingController)
+);
+
+/**
  * POST /api/bookings/:id/confirm-delivery
  * Confirmar recepcion del servicio (solo el cliente de la reserva)
  */

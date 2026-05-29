@@ -33,7 +33,8 @@ export const getBand = async (req: AuthRequest, res: Response, next: NextFunctio
 export const searchBands = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const q = (req.query.q as string) || "";
-    const results = await bandsService.searchBands(q);
+    const city = req.query.city as string | undefined;
+    const results = await bandsService.searchBands(q, city);
     res.json(results);
   } catch (err) { next(err); }
 };

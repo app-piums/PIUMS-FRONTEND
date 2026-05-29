@@ -247,7 +247,13 @@ interface NavContentProps {
   onLogout: () => void;
 }
 
-const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, onNavigate, user, onLogout }) => (
+const MUSICO_ONLY_TABS = new Set(['banda', 'auditions']);
+
+const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, onNavigate, user, onLogout }) => {
+  const isMusico = !user?.category || user.category === 'MUSICO';
+  const visibleTabs = isMusico ? tabs : tabs.filter(t => !MUSICO_ONLY_TABS.has(t.id));
+
+  return (
   <>
     {/* Logo */}
     <div className="px-6 py-2 border-b border-gray-100 flex items-center justify-between">
@@ -274,7 +280,7 @@ const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, onNavigate, us
         Menú Principal
       </p>
       <nav className="space-y-1">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const isActive = pathname === tab.href;
           return (
             <Link
@@ -397,7 +403,8 @@ const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, onNavigate, us
       </div>
     </div>
   </>
-);
+  );
+};
 
 export const DashboardSidebar: React.FC = () => {
   const pathname = usePathname();

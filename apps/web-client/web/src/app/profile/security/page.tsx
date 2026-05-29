@@ -43,8 +43,20 @@ export default function SecurityTab(props: SecurityTabProps = {}) {
     if (!validatePassword()) return;
     setLoading(true);
     try {
-      // TODO: await sdk.changePassword({ currentPassword, newPassword })
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.message || 'Error al cambiar la contraseña');
+        return;
+      }
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       toast.success('Contraseña actualizada correctamente');
     } catch (error) {

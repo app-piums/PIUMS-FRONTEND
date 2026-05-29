@@ -12,7 +12,21 @@ import { sdk } from '@piums/sdk';
 import type { Artist, Service } from '@piums/sdk';
 import { TalentPicker } from '@/components/TalentPicker';
 
-type TabType = 'all' | 'artists' | 'services';
+type TabType = 'all' | 'artists' | 'services' | 'bands';
+
+interface Band {
+  id: string;
+  name: string;
+  slug: string;
+  avatar: string | null;
+  city: string;
+  country: string;
+  genre: string[];
+  specialties: string[];
+  rating: number;
+  reviewCount: number;
+  isBookable: boolean;
+}
 type SortOption = 'relevance' | 'rating' | 'price_low' | 'price_high';
 
 const CATEGORIES = [
@@ -48,6 +62,7 @@ function SearchContent() {
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [artists, setArtists] = useState<Artist[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [bands, setBands] = useState<Band[]>([]);
   const [expandedTerms, setExpandedTerms] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -63,24 +78,39 @@ function SearchContent() {
       setLoading(true);
       setSearchError(null);
 
+      const bandsParams = new URLSearchParams();
+      if (query) bandsParams.set('q', query);
+      if (selectedCity) bandsParams.set('city', selectedCity);
+      const bandsPromise = fetch(`/api/bands/search?${bandsParams.toString()}`)
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []);
+
       if (query) {
         // Smart search — returns matchedService with the specific service price that matched
-        const results = await sdk.smartSearch({
-          q: query,
-          city: selectedCity || undefined,
-          sortBy: sortBy !== 'relevance' ? sortBy : undefined,
-        } as any);
+        const [results, bandsData] = await Promise.all([
+          sdk.smartSearch({
+            q: query,
+            city: selectedCity || undefined,
+            sortBy: sortBy !== 'relevance' ? sortBy : undefined,
+          } as any),
+          bandsPromise,
+        ]);
         setArtists(results.artists ?? []);
         setExpandedTerms(results.expandedTerms ?? []);
+        setBands(Array.isArray(bandsData) ? bandsData : []);
       } else {
         // Filter-only search (category/city without text query)
-        const results = await sdk.searchArtists({
-          category: selectedCategory || undefined,
-          cityId: selectedCity || undefined,
-          sortBy: sortBy !== 'relevance' ? sortBy : undefined,
-        } as any);
+        const [results, bandsData] = await Promise.all([
+          sdk.searchArtists({
+            category: selectedCategory || undefined,
+            cityId: selectedCity || undefined,
+            sortBy: sortBy !== 'relevance' ? sortBy : undefined,
+          } as any),
+          bandsPromise,
+        ]);
         setArtists((results as any).artists ?? []);
         setExpandedTerms([]);
+        setBands(Array.isArray(bandsData) ? bandsData : []);
       }
       setServices([]);
     } catch (err) {
@@ -106,9 +136,10 @@ function SearchContent() {
     // Note: useEffect watches query/category/city changes and will trigger performSearch
   };
 
-  const totalResults = artists.length + services.length;
-  const visibleArtists = activeTab === 'services' ? [] : artists;
-  const visibleServices = activeTab === 'artists' ? [] : services;
+  const totalResults = artists.length + services.length + bands.length;
+  const visibleArtists = activeTab === 'services' || activeTab === 'bands' ? [] : artists;
+  const visibleServices = activeTab === 'artists' || activeTab === 'bands' ? [] : services;
+  const visibleBands = activeTab === 'artists' || activeTab === 'services' ? [] : bands;
 
   return (
     <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
@@ -222,13 +253,18 @@ function SearchContent() {
           {!loading && query && totalResults > 0 && (
             <div className="space-y-6">
               {/* Tabs + count */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-                  {([['all','Todos'], ['artists','Artistas'], ['services','Servicios']] as const).map(([key, lbl]) => (
-                    <button key={key} onClick={() => setActiveTab(key)}
-                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                  {([
+                    ['all', 'Todos', totalResults],
+                    ['artists', 'Artistas', artists.length],
+                    ['services', 'Servicios', services.length],
+                    ['bands', 'Bandas', bands.length],
+                  ] as const).map(([key, lbl, count]) => (
+                    <button key={key} onClick={() => setActiveTab(key as TabType)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
-                      {lbl} ({key === 'all' ? totalResults : key === 'artists' ? artists.length : services.length})
+                      {lbl} ({count})
                     </button>
                   ))}
                 </div>
@@ -276,6 +312,46 @@ function SearchContent() {
                             >
                               Ver detalles
                             </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Band results */}
+              {visibleBands.length > 0 && (
+                <div>
+                  {activeTab === 'all' && <h2 className="font-semibold text-gray-900 mb-3">Bandas ({bands.length})</h2>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {visibleBands.map(band => (
+                      <div key={band.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-start gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
+                            {band.avatar
+                              ? <img src={band.avatar} alt={band.name} className="w-full h-full object-cover" />
+                              : band.name.charAt(0).toUpperCase()
+                            }
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 truncate">{band.name}</p>
+                            <p className="text-xs text-gray-400">{band.city}, {band.country}</p>
+                            {band.genre.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {band.genre.slice(0, 3).map(g => (
+                                  <span key={g} className="text-xs bg-purple-50 text-purple-700 border border-purple-100 rounded-full px-2 py-0.5">{g}</span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between mt-2">
+                              {band.rating > 0 && (
+                                <span className="text-xs text-gray-500">{band.rating.toFixed(1)} ({band.reviewCount})</span>
+                              )}
+                              {band.isBookable && (
+                                <span className="text-xs bg-green-50 text-green-700 border border-green-100 rounded-full px-2 py-0.5">Disponible</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>

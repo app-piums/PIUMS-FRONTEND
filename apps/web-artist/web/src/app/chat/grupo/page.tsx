@@ -2,6 +2,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import React, { Suspense, useEffect, useRef, useState } from 'react';
+import { toast } from '@/lib/toast';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { sdk } from '@piums/sdk';
 import type { GroupConversation, GroupMessage } from '@piums/sdk';
@@ -98,7 +99,7 @@ function GroupChatPageInner() {
       const { message } = await sdk.sendGroupMessage(currentGroupIdRef.current, content.trim());
       setMessages(prev => [...prev, message]);
     } catch (err: any) {
-      alert(err.message || 'Error enviando mensaje');
+      toast.error('No se pudo enviar el mensaje. Intenta de nuevo.');
     } finally {
       setIsSending(false);
     }

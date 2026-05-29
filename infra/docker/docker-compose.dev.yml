@@ -308,6 +308,7 @@ services:
       USERS_SERVICE_URL: http://users-service:4002
       ARTISTS_SERVICE_URL: http://artists-service:4003
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
+      SEARCH_SERVICE_URL: http://search-service:4009
       INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
       CLIENT_APP_URL: https://client.piums.io
       ARTIST_APP_URL: https://artist.piums.io

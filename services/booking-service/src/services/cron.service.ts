@@ -590,15 +590,28 @@ async function runPayoutHoldRelease() {
         deliveryConfirmedAt: null,
         deletedAt: null,
       },
-      select: { id: true, code: true },
+      select: { id: true, code: true, clientId: true },
     });
 
+    const clientAppUrl = process.env.CLIENT_APP_URL || 'http://localhost:3000';
     let released = 0;
     for (const booking of bookings) {
       try {
         await paymentsClient.schedulePayoutHold(booking.id, null);
         released++;
         logger.info("Payout hold liberado automaticamente", "CRON_PAYOUT_RELEASE", { bookingId: booking.id });
+
+        // Solicitar reseña al cliente tras liberación automática
+        notificationsClient.sendNotification({
+          userId: booking.clientId,
+          type: "REVIEW_REQUEST",
+          channel: "IN_APP",
+          title: "¿Cómo fue tu experiencia?",
+          message: `El servicio de tu reserva #${booking.code || booking.id} fue completado. Deja una reseña.`,
+          data: { bookingId: booking.id, reviewUrl: `${clientAppUrl}/bookings/${booking.id}?review=1` },
+          priority: "normal",
+          category: "review",
+        }).catch(() => {});
       } catch (err: any) {
         logger.error("Error liberando payout hold", "CRON_PAYOUT_RELEASE", { bookingId: booking.id, error: err.message });
       }
@@ -613,6 +626,19 @@ async function runPayoutHoldRelease() {
 }
 
 // ==================== SCHEDULER ====================
+
+async function runReplacementExpiry() {
+  const updated = await (prisma as any).replacementSearch.updateMany({
+    where: {
+      status: { in: ['AWAITING_CLIENT', 'NOTIFIED'] },
+      expiresAt: { lte: new Date() },
+    },
+    data: { status: 'EXPIRED' },
+  });
+  if (updated.count > 0) {
+    logger.info(`replacement_searches expirados: ${updated.count}`, 'CRON');
+  }
+}
 
 export function startCronJobs() {
   // No-show auto-actions: cada hora
@@ -636,6 +662,9 @@ export function startCronJobs() {
   setInterval(() => withCronLock('reminder-same-day', 3300, runReminderSameDay).catch(() => {}), 60 * 60 * 1000);
   setInterval(() => withCronLock('artist-reminders', 3300, runArtistReminders).catch(() => {}), 60 * 60 * 1000);
 
+  // Expirar prompts y resultados de reemplazo vencidos: cada hora
+  setInterval(() => withCronLock('replacement-expiry', 3300, runReplacementExpiry).catch(() => {}), 60 * 60 * 1000);
+
   // Ejecutar inmediatamente al iniciar (con delay para que el servidor arranque)
   setTimeout(() => {
     withCronLock('no-show-boot', 3300, runNoShowAutoActions).catch(() => {});
@@ -647,7 +676,8 @@ export function startCronJobs() {
     withCronLock('reminder-3d-boot', 3300, runReminder3d).catch(() => {});
     withCronLock('reminder-same-day-boot', 3300, runReminderSameDay).catch(() => {});
     withCronLock('artist-reminders-boot', 3300, runArtistReminders).catch(() => {});
+    withCronLock('replacement-expiry-boot', 3300, runReplacementExpiry).catch(() => {});
   }, 30 * 1000); // 30s después del boot
 
-  logger.info("Cron jobs iniciados (no-show + cobro 72h + escalacion pagos + auto-complete + payout hold release + recordatorios multi-etapa)", "CRON");
+  logger.info("Cron jobs iniciados (no-show + cobro 72h + escalacion pagos + auto-complete + payout hold release + recordatorios multi-etapa + expiry reemplazos)", "CRON");
 }

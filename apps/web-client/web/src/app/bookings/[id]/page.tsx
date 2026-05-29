@@ -73,6 +73,11 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
   const [noShowDone, setNoShowDone] = useState(false);
   const [payingRemaining, setPayingRemaining] = useState(false);
   const [collaborators, setCollaborators] = useState<BookingCollaborator[]>([]);
+  const [replacementSearch, setReplacementSearch] = useState<{
+    id: string; status: string; matchedServiceIds: string[]; matchedArtistIds: string[];
+    expiresAt: string; category: string | null; city: string | null; scheduledDate: string;
+  } | null>(null);
+  const [replacementAction, setReplacementAction] = useState<'idle' | 'accepting' | 'declining'>('idle');
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -104,6 +109,12 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
           setService(s);
           if (a) setArtist(a);
           setCollaborators((collabs.collaborators ?? []).filter((c: BookingCollaborator) => c.status === 'ACCEPTED'));
+        }
+
+        // Fetch replacement search for artist-cancelled bookings
+        if (b.status?.toUpperCase() === 'CANCELLED_ARTIST') {
+          const rep = await sdk.getReplacementSearch(id).catch(() => null);
+          if (isMounted && rep) setReplacementSearch(rep as any);
         }
         
       } catch (err) {
@@ -215,6 +226,31 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
       setIsReviewModalOpen(false);
     } catch (err: any) {
       toast.error(err?.message || 'Error al enviar la reseña');
+    }
+  };
+
+  const handleAcceptReplacement = async () => {
+    if (!booking) return;
+    setReplacementAction('accepting');
+    try {
+      await sdk.acceptReplacement(booking.id);
+      setReplacementSearch((prev) => prev ? { ...prev, status: 'SEARCHING' } : prev);
+      toast.success('Buscando artistas de reemplazo...');
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al aceptar reemplazo');
+      setReplacementAction('idle');
+    }
+  };
+
+  const handleDeclineReplacement = async () => {
+    if (!booking) return;
+    setReplacementAction('declining');
+    try {
+      await sdk.declineReplacement(booking.id);
+      setReplacementSearch((prev) => prev ? { ...prev, status: 'OPTED_OUT' } : prev);
+    } catch (err: any) {
+      toast.error(err?.message || 'Error');
+      setReplacementAction('idle');
     }
   };
   const priceVal = Number(booking.totalPrice || booking.amount || 0) / 100;
@@ -353,6 +389,107 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
                 </div>
               </section>
             )}
+
+            {/* Reemplazo de emergencia — solo cuando artista canceló */}
+            {booking.status?.toUpperCase() === 'CANCELLED_ARTIST' && replacementSearch && (() => {
+              const expired = new Date(replacementSearch.expiresAt) <= new Date();
+              const s = replacementSearch.status;
+
+              if (s === 'AWAITING_CLIENT' && !expired) {
+                const searchParams = new URLSearchParams();
+                if (replacementSearch.category) searchParams.set('category', replacementSearch.category);
+                if (replacementSearch.city) searchParams.set('city', replacementSearch.city);
+                return (
+                  <section className="bg-orange-50 border border-orange-200 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                        <svg className="h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-orange-800">¿Te buscamos un artista de reemplazo?</p>
+                        <p className="text-sm text-orange-700 mt-0.5">
+                          Podemos encontrar artistas disponibles para tu evento dentro de tu presupuesto.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleAcceptReplacement}
+                        disabled={replacementAction !== 'idle'}
+                        className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2"
+                      >
+                        {replacementAction === 'accepting' ? (
+                          <><div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Buscando...</>
+                        ) : 'Sí, buscar reemplazo'}
+                      </button>
+                      <button
+                        onClick={handleDeclineReplacement}
+                        disabled={replacementAction !== 'idle'}
+                        className="flex-1 py-2 bg-white border border-orange-200 text-orange-700 font-semibold rounded-xl text-sm hover:bg-orange-50 disabled:opacity-60 transition"
+                      >
+                        No, prefiero el reembolso
+                      </button>
+                    </div>
+                  </section>
+                );
+              }
+
+              if (s === 'SEARCHING') {
+                return (
+                  <section className="bg-orange-50 border border-orange-200 rounded-2xl p-5 flex items-center gap-3">
+                    <div className="h-5 w-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-sm font-medium text-orange-800">Buscando artistas disponibles para tu evento...</p>
+                  </section>
+                );
+              }
+
+              if (s === 'NOTIFIED' && !expired) {
+                const searchUrl = `/search?${replacementSearch.category ? `category=${replacementSearch.category}&` : ''}${replacementSearch.city ? `city=${encodeURIComponent(replacementSearch.city)}&` : ''}date=${replacementSearch.scheduledDate?.slice(0, 10) ?? ''}`;
+                return (
+                  <section className="bg-green-50 border border-green-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                        <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-green-800">
+                          Encontramos {replacementSearch.matchedArtistIds.length} artista(s) disponible(s)
+                        </p>
+                        <p className="text-sm text-green-700 mt-0.5">
+                          Hay artistas listos para tu evento dentro de tu presupuesto original.
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      href={searchUrl}
+                      className="block w-full py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl text-sm text-center transition"
+                    >
+                      Ver artistas disponibles
+                    </Link>
+                  </section>
+                );
+              }
+
+              if (s === 'NO_MATCHES') {
+                return (
+                  <section className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex items-start gap-3">
+                    <svg className="h-5 w-5 text-gray-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">No encontramos reemplazos disponibles</p>
+                      <p className="text-sm text-gray-500 mt-0.5">No hay artistas de tu categoría disponibles para esa fecha en tu zona. Tu reembolso será procesado.</p>
+                    </div>
+                  </section>
+                );
+              }
+
+              return null;
+            })()}
 
             {/* Motivo de cancelación */}
             {cancelReason && (

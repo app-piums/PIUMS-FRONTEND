@@ -107,10 +107,11 @@ function ApplyModal({
   );
 }
 
-function PostingCard({ posting, myApplicationIds, onApply }: {
+function PostingCard({ posting, myApplicationIds, onApply, isVerified }: {
   posting: ArtistPosting;
   myApplicationIds: Set<string>;
   onApply: (posting: ArtistPosting) => void;
+  isVerified: boolean;
 }) {
   const hasApplied = myApplicationIds.has(posting.id);
 
@@ -161,7 +162,9 @@ function PostingCard({ posting, myApplicationIds, onApply }: {
           ) : (
             <button
               onClick={() => onApply(posting)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-[#FF6B35] text-white hover:bg-[#e55a28] transition"
+              disabled={!isVerified}
+              title={!isVerified ? 'Debes estar verificado para aplicar' : undefined}
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-[#FF6B35] text-white hover:bg-[#e55a28] disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               Aplicar
             </button>
@@ -265,6 +268,9 @@ export default function TableroPostulacionesPage() {
     : visiblePostings;
 
   const profileIncomplete = isProfileIncomplete(artistProfile);
+  const isVerified = artistProfile
+    ? (artistProfile.isVerified || (artistProfile as any).verificationStatus === 'VERIFIED')
+    : true; // assume verified if profile not yet loaded (backend will reject if not)
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -291,6 +297,17 @@ export default function TableroPostulacionesPage() {
             <p className="text-sm text-gray-500 mt-0.5">Encuentra oportunidades de colaboración</p>
           </div>
         </div>
+
+        {/* Verification required banner */}
+        {artistProfile && !isVerified && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-3">
+            <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-800">Verificación requerida para aplicar</p>
+              <p className="text-xs text-amber-700 mt-0.5">Completa tu verificación de identidad para poder aplicar a vacantes de otros artistas.</p>
+            </div>
+          </div>
+        )}
 
         {/* Incomplete profile banner */}
         {profileIncomplete && (
@@ -361,7 +378,7 @@ export default function TableroPostulacionesPage() {
                 </div>
                 <div className="space-y-2">
                   {suggestedPostings.map(p => (
-                    <PostingCard key={p.id} posting={p} myApplicationIds={myApplicationPostingIds} onApply={setApplyTarget} />
+                    <PostingCard key={p.id} posting={p} myApplicationIds={myApplicationPostingIds} onApply={setApplyTarget} isVerified={isVerified} />
                   ))}
                 </div>
               </div>
@@ -381,6 +398,7 @@ export default function TableroPostulacionesPage() {
                       posting={p}
                       myApplicationIds={myApplicationPostingIds}
                       onApply={setApplyTarget}
+                      isVerified={isVerified}
                     />
                   ))}
                 </div>

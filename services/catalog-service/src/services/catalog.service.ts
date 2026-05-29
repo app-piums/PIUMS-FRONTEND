@@ -168,6 +168,21 @@ export class CatalogService {
   // ==================== SERVICIOS ====================
 
   /**
+   * Obtener todos los servicios del artista autenticado (sin filtro de status)
+   */
+  async getMyServices(artistId: string) {
+    const services = await prisma.service.findMany({
+      where: { artistId },
+      include: {
+        category: true,
+        addons: { orderBy: { order: 'asc' } },
+      },
+      orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
+    });
+    return { services };
+  }
+
+  /**
    * Buscar servicios con filtros
    */
   async searchServices(filters: {

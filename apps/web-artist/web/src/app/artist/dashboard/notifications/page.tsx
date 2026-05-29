@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { toast } from '@/lib/toast';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
 import { sdk } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,7 +17,8 @@ type NotificationIconKey =
   | 'BOOKING_COMPLETED' | 'PAYMENT_RECEIVED' | 'NEW_REVIEW'
   | 'NEW_MESSAGE' | 'RESCHEDULE_REQUEST' | 'BOOKING_NO_SHOW' | 'ARTIST_NO_SHOW' | 'SYSTEM'
   | 'COLLABORATION_INVITE' | 'COLLABORATION_RESPONSE'
-  | 'APPLICATION_RECEIVED' | 'APPLICATION_ACCEPTED' | 'APPLICATION_REJECTED';
+  | 'APPLICATION_RECEIVED' | 'APPLICATION_ACCEPTED' | 'APPLICATION_REJECTED'
+  | 'BOOKING_OPPORTUNITY';
 
 const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
   BOOKING_REQUEST:        <ClipboardList   size={20} className="text-blue-500" />,
@@ -35,6 +37,7 @@ const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
   APPLICATION_RECEIVED:   <Users           size={20} className="text-blue-500" />,
   APPLICATION_ACCEPTED:   <CheckCircle     size={20} className="text-green-500" />,
   APPLICATION_REJECTED:   <XCircle         size={20} className="text-gray-400" />,
+  BOOKING_OPPORTUNITY:    <CalendarClock   size={20} className="text-orange-500" />,
 };
 
 const DEFAULT_ICON = <Bell size={20} className="text-gray-400" />;
@@ -63,7 +66,7 @@ function CollabInviteActions({ collaboratorId, bookingId, onDone }: { collaborat
       setDone(accept ? 'accepted' : 'rejected');
       onDone();
     } catch (err: any) {
-      alert(err.message || 'Error respondiendo');
+      toast.error('No se pudo enviar la respuesta. Intenta de nuevo.');
     } finally {
       setLoading(null);
     }
@@ -150,6 +153,14 @@ function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id:
         )}
         {isCollabInvite && collaboratorId && (
           <CollabInviteActions collaboratorId={collaboratorId} bookingId={bookingId} onDone={() => onMarkRead(n.id)} />
+        )}
+        {n.type === 'BOOKING_OPPORTUNITY' && (n.metadata as any)?.searchUrl && (
+          <Link
+            href={(n.metadata as any).searchUrl}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-800"
+          >
+            Ver oportunidad &rarr;
+          </Link>
         )}
         {date && <p className="text-xs text-gray-400 mt-1.5">{date}</p>}
       </div>

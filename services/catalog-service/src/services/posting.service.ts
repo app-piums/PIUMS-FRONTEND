@@ -366,6 +366,11 @@ export class PostingService {
     if (posting.status !== 'OPEN') throw new AppError(400, 'Esta postulación ya no acepta aplicaciones');
     if (posting.artistId === artistId) throw new AppError(400, 'No puedes aplicar a tu propia postulación');
 
+    const applicantArtist = await artistsClient.getArtist(artistId).catch(() => null);
+    if (!applicantArtist || (applicantArtist as any).verificationStatus !== 'VERIFIED') {
+      throw new AppError(403, 'Debes estar verificado para aplicar a vacantes');
+    }
+
     const existing = await prisma.postingApplication.findUnique({
       where: { postingId_artistId: { postingId, artistId } },
     });

@@ -9,56 +9,30 @@ import { Loading } from '@/components/Loading';
 import { sdk, type ArtistProfile, type Service } from '@piums/sdk';
 import { toast } from '@/lib/toast';
 
-// ─── Mock data ───────────────────────────────────────────────────────────────
-const MOCK_SERVICE = {
-  id: '1',
-  title: 'Creación de Mural en Vivo: Esencia Latina',
-  category: 'Pintura Mural',
-  popular: true,
-  artistName: 'Alma Acevedo',
-  artistTag: 'Experta en Economía Naranja',
-  artistAvatar: '',
-  rating: 4.9,
-  ratingCount: 50,
-  duration: '4–6 Horas',
-  maxCapacity: 50,
-  images: [
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=900&q=80',
-  ],
-  description:
-    'Este servicio de Pintura Mural en Vivo está diseñado para transformar espacios comerciales y convertirlos en obras de arte con una experiencia netamente latina. Este servicio forma parte de la Economía Naranja, buscamos visibilizar el arte como motor de crecimiento y valor.',
-  mision:
-    '"Transformamos espacios a través del arte creativo, abriendo oportunidades económicas al estilo de una plataforma que conecta talento con propósito."',
-  includes: [
-    'Materiales profesionales (primera visita)',
-    'Boceto digital previo',
-    'Crédito para economía creativa',
-    'Tecnologías de procesos opcionales',
-  ],
-  resources: [
-    { icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>, label: 'Problemas de documentación',   sub: 'Plantillas y formularios' },
-    { icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, label: 'MVP – Esqueleto Operativo',    sub: 'Procesos internos eficientes' },
-    { icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, label: 'Finanzas Piums',               sub: 'Gestión de facturación' },
-    { icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" /></svg>, label: 'Acuerdo de Legales',           sub: 'Protección intelectual' },
-    { icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>, label: 'Modelo de Negocio',             sub: 'Canvas & estructura base' },
-    { icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, label: 'Equipo Piums',                  sub: 'Soporte y acompañamiento' },
-  ],
-  servicePrices: [
-    { id: 'a', name: 'Ilustración Personalizada', description: 'Entrega digital en alta resolución. Incluye 2 revisiones.', price: 150000, hasPrice: true },
-    { id: 'b', name: 'Consultoría de Arte',        description: 'Sesión de 1 hora por videollamada para asesoría de proyectos.', price: 80000,  hasPrice: true },
-    { id: 'c', name: 'Mural (Cotización)',          description: 'Agendar visita técnica para cotizar mural en espacio físico.', price: null,   hasPrice: false },
-  ],
-};
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_ABBR    = ['Do','Lu','Ma','Mi','Ju','Vi','Sá'];
 
-const TIME_SLOTS = ['08:00 AM', '10:30 AM', '02:00 PM', '04:00 PM'];
 
-// Blocked days (just for demo)
-const BLOCKED_DAYS = new Set([3, 10, 17, 22, 28]);
-
-type DisplayService = typeof MOCK_SERVICE;
+type DisplayService = {
+  id: string;
+  title: string;
+  category: string;
+  popular: boolean;
+  artistName: string;
+  artistTag: string;
+  artistAvatar: string;
+  rating: number;
+  ratingCount: number;
+  duration: string;
+  maxCapacity: number;
+  images: string[];
+  description: string;
+  mision: string;
+  includes: string[];
+  resources: { icon: React.ReactNode; label: string; sub: string }[];
+  servicePrices: { id: string; name: string; description: string; price: number | null; hasPrice: boolean }[];
+};
 
 const minutesToLabel = (minutes: number) => {
   if (minutes % 60 === 0) {
@@ -69,7 +43,7 @@ const minutesToLabel = (minutes: number) => {
 };
 
 const formatServiceDuration = (service?: Service | null) => {
-  if (!service) return MOCK_SERVICE.duration;
+  if (!service) return '';
   if (service.durationMin && service.durationMax) {
     if (service.durationMin === service.durationMax) {
       return minutesToLabel(service.durationMin);
@@ -88,43 +62,38 @@ const formatServiceDuration = (service?: Service | null) => {
   return 'Duración variable';
 };
 
-const normalizeServiceData = (service: Service | null, artist: ArtistProfile | null): DisplayService => {
-  if (!service) {
-    return MOCK_SERVICE;
-  }
-
-  const includes = service.whatIsIncluded && service.whatIsIncluded.length > 0
-    ? service.whatIsIncluded
-    : MOCK_SERVICE.includes;
+const normalizeServiceData = (service: Service | null, artist: ArtistProfile | null): DisplayService | null => {
+  if (!service) return null;
 
   const price = typeof service.basePrice === 'number' ? service.basePrice : null;
 
   return {
-    ...MOCK_SERVICE,
     id: service.id,
-    title: service.name || MOCK_SERVICE.title,
-    category: artist?.category || service.categoryId || MOCK_SERVICE.category,
+    title: service.name || '',
+    category: artist?.category || service.categoryId || '',
     popular: Boolean(service.isAvailable ?? service.status === 'ACTIVE'),
-    artistName: artist?.nombre || MOCK_SERVICE.artistName,
-    artistTag: artist?.category || MOCK_SERVICE.artistTag,
-    artistAvatar: artist?.avatar || MOCK_SERVICE.artistAvatar,
-    rating: artist?.rating || MOCK_SERVICE.rating,
-    ratingCount: artist?.reviewsCount || MOCK_SERVICE.ratingCount,
+    artistName: artist?.nombre || '',
+    artistTag: artist?.category || '',
+    artistAvatar: artist?.avatar || '',
+    rating: artist?.rating ?? 0,
+    ratingCount: artist?.reviewsCount ?? 0,
     duration: formatServiceDuration(service),
-    images: service.images && service.images.length > 0 ? service.images : MOCK_SERVICE.images,
-    description: service.description || MOCK_SERVICE.description,
-    mision: artist?.bio || MOCK_SERVICE.mision,
-    includes,
+    maxCapacity: 0,
+    images: service.images && service.images.length > 0 ? service.images : [],
+    description: service.description || '',
+    mision: artist?.bio || '',
+    includes: service.whatIsIncluded && service.whatIsIncluded.length > 0 ? service.whatIsIncluded : [],
+    resources: [],
     servicePrices: [
       {
         id: service.id,
-        name: service.name || MOCK_SERVICE.servicePrices[0].name,
-        description: service.description || MOCK_SERVICE.servicePrices[0].description,
+        name: service.name || '',
+        description: service.description || '',
         price,
         hasPrice: price !== null,
       },
     ],
-  } as DisplayService;
+  };
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -521,7 +490,7 @@ export default function ServiceDetailPage() {
     );
   }
 
-  if (!serviceData || error) {
+  if (!serviceData || !service || error) {
     return (
       <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center px-4 text-center">
         <p className="text-xl font-semibold text-gray-900 mb-3">

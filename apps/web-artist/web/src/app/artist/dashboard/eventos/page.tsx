@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
+import { toast } from '@/lib/toast';
 import { sdk, TicketEvent, TicketTier, CreateTicketEventPayload, CreateTicketTierPayload, TicketEventStatus } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -323,7 +324,7 @@ export default function EventosPage() {
       const updated = await (sdk as any).updateTicketEvent(event.id, { status: 'PUBLICADO' as TicketEventStatus });
       handleSaved(updated);
     } catch (err: any) {
-      alert(err.message || 'Error al publicar');
+      toast.error('No se pudo publicar el evento. Intenta de nuevo.');
     }
   }
 

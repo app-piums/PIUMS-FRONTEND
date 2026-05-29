@@ -1035,16 +1035,19 @@ class PiumsSDK {
     }
   }
 
-  async getArtistServices(artistId: string): Promise<Service[]> {
+  async getArtistServices(_artistId: string): Promise<Service[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/catalog/services?artistId=${artistId}`);
-      
+      const response = await fetch(
+        `${this.baseUrl}/catalog/services/mine`,
+        this.withAuth(),
+      );
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      return result.data || result.services || [];
+      return result.services || [];
     } catch (error) {
       console.error('Error fetching artist services:', error);
       return [];
@@ -3584,6 +3587,36 @@ class PiumsSDK {
   async getMyApplications(): Promise<{ applications: PostingApplication[] }> {
     const res = await fetch(`${this.baseUrl}/catalog/applications/mine`, this.withAuth({}));
     if (!res.ok) throw new Error('Error cargando mis aplicaciones');
+    return res.json();
+  }
+
+  // ==================== REEMPLAZO DE EMERGENCIA ====================
+
+  async getReplacementSearch(bookingId: string): Promise<{
+    id: string; bookingId: string; clientId: string; category: string | null;
+    city: string | null; budgetCents: number; scheduledDate: string;
+    durationMinutes: number; status: string; matchedServiceIds: string[];
+    matchedArtistIds: string[]; expiresAt: string; createdAt: string;
+  } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/replacement`, this.withAuth({}));
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async acceptReplacement(bookingId: string): Promise<{ message: string }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/replacement/accept`, this.withAuth({ method: 'POST' }));
+    if (!res.ok) { const e: any = await res.json().catch(() => ({})); throw new Error(e.message || 'Error'); }
+    return res.json();
+  }
+
+  async declineReplacement(bookingId: string): Promise<{ message: string }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/replacement/decline`, this.withAuth({ method: 'POST' }));
+    if (!res.ok) { const e: any = await res.json().catch(() => ({})); throw new Error(e.message || 'Error'); }
     return res.json();
   }
 }

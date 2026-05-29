@@ -82,9 +82,9 @@ export default function ArtistBookingsPage() {
       }
 
       const result = (await sdk.getArtistBookings(filters)) as ArtistBookingsResponse;
-      setBookings(result.bookings);
-      setTotal(result.total);
-      setTotalPages(result.totalPages);
+      setBookings(result.bookings ?? []);
+      setTotal(result.total ?? 0);
+      setTotalPages(result.totalPages ?? 1);
     } catch (err: unknown) {
       const message = getErrorMessage(err);
       console.error('Error loading bookings:', message);

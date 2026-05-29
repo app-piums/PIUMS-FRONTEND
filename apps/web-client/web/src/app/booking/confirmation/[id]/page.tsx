@@ -152,7 +152,7 @@ export default function BookingConfirmationPage() {
   const handleDownloadPDF = () => {
     if (!bookingId) return;
     // PDF generation not yet implemented — endpoint pending
-    alert('La descarga de PDF estará disponible próximamente.');
+    toast.info('La descarga de PDF estará disponible próximamente.');
   };
 
   const handleAddToCalendar = (type: 'google' | 'apple') => {

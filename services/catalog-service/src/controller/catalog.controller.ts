@@ -77,6 +77,16 @@ export class CatalogController {
 
   // ==================== SERVICIOS ====================
 
+  async getMyServices(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const artistId = await this.resolveArtistId(req.user!.id);
+      const result = await catalogService.getMyServices(artistId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async searchServices(req: Request, res: Response, next: NextFunction) {
     try {
       const query = {

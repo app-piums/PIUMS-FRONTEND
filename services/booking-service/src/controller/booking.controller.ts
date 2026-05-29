@@ -697,6 +697,35 @@ export class BookingController {
       next(error);
     }
   }
+
+  // ==================== REEMPLAZO DE EMERGENCIA ====================
+
+  async getReplacementSearch(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await bookingService.getReplacementSearch(req.params.id, req.user!.id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async acceptReplacement(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await bookingService.acceptReplacement(req.params.id, req.user!.id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async declineReplacement(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await bookingService.declineReplacement(req.params.id, req.user!.id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const bookingController = new BookingController();

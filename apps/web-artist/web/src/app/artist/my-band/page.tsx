@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -161,14 +162,14 @@ function MembersSection({ band, isAdmin, onRefresh }: { band: Band; isAdmin: boo
             placeholder="ID del artista"
             value={inviteId}
             onChange={(e) => setInviteId(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
           <input
             type="text"
             placeholder="Rol (ej. Baterista, opcional)"
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
           <button
             onClick={handleInvite}
@@ -350,14 +351,14 @@ function OpeningsSection({ band, isAdmin, onRefresh }: { band: Band; isAdmin: bo
             placeholder="Rol buscado (ej. Baterista)"
             value={newRole}
             onChange={(e) => setNewRole(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
           <textarea
             placeholder="Descripción (opcional)"
             value={newDesc}
             onChange={(e) => setNewDesc(e.target.value)}
             rows={2}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
           />
           <div className="flex items-center gap-3">
             <label className="text-sm text-gray-600">Cupos:</label>
@@ -367,7 +368,7 @@ function OpeningsSection({ band, isAdmin, onRefresh }: { band: Band; isAdmin: bo
               max={10}
               value={newSlots}
               onChange={(e) => setNewSlots(Math.max(1, Number(e.target.value)))}
-              className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
             />
           </div>
           <button
@@ -417,7 +418,7 @@ function EditBandSection({ band, onRefresh }: { band: Band; onRefresh: () => voi
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
         />
       </div>
       <div>
@@ -427,7 +428,7 @@ function EditBandSection({ band, onRefresh }: { band: Band; onRefresh: () => voi
           onChange={(e) => setBio(e.target.value)}
           rows={4}
           placeholder="Cuéntanos sobre la banda..."
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
         />
       </div>
       <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -491,7 +492,7 @@ function EmptyBandState({ onCreate }: { onCreate: (name: string) => void }) {
           placeholder="Nombre de tu banda"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
         />
         <button
           onClick={handleCreate}
@@ -592,6 +593,7 @@ function PendingInvitationsSection({ onAccepted }: { onAccepted: () => void }) {
 
 export default function MyBandPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [band, setBand] = useState<Band | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('members');
@@ -600,8 +602,9 @@ export default function MyBandPage() {
     try {
       const res = await fetch('/api/bands/my', { credentials: 'include' });
       if (res.status === 401) { router.push('/login?redirect=/artist/my-band'); return; }
+      if (!res.ok) { setBand(null); return; }  // 404 = no tiene banda aún
       const data = await res.json();
-      setBand(data ?? null);
+      setBand(data && data.id ? data : null);
     } catch {
       setBand(null);
     } finally {
@@ -622,6 +625,25 @@ export default function MyBandPage() {
     );
   }
 
+  if (user?.category && user.category !== 'MUSICO') {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <DashboardSidebar />
+        <main className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Sección exclusiva para músicos</h2>
+            <p className="text-sm text-gray-500">La gestión de bandas está disponible únicamente para artistas de la categoría Música.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!band) {
     return (
       <div className="flex min-h-screen bg-gray-50">
@@ -634,10 +656,11 @@ export default function MyBandPage() {
     );
   }
 
-  const isAdmin = band.members.some((m) => m.status === 'ACTIVE' && m.isAdmin);
+  const members = band.members ?? [];
+  const isAdmin = members.some((m) => m.status === 'ACTIVE' && m.isAdmin);
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'members', label: `Integrantes (${band.members.filter((m) => m.status !== 'INACTIVE').length})` },
+    { id: 'members', label: `Integrantes (${members.filter((m) => m.status !== 'INACTIVE').length})` },
     { id: 'openings', label: `Postulaciones (${band.openings.length})` },
     { id: 'edit', label: 'Editar banda' },
   ];

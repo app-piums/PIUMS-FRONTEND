@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
 
 interface Opening {
@@ -22,12 +23,21 @@ interface Opening {
 }
 
 export default function AuditionsPage() {
+  const { user } = useAuth();
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState<Set<string>>(new Set());
   const [applying, setApplying] = useState<string | null>(null);
   const [messageMap, setMessageMap] = useState<Record<string, string>>({});
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/artist/profile-check', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.verificationStatus) setVerificationStatus(d.verificationStatus); })
+      .catch(() => {});
+  }, []);
 
   const fetchOpenings = useCallback(async (q = '') => {
     setLoading(true);
@@ -70,6 +80,25 @@ export default function AuditionsPage() {
     }
   };
 
+  if (user?.category && user.category !== 'MUSICO') {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <DashboardSidebar />
+        <main className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Sección exclusiva para músicos</h2>
+            <p className="text-sm text-gray-500">Las audiciones de banda están disponibles únicamente para artistas de la categoría Música.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <DashboardSidebar />
@@ -79,6 +108,13 @@ export default function AuditionsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Audiciones abiertas</h1>
           <p className="text-sm text-gray-500 mt-1">Bandas que están buscando músicos ahora mismo</p>
         </div>
+
+        {/* Verification notice */}
+        {verificationStatus && verificationStatus !== 'VERIFIED' && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            Tu cuenta aún no está verificada. Completa tu verificación para poder postularte a posiciones de banda.
+          </div>
+        )}
 
         {/* Search */}
         <form onSubmit={handleSearch} className="flex gap-2 mb-6">
@@ -161,8 +197,9 @@ export default function AuditionsPage() {
                         />
                         <button
                           onClick={() => handleApply(o.id)}
-                          disabled={applying === o.id}
-                          className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+                          disabled={applying === o.id || verificationStatus !== 'VERIFIED'}
+                          title={verificationStatus !== 'VERIFIED' ? 'Debes estar verificado para postularte' : undefined}
+                          className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
                         >
                           {applying === o.id ? 'Enviando...' : 'Postularme'}
                         </button>

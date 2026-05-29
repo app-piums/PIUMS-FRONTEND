@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
       const hasRealCategory = artist?.category && artist.category !== 'OTRO';
       const hasPricing = artist?.basePrice != null || artist?.hourlyRateMin != null;
       const onboarded = hasRealCategory || specialties.length > 0 || hasPricing;
-      return NextResponse.json({ hasProfile: onboarded }, { status: onboarded ? 200 : 404 });
+      return NextResponse.json(
+        { hasProfile: onboarded, verificationStatus: artist?.verificationStatus ?? 'PENDING' },
+        { status: onboarded ? 200 : 404 }
+      );
     }
     return NextResponse.json({ hasProfile: false }, { status: 404 });
   } catch {

@@ -84,6 +84,7 @@ export class ArtistsClient {
         profileImageUrl: data.avatar || null,
         imagenPerfil: data.avatar || null,
         categoria: data.category || null,
+        verificationStatus: data.verificationStatus || 'PENDING',
       };
     } catch (error: any) {
       logger.error('Error calling artists-service', 'ARTISTS_CLIENT', { error: error.message, authId });

@@ -11,7 +11,7 @@ COPY pnpm-lock.yaml* ./
 RUN npm install -g pnpm
 
 # Instalar dependencias
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copiar código fuente
 COPY . .
@@ -51,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 
 # Comando para iniciar
 USER node
-CMD ["sh", "-c", "if [ -f 'prisma/schema.prisma' ]; then npx prisma migrate deploy; fi && node dist/index.js"]
+CMD ["sh", "-c", "if [ -f 'prisma/schema.prisma' ]; then npx prisma db push --accept-data-loss; fi && node dist/index.js"]

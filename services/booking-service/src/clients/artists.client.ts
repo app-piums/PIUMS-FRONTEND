@@ -66,6 +66,21 @@ export class ArtistsClient {
     }
   }
 
+  async getArtistAvailability(artistId: string): Promise<Array<{ dayOfWeek: string; startTime: string; endTime: string }>> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/artists/${artistId}`, { timeout: 5000 });
+      if (response.status === 200 && response.data?.artist?.availabilityRules) {
+        return (response.data.artist.availabilityRules as any[])
+          .filter((r: any) => r.isActive !== false)
+          .map((r: any) => ({ dayOfWeek: r.dayOfWeek, startTime: r.startTime, endTime: r.endTime }));
+      }
+      return [];
+    } catch (error: any) {
+      logger.error('Error fetching artist availability rules', 'ARTISTS_CLIENT', { error: error.message, artistId });
+      return [];
+    }
+  }
+
   async shadowBan(authId: string, reason: string, banned = true): Promise<boolean> {
     try {
       const internalSecret = process.env.INTERNAL_SERVICE_SECRET;

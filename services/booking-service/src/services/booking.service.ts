@@ -12,6 +12,7 @@ import { artistsClient } from "../clients/artists.client";
 import { notifyBookingCreated, notifyBookingConfirmed, notifyNoShowReported, notifyNoShowResolved } from "../utils/notifications";
 import { createAvailabilityReservation, removeAvailabilityReservation } from "./availability.service";
 import { googleCalendarClient } from "../clients/google-calendar.client";
+import { createReplacementPrompt } from "./replacement.service";
 
 const prisma = new PrismaClient();
 
@@ -1002,6 +1003,16 @@ export class BookingService {
       }
     })();
 
+    // Buscar artista de reemplazo si el artista cancela dentro de 72h del evento
+    if (!isClient) {
+      const hoursUntilEvent = (booking.scheduledDate.getTime() - Date.now()) / (1000 * 60 * 60);
+      if (hoursUntilEvent > 0 && hoursUntilEvent <= 72) {
+        createReplacementPrompt(id).catch((err: any) =>
+          logger.error('createReplacementPrompt error', 'BOOKING_SERVICE', { error: err.message, bookingId: id })
+        );
+      }
+    }
+
     return updated;
   }
 
@@ -1727,6 +1738,19 @@ export class BookingService {
           category: "booking",
         }).catch(err => logger.error("Error enviando notif IN_APP artista delivery confirmed", "BOOKING_SERVICE", { error: err.message }));
 
+        // Solicitar reseña al cliente
+        const clientAppUrl = process.env.CLIENT_APP_URL || 'http://localhost:3000';
+        notificationsClient.sendNotification({
+          userId: clientId,
+          type: "REVIEW_REQUEST",
+          channel: "IN_APP",
+          title: "¿Cómo fue tu experiencia?",
+          message: `Deja una reseña sobre el servicio de ${artistName}. Tu opinión ayuda a otros clientes.`,
+          data: { bookingId, reviewUrl: `${clientAppUrl}/bookings/${bookingId}?review=1` },
+          priority: "normal",
+          category: "review",
+        }).catch(err => logger.error("Error enviando REVIEW_REQUEST", "BOOKING_SERVICE", { error: err.message }));
+
         if (artistEmail) {
           await notificationsClient.sendDeliveryConfirmedArtistEmail({
             artistEmail,
@@ -1903,32 +1927,47 @@ export class BookingService {
   ) {
     const config = await this.getArtistConfig(artistId);
 
-    // TODO: Obtener disponibilidad semanal del artista desde artists-service
-    // Por ahora asumimos horario 9am-6pm todos los días laborales
+    // Obtener reglas de disponibilidad del artista desde artists-service.
+    // Si el artista no tiene reglas configuradas, cae al fallback 9am-6pm lun-vier.
+    const availabilityRules = await artistsClient.getArtistAvailability(artistId);
+    const DAY_MAP: Record<number, string> = {
+      0: 'DOMINGO', 1: 'LUNES', 2: 'MARTES', 3: 'MIERCOLES',
+      4: 'JUEVES', 5: 'VIERNES', 6: 'SABADO',
+    };
 
     const slots: { start: Date; end: Date }[] = [];
     const currentDate = new Date(startDate);
 
     while (currentDate < endDate) {
-      // Solo días laborales (lunes a viernes)
-      const dayOfWeek = currentDate.getDay();
-      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-        // 9am a 6pm
-        for (let hour = 9; hour < 18; hour++) {
+      const jsDay = currentDate.getDay();
+      const dayName = DAY_MAP[jsDay];
+
+      // Reglas del artista para este día de la semana
+      const dayRules = availabilityRules.filter(r => r.dayOfWeek === dayName);
+
+      // Fallback: si no hay reglas configuradas, usar 9am-6pm lun-vier
+      const workRanges = dayRules.length > 0
+        ? dayRules.map(r => ({
+            startHour: parseInt(r.startTime.split(':')[0], 10),
+            startMin: parseInt(r.startTime.split(':')[1] ?? '0', 10),
+            endHour: parseInt(r.endTime.split(':')[0], 10),
+            endMin: parseInt(r.endTime.split(':')[1] ?? '0', 10),
+          }))
+        : (jsDay >= 1 && jsDay <= 5 ? [{ startHour: 9, startMin: 0, endHour: 18, endMin: 0 }] : []);
+
+      for (const range of workRanges) {
+        for (let hour = range.startHour; hour < range.endHour; hour++) {
           const slotStart = new Date(currentDate);
           slotStart.setHours(hour, 0, 0, 0);
 
           const slotEnd = new Date(slotStart);
           slotEnd.setMinutes(slotEnd.getMinutes() + durationMinutes);
 
-          // Verificar si el slot completo está dentro del horario laboral
-          if (slotEnd.getHours() <= 18) {
-            const isAvailable = await this.checkAvailability(
-              artistId,
-              slotStart,
-              slotEnd
-            );
-
+          // El slot debe terminar dentro del rango de trabajo
+          const slotEndMinutes = slotEnd.getHours() * 60 + slotEnd.getMinutes();
+          const rangeEndMinutes = range.endHour * 60 + range.endMin;
+          if (slotEndMinutes <= rangeEndMinutes) {
+            const isAvailable = await this.checkAvailability(artistId, slotStart, slotEnd);
             if (isAvailable) {
               slots.push({ start: slotStart, end: slotEnd });
             }
@@ -2668,6 +2707,60 @@ export class BookingService {
       where: { bookingId },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  // ==================== REEMPLAZO DE EMERGENCIA ====================
+
+  async getReplacementSearch(bookingId: string, requestingUserId: string) {
+    const booking = await (prisma as any).booking.findUnique({
+      where: { id: bookingId },
+      select: { clientId: true },
+    });
+    if (!booking) throw new AppError(404, 'Reserva no encontrada');
+    if (booking.clientId !== requestingUserId) throw new AppError(403, 'Acceso denegado');
+
+    return (prisma as any).replacementSearch.findUnique({ where: { bookingId } });
+  }
+
+  async acceptReplacement(bookingId: string, userId: string) {
+    const booking = await (prisma as any).booking.findUnique({
+      where: { id: bookingId },
+      select: { clientId: true },
+    });
+    if (!booking) throw new AppError(404, 'Reserva no encontrada');
+    if (booking.clientId !== userId) throw new AppError(403, 'Acceso denegado');
+
+    const record = await (prisma as any).replacementSearch.findUnique({ where: { bookingId } });
+    if (!record) throw new AppError(404, 'No hay búsqueda de reemplazo para esta reserva');
+    if (record.status !== 'AWAITING_CLIENT') throw new AppError(400, 'Esta búsqueda ya fue procesada');
+    if (new Date(record.expiresAt) <= new Date()) throw new AppError(400, 'El tiempo para responder ha vencido');
+
+    const { runReplacementSearch } = await import('./replacement.service');
+    runReplacementSearch(record.id).catch((err: any) =>
+      logger.error('runReplacementSearch error', 'BOOKING_SERVICE', { error: err.message, replacementSearchId: record.id })
+    );
+
+    return { message: 'Buscando artistas de reemplazo...' };
+  }
+
+  async declineReplacement(bookingId: string, userId: string) {
+    const booking = await (prisma as any).booking.findUnique({
+      where: { id: bookingId },
+      select: { clientId: true },
+    });
+    if (!booking) throw new AppError(404, 'Reserva no encontrada');
+    if (booking.clientId !== userId) throw new AppError(403, 'Acceso denegado');
+
+    const record = await (prisma as any).replacementSearch.findUnique({ where: { bookingId } });
+    if (!record) throw new AppError(404, 'No hay búsqueda de reemplazo para esta reserva');
+    if (record.status !== 'AWAITING_CLIENT') throw new AppError(400, 'Esta búsqueda ya fue procesada');
+
+    await (prisma as any).replacementSearch.update({
+      where: { bookingId },
+      data: { status: 'OPTED_OUT' },
+    });
+
+    return { message: 'De acuerdo, conservarás el reembolso completo.' };
   }
 }
 

@@ -65,19 +65,6 @@ export default function RootLayout({
           `
         }} />
         
-        {/* CRITICAL: Unregister Service Workers IMMEDIATELY to prevent port caching */}
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            if ('serviceWorker' in navigator) {
-              navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for(let registration of registrations) {
-                  console.log('[CRITICAL] Unregistering SW:', registration.scope);
-                  registration.unregister();
-                }
-              });
-            }
-          `
-        }} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

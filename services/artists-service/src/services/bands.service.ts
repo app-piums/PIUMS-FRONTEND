@@ -89,15 +89,37 @@ export const getBandById = async (id: string) => {
   return band;
 };
 
-export const searchBands = async (q: string) => {
+export const searchBands = async (q: string, city?: string) => {
+  const textConditions = q ? [
+    { name: { contains: q, mode: 'insensitive' as const } },
+    { bio: { contains: q, mode: 'insensitive' as const } },
+    { genre: { hasSome: [q] } },
+    { specialties: { hasSome: [q] } },
+  ] : [];
+
   return prisma.band.findMany({
     where: {
       isActive: true,
       deletedAt: null,
-      name: { contains: q, mode: "insensitive" },
+      verificationStatus: 'VERIFIED',
+      ...(textConditions.length > 0 && { OR: textConditions }),
+      ...(city && { city: { contains: city, mode: 'insensitive' } }),
     },
-    select: { id: true, name: true, slug: true, avatar: true, city: true, country: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      avatar: true,
+      city: true,
+      country: true,
+      genre: true,
+      specialties: true,
+      rating: true,
+      reviewCount: true,
+      isBookable: true,
+    },
     take: 10,
+    orderBy: { rating: 'desc' },
   });
 };
 
@@ -226,6 +248,11 @@ export const closeOpening = async (openingId: string, adminId: string) => {
 export const applyToOpening = async (openingId: string, artistId: string, message?: string) => {
   const opening = await prisma.bandOpening.findUnique({ where: { id: openingId } });
   if (!opening || !opening.isOpen) throw new AppError(404, "Posición no disponible");
+
+  const artist = await prisma.artist.findUnique({ where: { id: artistId }, select: { verificationStatus: true } });
+  if (!artist || artist.verificationStatus !== 'VERIFIED') {
+    throw new AppError(403, "Debes estar verificado para postularte a posiciones de banda");
+  }
 
   const existing = await prisma.bandApplication.findUnique({ where: { openingId_artistId: { openingId, artistId } } });
   if (existing) throw new AppError(409, "Ya te postulaste para esta posición");

@@ -40,9 +40,9 @@ export default function ArtistReviewsPage() {
         sortBy: 'recent',
       });
 
-      setReviews(result.reviews);
-      setTotal(result.total);
-      setTotalPages(result.totalPages);
+      setReviews(result.reviews ?? []);
+      setTotal(result.total ?? 0);
+      setTotalPages(result.totalPages ?? 1);
     } catch (err: unknown) {
       const message = getErrorMessage(err);
       console.error('Error loading reviews:', message);

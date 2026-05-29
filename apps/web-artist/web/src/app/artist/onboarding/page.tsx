@@ -300,7 +300,8 @@ export default function ArtistOnboardingPage() {
       });
     } catch (e) { console.warn('[onboarding] skip profile creation failed:', e); }
     document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
-    router.push('/artist/dashboard');
+    await fetch('/api/auth/refresh-token', { method: 'POST', credentials: 'include' }).catch(() => {});
+    window.location.replace('/artist/dashboard');
   };
 
   // Map current step to a "display" step number (skipping the deprecated step 4)

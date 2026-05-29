@@ -11,6 +11,7 @@ import {
   CheckCircle, XCircle, Clock, Eye, Trash2, ExternalLink, X, Link2,
   MessageSquare, Send
 } from 'lucide-react';
+import { toast } from '@/lib/toast';
 
 const CLIENT_APP_URL = process.env.NEXT_PUBLIC_CLIENT_URL || 'https://client.piums.io';
 
@@ -510,7 +511,7 @@ export default function PostulacionesPage() {
       await sdk.updatePosting(id, { status });
       setPostings(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     } catch (err: any) {
-      alert(err.message || 'Error cerrando postulación');
+      toast.error('No se pudo cerrar la postulación. Intenta de nuevo.');
     }
   };
 
@@ -520,7 +521,7 @@ export default function PostulacionesPage() {
       await sdk.deletePosting(id);
       setPostings(prev => prev.filter(p => p.id !== id));
     } catch (err: any) {
-      alert(err.message || 'Error eliminando postulación');
+      toast.error('No se pudo eliminar la postulación. Intenta de nuevo.');
     }
   };
 
@@ -532,7 +533,7 @@ export default function PostulacionesPage() {
         router.push(`/chat/grupo?groupId=${(application as any).chatGroupId}`);
       }
     } catch (err: any) {
-      alert(err.message || 'Error al responder la postulación');
+      toast.error('No se pudo responder la postulación. Intenta de nuevo.');
     }
   };
 
@@ -543,7 +544,7 @@ export default function PostulacionesPage() {
       await sdk.withdrawApplication(appId);
       await fetchMyPostings();
     } catch (err: any) {
-      alert(err.message || 'Error al retirar la aplicación');
+      toast.error('No se pudo retirar la aplicación. Intenta de nuevo.');
     } finally {
       setWithdrawingId(null);
     }

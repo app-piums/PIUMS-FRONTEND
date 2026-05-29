@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ClientSidebar from '@/components/ClientSidebar';
 import { Loading } from '@/components/Loading';
@@ -8,7 +9,7 @@ import { sdk } from '@piums/sdk';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   CheckCircle, XCircle, Clock, DollarSign,
-  Star, MessageCircle, Info, Bell, AlertTriangle, Tag, Percent
+  Star, MessageCircle, Info, Bell, AlertTriangle, Tag, Percent, Users
 } from 'lucide-react';
 
 type NotificationIconKey =
@@ -16,22 +17,25 @@ type NotificationIconKey =
   | 'BOOKING_PENDING' | 'PAYMENT_RECEIVED' | 'NEW_REVIEW'
   | 'NEW_MESSAGE' | 'SYSTEM'
   | 'DELIVERY_PROBLEM_REPORTED' | 'dispute_opened'
-  | 'COUPON_EXPIRING' | 'COUPON_SENT' | 'DISCOUNT';
+  | 'COUPON_EXPIRING' | 'COUPON_SENT' | 'DISCOUNT'
+  | 'REPLACEMENT_OPT_IN_PROMPT' | 'REPLACEMENT_ARTISTS_AVAILABLE';
 
 const TYPE_ICON_MAP: Record<NotificationIconKey, React.ReactElement> = {
-  BOOKING_CONFIRMED:          <CheckCircle    size={20} className="text-green-500" />,
-  BOOKING_CANCELLED:          <XCircle        size={20} className="text-red-500" />,
-  BOOKING_REJECTED:           <XCircle        size={20} className="text-red-500" />,
-  BOOKING_PENDING:            <Clock          size={20} className="text-orange-400" />,
-  PAYMENT_RECEIVED:           <DollarSign     size={20} className="text-green-600" />,
-  NEW_REVIEW:                 <Star           size={20} className="text-yellow-500" />,
-  NEW_MESSAGE:                <MessageCircle  size={20} className="text-blue-400" />,
-  SYSTEM:                     <Info           size={20} className="text-gray-400" />,
-  DELIVERY_PROBLEM_REPORTED:  <AlertTriangle  size={20} className="text-red-400" />,
-  dispute_opened:             <AlertTriangle  size={20} className="text-red-500" />,
-  COUPON_EXPIRING:            <Tag            size={20} className="text-orange-400" />,
-  COUPON_SENT:                <Tag            size={20} className="text-green-500" />,
-  DISCOUNT:                   <Percent        size={20} className="text-indigo-500" />,
+  BOOKING_CONFIRMED:              <CheckCircle    size={20} className="text-green-500" />,
+  BOOKING_CANCELLED:              <XCircle        size={20} className="text-red-500" />,
+  BOOKING_REJECTED:               <XCircle        size={20} className="text-red-500" />,
+  BOOKING_PENDING:                <Clock          size={20} className="text-orange-400" />,
+  PAYMENT_RECEIVED:               <DollarSign     size={20} className="text-green-600" />,
+  NEW_REVIEW:                     <Star           size={20} className="text-yellow-500" />,
+  NEW_MESSAGE:                    <MessageCircle  size={20} className="text-blue-400" />,
+  SYSTEM:                         <Info           size={20} className="text-gray-400" />,
+  DELIVERY_PROBLEM_REPORTED:      <AlertTriangle  size={20} className="text-red-400" />,
+  dispute_opened:                 <AlertTriangle  size={20} className="text-red-500" />,
+  COUPON_EXPIRING:                <Tag            size={20} className="text-orange-400" />,
+  COUPON_SENT:                    <Tag            size={20} className="text-green-500" />,
+  DISCOUNT:                       <Percent        size={20} className="text-indigo-500" />,
+  REPLACEMENT_OPT_IN_PROMPT:      <Users          size={20} className="text-orange-500" />,
+  REPLACEMENT_ARTISTS_AVAILABLE:  <Users          size={20} className="text-green-500" />,
 };
 
 const DEFAULT_ICON = <Bell size={20} className="text-gray-400" />;
@@ -67,6 +71,11 @@ function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id:
         </p>
         {n.message && (
           <p className="text-sm text-gray-500 mt-0.5 leading-snug">{n.message}</p>
+        )}
+        {(n.type === 'REPLACEMENT_OPT_IN_PROMPT' || n.type === 'REPLACEMENT_ARTISTS_AVAILABLE') && n.data?.bookingId && (
+          <Link href={`/bookings/${n.data.bookingId}`} className="mt-2 inline-flex items-center text-xs font-semibold text-orange-600 hover:text-orange-800">
+            Ver reserva &rarr;
+          </Link>
         )}
         {date && <p className="text-xs text-gray-400 mt-1.5">{date}</p>}
       </div>

@@ -25,6 +25,7 @@ interface User {
   documentFrontUrl?: string | null;
   documentBackUrl?: string | null;
   documentSelfieUrl?: string | null;
+  category?: string | null;
 }
 
 interface AuthState {

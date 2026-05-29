@@ -70,6 +70,17 @@ router.delete(
 router.get("/services", searchLimiter, catalogController.searchServices.bind(catalogController));
 
 /**
+ * GET /api/services/mine
+ * Obtener todos mis servicios (activos e inactivos)
+ * Requiere autenticación (artista)
+ */
+router.get(
+  "/services/mine",
+  authenticateToken,
+  catalogController.getMyServices.bind(catalogController)
+);
+
+/**
  * GET /api/services/:id
  * Obtener servicio por ID
  * Público

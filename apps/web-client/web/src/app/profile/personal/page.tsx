@@ -156,17 +156,25 @@ export default function PersonalInfoTab(props: PersonalInfoTabProps = {}) {
     e.preventDefault();
     setLoading(true);
     try {
-      // TODO: Call API to update profile
-      // const userId = user?.id;
-      // await sdk.updateProfile(userId, formData);
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const res = await fetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ciudad: formData.direccion,
+          telefono: formData.telefono,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Error al actualizar el perfil');
+      }
       setInitialData({ ...formData });
       setEditing(false);
       toast.success('Perfil actualizado correctamente');
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error('Error al actualizar el perfil');
+      toast.error(error instanceof Error ? error.message : 'Error al actualizar el perfil');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import type { Artist, GetArtistsParams, SmartSearchParams } from '@piums/sdk';
-import { MOCK_ARTISTS } from '@/lib/mockData';
+import type { Artist, GetArtistsParams } from '@piums/sdk';
 
 export interface ArtistsFilters {
   q?: string;
@@ -36,32 +35,6 @@ function resolveFilters(filters: ArtistsFilters): ArtistsFilters {
   const norm = stripAccents(filters.q).toLowerCase().trim();
   return { ...filters, q: norm };
 }
-
-// ─── Mock data path ───────────────────────────────────────────────────────────
-
-const getMockPage = (page: number, filters: ArtistsFilters): ArtistsPageResponse => {
-  const resolved = resolveFilters(filters);
-  let filtered = MOCK_ARTISTS as Artist[];
-  if (resolved.category) filtered = filtered.filter(a => a.category?.toLowerCase() === resolved.category!.toLowerCase());
-  if (resolved.cityId) filtered = filtered.filter(a => a.cityId === resolved.cityId);
-  if (resolved.q) {
-    const q = resolved.q;
-    filtered = filtered.filter(a =>
-      stripAccents(a.nombre).toLowerCase().includes(q) ||
-      (a.category && stripAccents(a.category).toLowerCase().includes(q))
-    );
-  }
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
-  const start = (page - 1) * ITEMS_PER_PAGE;
-  return {
-    artists: filtered.slice(start, start + ITEMS_PER_PAGE),
-    total,
-    page,
-    totalPages,
-    hasNextPage: page < totalPages,
-  };
-};
 
 // ─── Real API path ────────────────────────────────────────────────────────────
 
@@ -99,9 +72,8 @@ const fetchArtistsPage = async (
       hasNextPage: page < totalPages,
     };
   } catch (err) {
-    // Only fall back to mock when there are no real results yet (first render)
-    console.warn('[useInfiniteArtists] API error, falling back to mock:', err);
-    return getMockPage(page, filters);
+    console.error('[useInfiniteArtists] API error:', err);
+    throw err;
   }
 };
 

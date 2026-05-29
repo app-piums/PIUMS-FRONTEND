@@ -645,3 +645,41 @@ model BookingCollaborator {
   @@index([artistId])
   @@map("booking_collaborators")
 }
+
+// ============================================================================
+// Reemplazo de emergencia — cuando un artista cancela dentro de 72h del evento
+// ============================================================================
+
+enum ReplacementSearchStatus {
+  AWAITING_CLIENT  // Se le preguntó al cliente si quiere reemplazo, sin respuesta aún
+  OPTED_OUT        // El cliente dijo que no quiere reemplazo
+  SEARCHING        // Cliente aceptó, búsqueda en progreso
+  NOTIFIED         // Resultados enviados al cliente
+  NO_MATCHES       // Cliente aceptó pero no se encontraron artistas disponibles
+  EXPIRED          // La ventana de 2h (prompt) o 4h (resultados) venció
+}
+
+model ReplacementSearch {
+  id                String                  @id @default(uuid())
+  bookingId         String                  @unique
+  clientId          String
+  category          String?
+  city              String?
+  budgetCents       Int
+  scheduledDate     DateTime
+  durationMinutes   Int
+  status            ReplacementSearchStatus @default(AWAITING_CLIENT)
+  matchedServiceIds String[]                @default([])
+  matchedArtistIds  String[]                @default([])
+  clientOptedInAt   DateTime?
+  clientNotifiedAt  DateTime?
+  artistsNotifiedAt DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([bookingId])
+  @@index([clientId])
+  @@index([status, expiresAt])
+  @@map("replacement_searches")
+}
