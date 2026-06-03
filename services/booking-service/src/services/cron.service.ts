@@ -626,6 +626,80 @@ async function runPayoutHoldRelease() {
   }
 }
 
+// ==================== CAPTURA PROGRAMADA (48H GRACIA) ====================
+// Cada hora: captura los pagos pre-autorizados cuya ventana de gracia de 48h ya venció.
+// Se activa cuando el artista confirma → se registra captureScheduledAt = confirmedAt + 48h.
+// Si el cliente canceló dentro de las 48h, captureScheduledAt queda en null y el cron no actúa.
+
+async function runScheduledCaptures() {
+  const now = new Date();
+
+  try {
+    const bookings = await (prisma as any).booking.findMany({
+      where: {
+        paymentStatus: 'CARD_AUTHORIZED',
+        captureScheduledAt: { lte: now },
+        status: 'CONFIRMED',
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        code: true,
+        clientId: true,
+        captureScheduledAt: true,
+      },
+    });
+
+    for (const booking of bookings) {
+      try {
+        const captured = await paymentsClient.captureBooking(booking.id);
+        if (captured) {
+          logger.info("Captura automática post-gracia ejecutada", "CRON_CAPTURE", {
+            bookingId: booking.id,
+            captureScheduledAt: booking.captureScheduledAt,
+          });
+        } else {
+          // La captura falló (ej: retención expirada en Tilopay). Notificar al cliente.
+          logger.error("Captura automática falló — retención posiblemente expirada", "CRON_CAPTURE", {
+            bookingId: booking.id,
+          });
+          notificationsClient.sendNotification({
+            userId: booking.clientId,
+            type: "PAYMENT_CAPTURE_FAILED",
+            channel: "IN_APP",
+            title: "Acción requerida — Pago pendiente",
+            message: `Tu reserva #${booking.code || booking.id} está confirmada pero no pudimos procesar el cobro automático. Por favor completa el pago manualmente.`,
+            data: { bookingId: booking.id },
+            priority: "high",
+            category: "payment",
+          }).catch(() => {});
+          notificationsClient.sendNotification({
+            userId: booking.clientId,
+            type: "PAYMENT_CAPTURE_FAILED",
+            channel: "PUSH",
+            title: "Pago pendiente",
+            message: `Por favor completa el pago de tu reserva #${booking.code || booking.id}.`,
+            data: { bookingId: booking.id },
+            priority: "high",
+            category: "payment",
+          }).catch(() => {});
+        }
+      } catch (err: any) {
+        logger.error("Error en captura automática", "CRON_CAPTURE", {
+          bookingId: booking.id,
+          error: err.message,
+        });
+      }
+    }
+
+    if (bookings.length > 0) {
+      logger.info(`Captura programada: procesados ${bookings.length} bookings`, "CRON_CAPTURE");
+    }
+  } catch (err: any) {
+    logger.error("Error en cron de captura programada", "CRON_CAPTURE", { error: err.message });
+  }
+}
+
 // ==================== SCHEDULER ====================
 
 async function runReplacementExpiry() {
@@ -666,6 +740,9 @@ export function startCronJobs() {
   // Expirar prompts y resultados de reemplazo vencidos: cada hora
   setInterval(() => withCronLock('replacement-expiry', 3300, runReplacementExpiry).catch(() => {}), 60 * 60 * 1000);
 
+  // Captura automática post-gracia de 48h: cada hora
+  setInterval(() => withCronLock('scheduled-captures', 3300, runScheduledCaptures).catch(() => {}), 60 * 60 * 1000);
+
   // Ejecutar inmediatamente al iniciar (con delay para que el servidor arranque)
   setTimeout(() => {
     withCronLock('no-show-boot', 3300, runNoShowAutoActions).catch(() => {});
@@ -678,7 +755,8 @@ export function startCronJobs() {
     withCronLock('reminder-same-day-boot', 3300, runReminderSameDay).catch(() => {});
     withCronLock('artist-reminders-boot', 3300, runArtistReminders).catch(() => {});
     withCronLock('replacement-expiry-boot', 3300, runReplacementExpiry).catch(() => {});
+    withCronLock('scheduled-captures-boot', 3300, runScheduledCaptures).catch(() => {});
   }, 30 * 1000); // 30s después del boot
 
-  logger.info("Cron jobs iniciados (no-show + cobro 72h + escalacion pagos + auto-complete + payout hold release + recordatorios multi-etapa + expiry reemplazos)", "CRON");
+  logger.info("Cron jobs iniciados (no-show + cobro 72h + escalacion pagos + auto-complete + payout hold release + recordatorios multi-etapa + expiry reemplazos + captura post-gracia)", "CRON");
 }

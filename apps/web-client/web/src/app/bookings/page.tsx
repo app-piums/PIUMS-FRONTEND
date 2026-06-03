@@ -49,25 +49,33 @@ const STATS = [
   { label: 'Completadas',      value: 0, icon: CheckCircleIcon, color: 'text-green-600 bg-green-50' },
 ];
 
-type TabKey = 'all' | 'pending' | 'confirmed' | 'completed' | 'delivered' | 'cancelled';
+type TabKey = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'all',       label: 'Todas las reservas' },
   { key: 'pending',   label: 'Pendientes'         },
   { key: 'confirmed', label: 'Confirmadas'        },
-  { key: 'delivered', label: 'Por confirmar'      },
   { key: 'completed', label: 'Completadas'        },
   { key: 'cancelled', label: 'Canceladas'         },
 ];
 
+// Cada tab agrupa múltiples booking statuses
+const FILTER_MAP: Record<string, string[]> = {
+  pending:   ['pending', 'card_authorized'],
+  confirmed: ['confirmed', 'anticipo_paid', 'in_progress'],
+  completed: ['completed', 'delivered'],
+  cancelled: ['cancelled', 'cancelled_client', 'cancelled_artist', 'rejected', 'no_show'],
+};
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  confirmed:    { label: 'Confirmada',    className: 'bg-green-100 text-green-700'   },
-  accepted:     { label: 'Aceptada',      className: 'bg-green-100 text-green-700'   },
-  pending:      { label: 'Pendiente',     className: 'bg-yellow-100 text-yellow-700' },
-  completed:    { label: 'Completada',    className: 'bg-blue-100 text-blue-700'     },
-  delivered:    { label: 'Por confirmar', className: 'bg-purple-100 text-purple-700' },
-  dispute_open: { label: 'En disputa',    className: 'bg-red-100 text-red-700'       },
-  cancelled:    { label: 'Cancelada',     className: 'bg-red-100 text-red-600'       },
-  rejected:     { label: 'Rechazada',     className: 'bg-red-100 text-red-600'       },
+  confirmed:       { label: 'Confirmada',  className: 'bg-green-100 text-green-700'   },
+  accepted:        { label: 'Aceptada',    className: 'bg-green-100 text-green-700'   },
+  pending:         { label: 'Pendiente',   className: 'bg-yellow-100 text-yellow-700' },
+  card_authorized: { label: 'Pendiente',   className: 'bg-yellow-100 text-yellow-700' },
+  completed:       { label: 'Completada',  className: 'bg-blue-100 text-blue-700'     },
+  delivered:       { label: 'Entregado',   className: 'bg-purple-100 text-purple-700' },
+  dispute_open:    { label: 'En disputa',  className: 'bg-red-100 text-red-700'       },
+  cancelled:       { label: 'Cancelada',   className: 'bg-red-100 text-red-600'       },
+  rejected:        { label: 'Rechazada',   className: 'bg-red-100 text-red-600'       },
 };
 
 // ─── Booking card ─────────────────────────────────────────────────────────────
@@ -141,11 +149,11 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
             </div>
           )}
           {(b as any).paymentStatus === 'CARD_AUTHORIZED' && (
-            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5" onClick={e => e.stopPropagation()}>
-              <InfoIcon className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2.5" onClick={e => e.stopPropagation()}>
+              <InfoIcon className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold text-blue-800">Tarjeta pre-autorizada</p>
-                <p className="text-xs text-blue-700">El cobro se realizará cuando el artista confirme tu reserva.</p>
+                <p className="text-xs font-semibold text-yellow-800">Reserva en espera de confirmacion</p>
+                <p className="text-xs text-yellow-700">Tu reserva esta confirmada de nuestra parte. Esperamos que el artista la acepte en breve.</p>
               </div>
             </div>
           )}
@@ -526,7 +534,8 @@ export default function BookingsPage() {
   }, [authLoading, user]);
 
   const filtered = bookings.filter(b => {
-    const matchTab = activeTab === 'all' || b.status === activeTab;
+    const matchTab = activeTab === 'all' ||
+    (FILTER_MAP[activeTab]?.includes(b.status.toLowerCase()) ?? b.status === activeTab);
     const matchSearch = b.title.toLowerCase().includes(search.toLowerCase()) ||
                         b.artistName.toLowerCase().includes(search.toLowerCase());
     return matchTab && matchSearch;

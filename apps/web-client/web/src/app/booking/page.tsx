@@ -1598,15 +1598,15 @@ function BookingContent() {
                             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                           </svg>
                           <div className="ml-3">
-                            <h4 className="text-sm font-medium text-yellow-800 mb-1">
-                              Política de Cancelación
+                            <h4 className="text-sm font-medium text-yellow-800 mb-2">
+                              Politica de Cancelacion
                             </h4>
                             <p className="text-sm text-yellow-700">
-                              Aplican restricciones según el estado y fecha de creación de la reserva.{' '}
-                              <a href="/terminos#cancelacion" className="underline font-medium" target="_blank" rel="noopener noreferrer">
-                                Ver política completa
-                              </a>
+                              Dentro de las primeras 48h desde la creacion de la reserva: cancelacion gratuita.
                             </p>
+                            <a href="/terminos#cancelacion" className="text-sm underline font-medium text-yellow-800 mt-2 inline-block" target="_blank" rel="noopener noreferrer">
+                              Ver politica completa
+                            </a>
                           </div>
                         </div>
                       </div>
@@ -1943,19 +1943,18 @@ function BookingContent() {
                   </span>
                   <span className="text-sm text-gray-700">{selectedTime}</span>
                 </div>
-                {selectedService.basePrice != null && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-[#FF6B35] flex-shrink-0">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    </span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      ${(selectedService.basePrice / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-gray-400 font-normal">USD</span>
-                    </span>
-                  </div>
-                )}
               </div>
+              {/* Total prominente */}
+              {(priceQuote?.totalCents != null || selectedService.basePrice != null) && (
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <span className="text-sm font-semibold text-gray-700">Total</span>
+                  <span className="text-lg font-bold text-[#FF6B35]">
+                    ${((priceQuote?.totalCents ?? selectedService.basePrice) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-400 font-normal">USD</span>
+                  </span>
+                </div>
+              )}
               <p className="text-xs text-gray-400 pt-2 border-t border-gray-100 text-center">
-                Al confirmar aceptas la política de cancelación del artista.
+                Al confirmar, el artista recibira tu solicitud. Puedes cancelar sin costo dentro de las primeras 48h desde la creacion.
               </p>
             </div>
           ) : (

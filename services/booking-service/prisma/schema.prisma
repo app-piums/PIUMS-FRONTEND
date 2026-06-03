@@ -141,6 +141,8 @@ model Booking {
   anticipoAmount   Int?       // Monto del anticipo en centavos
   anticipoPaidAt   DateTime?
 
+  captureScheduledAt DateTime? // Cuándo capturar el pago pre-autorizado (confirmedAt + 48h)
+
   paymentStatus   PaymentStatus @default(PENDING)
   providerPaymentId String?   // ID del Payment Intent del proveedor (payments-service)
   paymentId       String?     // Referencia al Payment completado (payments-service)

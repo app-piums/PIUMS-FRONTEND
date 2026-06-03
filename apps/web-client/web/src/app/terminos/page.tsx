@@ -102,23 +102,23 @@ export default function TerminosPage() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="p-3 border border-gray-200">Reserva aún no confirmada</td>
-                    <td className="p-3 border border-gray-200 text-green-700 font-medium">Sin cargo — cancelación libre</td>
+                    <td className="p-3 border border-gray-200">El cliente cancela dentro de las primeras 48 horas desde la creacion de la reserva</td>
+                    <td className="p-3 border border-gray-200 text-green-700 font-medium">Cancelacion gratuita — sin cargo</td>
                   </tr>
                   <tr className="bg-gray-50">
-                    <td className="p-3 border border-gray-200">Reserva confirmada, dentro de las 48h desde la creación</td>
-                    <td className="p-3 border border-gray-200 text-yellow-700 font-medium">50% de reembolso</td>
+                    <td className="p-3 border border-gray-200">El cliente cancela pasadas las 48 horas (reserva ya cobrada)</td>
+                    <td className="p-3 border border-gray-200 text-yellow-700 font-medium">Reembolso del 50% del total pagado</td>
                   </tr>
                   <tr>
-                    <td className="p-3 border border-gray-200">Reserva confirmada, pasadas las 48h desde la creación</td>
-                    <td className="p-3 border border-gray-200 text-red-700 font-medium">Sin reembolso — no se permite cancelar</td>
+                    <td className="p-3 border border-gray-200">El artista cancela la reserva</td>
+                    <td className="p-3 border border-gray-200 text-green-700 font-medium">Reembolso completo + credito de compensacion en la plataforma</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p className="mt-3 text-sm text-gray-500">
-              Las cancelaciones realizadas por el artista dan derecho al cliente a un reembolso completo
-              más un crédito de compensación en la plataforma.
+              El periodo de cancelacion gratuita de 48 horas corre desde el momento en que se crea la reserva,
+              independientemente de si el artista ya la confirmo.
             </p>
           </section>
 

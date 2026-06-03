@@ -657,11 +657,20 @@ export class BookingService {
       artistId,
     });
 
-    // Capturar el pago pre-autorizado si la tarjeta fue reservada antes de la confirmación
+    // Doble condición para el cobro: artista confirmó + 48h desde la creación vencidas.
+    // El captureScheduledAt fue fijado en markCardAuthorized() = createdAt + 48h.
     if (booking.paymentStatus === 'CARD_AUTHORIZED') {
-      paymentsClient.captureBooking(id).catch(err =>
-        logger.error("Error capturando pago pre-autorizado al confirmar", "BOOKING_SERVICE", { bookingId: id, error: err.message })
-      );
+      const captureAt = (booking as any).captureScheduledAt;
+      if (captureAt && new Date(captureAt) <= new Date()) {
+        // Las 48h ya pasaron y el artista acaba de confirmar → cobrar inmediatamente
+        paymentsClient.captureBooking(id).catch(err =>
+          logger.error("Error en captura inmediata post-confirmación", "BOOKING_SERVICE", { bookingId: id, error: err.message })
+        );
+        logger.info("Captura inmediata: ambas condiciones cumplidas al confirmar", "BOOKING_SERVICE", { bookingId: id, captureAt });
+      } else {
+        // Las 48h aún no han pasado → el cron runScheduledCaptures() capturará cuando llegue la hora
+        logger.info("Captura diferida: artista confirmó pero las 48h aún no vencen", "BOOKING_SERVICE", { bookingId: id, captureAt });
+      }
     }
 
     // Bloquear el slot de disponibilidad del artista
@@ -893,20 +902,19 @@ export class BookingService {
       throw new AppError(400, "Esta reserva ya está cerrada");
     }
 
-    const hoursSinceCreation = (Date.now() - booking.createdAt.getTime()) / (1000 * 60 * 60);
     let refundAmount = 0;
 
     if (isClient) {
-      const isConfirmed = ["CONFIRMED", "PAYMENT_PENDING", "PAYMENT_COMPLETED", "ANTICIPO_PAID"].includes(booking.status);
-      if (isConfirmed) {
-        // Reserva confirmada: solo se puede cancelar dentro de las 48h desde la creación
-        if (hoursSinceCreation > 48) {
-          throw new AppError(400, "El plazo de cancelación de 48 horas desde la creación de la reserva ya venció");
-        }
-        // Reembolso del 50% de lo pagado
+      if (booking.paymentStatus === 'CARD_AUTHORIZED') {
+        // El dinero no ha salido de la tarjeta → void del pre-auth, sin cobro ni penalización.
+        // Siempre aplica dentro de las primeras 48h (captureScheduledAt aún no venció)
+        // o si el artista nunca confirmó (booking.status = PENDING).
+        refundAmount = 0;
+      } else if (booking.paidAmount > 0) {
+        // Ya se capturó el cobro (paymentStatus = ANTICIPO_PAID) → penalización del 50%
         refundAmount = Math.floor(booking.paidAmount * 0.5);
       }
-      // Reserva no confirmada (PENDING): cancelación libre, sin cargo (paidAmount = 0)
+      // PENDING sin pago → cancelación libre, refundAmount = 0
     } else {
       // Artista cancela: reembolso 100% al cliente
       refundAmount = booking.paidAmount;
@@ -950,6 +958,7 @@ export class BookingService {
         cancelledBy: userId,
         cancellationReason: reason,
         refundAmount,
+        captureScheduledAt: null, // anular captura programada si existía
       },
     });
 
@@ -1616,15 +1625,22 @@ export class BookingService {
       return booking;
     }
 
+    // captureScheduledAt = createdAt + 48h (reloj corre desde la creación, no desde la confirmación)
+    // El cobro se ejecuta cuando artista confirma + captureScheduledAt <= now (ambas condiciones)
+    const captureScheduledAt = new Date(booking.createdAt.getTime() + 48 * 60 * 60 * 1000);
+
     const updated = await prisma.booking.update({
       where: { id },
       data: {
         paymentStatus: 'CARD_AUTHORIZED',
+        captureScheduledAt,
         ...(paymentIntentId && { providerPaymentId: paymentIntentId }),
       },
     });
 
-    logger.info("Booking marcado como CARD_AUTHORIZED", "BOOKING_SERVICE", { bookingId: id, paymentIntentId });
+    logger.info("Booking marcado como CARD_AUTHORIZED", "BOOKING_SERVICE", {
+      bookingId: id, paymentIntentId, captureScheduledAt,
+    });
     return updated;
   }
 

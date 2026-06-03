@@ -132,7 +132,7 @@ export default function BookingConfirmationPage() {
       CONFIRMED: { label: 'Confirmada', color: 'bg-green-100 text-green-800' },
       PAYMENT_PENDING: { label: 'Pago Pendiente', color: 'bg-orange-100 text-orange-800' },
       PAYMENT_COMPLETED: { label: 'Pagado', color: 'bg-blue-100 text-blue-800' },
-      CARD_AUTHORIZED: { label: 'Tarjeta pre-autorizada', color: 'bg-blue-100 text-blue-800' },
+      CARD_AUTHORIZED: { label: 'Pendiente de confirmacion', color: 'bg-yellow-100 text-yellow-800' },
       IN_PROGRESS: { label: 'En Progreso', color: 'bg-indigo-100 text-indigo-800' },
       COMPLETED: { label: 'Completada', color: 'bg-green-100 text-green-800' },
       CANCELLED_CLIENT: { label: 'Cancelada', color: 'bg-red-100 text-red-800' },
@@ -288,14 +288,10 @@ END:VCALENDAR`;
           return (
             <Card className="mb-6">
               <CardContent className="text-center py-8">
-                <div className={`h-16 w-16 ${isPending ? 'bg-yellow-100' : isCardAuthorized ? 'bg-blue-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
-                  {isPending ? (
+                <div className={`h-16 w-16 ${isPending || isCardAuthorized ? 'bg-yellow-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  {isPending || isCardAuthorized ? (
                     <svg className="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) : isCardAuthorized ? (
-                    <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                     </svg>
                   ) : (
                     <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -304,13 +300,13 @@ END:VCALENDAR`;
                   )}
                 </div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  {isPending ? 'Reserva Creada — Pago Pendiente' : isCardAuthorized ? '¡Tarjeta Pre-Autorizada!' : '¡Reserva Confirmada!'}
+                  {isPending ? 'Reserva Creada — Pago Pendiente' : isCardAuthorized ? 'Reserva Recibida' : '¡Reserva Confirmada!'}
                 </h1>
                 <p className="text-gray-600 mb-4">
                   {isPending
                     ? 'Tu reserva fue registrada. Completa el pago con los datos que te enviamos al correo para confirmarla.'
                     : isCardAuthorized
-                    ? 'Tu tarjeta fue reservada exitosamente. El cobro se realizará solo cuando el artista confirme tu reserva. Si no confirma, la retención se libera automáticamente.'
+                    ? 'Tu reserva fue creada exitosamente. El artista la revisara y confirmara en breve. Recibiras una notificacion cuando esto suceda.'
                     : 'Tu reserva ha sido creada exitosamente. Hemos enviado los detalles a tu correo.'}
                 </p>
                 {booking.code && (
