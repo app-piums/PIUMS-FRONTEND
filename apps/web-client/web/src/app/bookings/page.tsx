@@ -140,6 +140,15 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
               <p className="text-xs text-red-600 leading-relaxed">{b.cancelReason}</p>
             </div>
           )}
+          {(b as any).paymentStatus === 'CARD_AUTHORIZED' && (
+            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5" onClick={e => e.stopPropagation()}>
+              <InfoIcon className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-blue-800">Tarjeta pre-autorizada</p>
+                <p className="text-xs text-blue-700">El cobro se realizará cuando el artista confirme tu reserva.</p>
+              </div>
+            </div>
+          )}
           {b.paymentStatus === 'ANTICIPO_PAID' && b.totalPriceCents != null && b.anticipoAmount != null && (
             <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5" onClick={e => e.stopPropagation()}>
               <div className="flex items-start gap-2">

@@ -796,7 +796,7 @@ function BookingContent() {
         const booking = await sdk.getBooking(bookingId).catch(() => null);
         const paymentStatus = (booking as any)?.paymentStatus;
 
-        if (paymentStatus === 'FULLY_PAID' || paymentStatus === 'ANTICIPO_PAID' || paymentStatus === 'DEPOSIT_PAID') {
+        if (paymentStatus === 'FULLY_PAID' || paymentStatus === 'ANTICIPO_PAID' || paymentStatus === 'DEPOSIT_PAID' || paymentStatus === 'CARD_AUTHORIZED') {
           clearInterval(pollIntervalRef.current!);
           pollIntervalRef.current = null;
           setPaymentIframeUrl(null);
