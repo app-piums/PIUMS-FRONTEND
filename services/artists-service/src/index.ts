@@ -10,6 +10,7 @@ import { apiLimiter } from "./middleware/rateLimiter";
 import { logger } from "./utils/logger";
 
 const app = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 
 // Middlewares globales
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:3000"];

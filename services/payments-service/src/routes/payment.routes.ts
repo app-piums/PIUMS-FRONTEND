@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { paymentController } from "../controller/payment.controller";
 import { authenticateToken, requireActiveSession } from "../middleware/auth.middleware";
 import { createPaymentLimiter, refundLimiter } from "../middleware/rateLimiter";
@@ -103,6 +103,37 @@ router.get(
   "/refunds/:id",
   authenticateToken,
   paymentController.getRefundById.bind(paymentController)
+);
+
+// ==================== INTERNAL: CAPTURE / VOID (inter-servicio) ====================
+
+const internalAuth = (req: Request, res: Response, next: NextFunction) => {
+  const secret = req.headers["x-internal-secret"];
+  if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+};
+
+// Cobrar saldo restante con tarjeta guardada (cron 72h pre-evento)
+router.post(
+  "/internal/charge-remaining/:bookingId",
+  internalAuth,
+  paymentController.chargeRemainingBalance.bind(paymentController)
+);
+
+// Capturar pago pre-autorizado (artista confirmó la reserva)
+router.post(
+  "/internal/capture-booking/:bookingId",
+  internalAuth,
+  paymentController.captureBookingPayment.bind(paymentController)
+);
+
+// Liberar pre-autorización (artista rechazó o no confirmó)
+router.post(
+  "/internal/void-booking/:bookingId",
+  internalAuth,
+  paymentController.voidBookingPayment.bind(paymentController)
 );
 
 export default router;

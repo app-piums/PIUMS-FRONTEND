@@ -110,6 +110,22 @@ export default function ClientOnboardingPage() {
     }));
     // Marcar onboarding como completado en cookie para el middleware
     document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
+    // Persistir preferencias e intereses en el backend
+    try {
+      await fetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          onboardingCategories: [...selectedCategories],
+          onboardingTags: Object.fromEntries(
+            Object.entries(selectedTags).map(([k, v]) => [k, [...v]])
+          ),
+        }),
+      });
+    } catch {
+      // No bloquear la navegación si falla
+    }
     // Persistir fecha de onboarding en la base de datos
     try {
       await fetch('/api/auth/complete-onboarding', { method: 'PATCH', credentials: 'include' });

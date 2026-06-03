@@ -738,6 +738,7 @@ export const getMe = async (req: Request, res: Response) => {
       avatar: true,
       ciudad: true,
       birthDate: true,
+      isVerified: true,
       documentType: true,
       documentNumber: true,
       documentFrontUrl: true,

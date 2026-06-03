@@ -105,57 +105,59 @@ router.post(
           where: { stripePaymentIntentId: providerRef },
         }).catch(() => null);
 
-        if (!existing && bookingId) {
-          await (prisma as any).paymentIntent.create({
-            data: {
-              stripePaymentIntentId: providerRef,
-              userId: 'tilopay',       // se actualiza cuando booking-service confirma
-              bookingId,
-              amount: amountCents,
-              currency: currency || "USD",
-              status: "SUCCEEDED",
-              metadata: { provider: "TILOPAY", orderNumber: ourOrderNumber },
-            },
-          }).catch((err: any) => logger.error("Error guardando paymentIntent Tilopay", "CALLBACK_TILOPAY", { error: err.message }));
-        } else if (existing) {
+        if (!existing) {
+          if (bookingId) {
+            // PI en estado REQUIRES_CAPTURE: la tarjeta fue pre-autorizada con capture='0'.
+            // El cobro real se hace en captureBookingPayment() cuando el artista confirme.
+            await (prisma as any).paymentIntent.create({
+              data: {
+                stripePaymentIntentId: providerRef,
+                userId: 'tilopay',
+                bookingId,
+                amount: amountCents,
+                currency: currency || "USD",
+                status: "REQUIRES_CAPTURE",
+                metadata: { provider: "TILOPAY", orderNumber: ourOrderNumber, captureMode: "MANUAL" },
+              },
+            }).catch((err: any) => logger.error("Error guardando paymentIntent Tilopay", "CALLBACK_TILOPAY", { error: err.message }));
+          }
+
+          // Marcar la tarjeta como pre-autorizada en el booking (no cobrado aún)
+          if (bookingId) {
+            await bookingClient.markCardAuthorized(bookingId, providerRef)
+              .catch((err: any) =>
+                logger.error("Error marcando CARD_AUTHORIZED en booking-service", "CALLBACK_TILOPAY", {
+                  bookingId, error: err.message,
+                })
+              );
+          }
+
+          if (ticketPurchaseId) {
+            await bookingClient.markTicketPayment(
+              ticketPurchaseId,
+              amountCents,
+              "TILOPAY",
+              providerRef,
+            ).catch((err: any) =>
+              logger.error("Error notificando booking-service del pago de boleto", "CALLBACK_TILOPAY", {
+                ticketPurchaseId, error: err.message,
+              })
+            );
+          }
+
+          logger.info("Tilopay pre-auth procesada (REQUIRES_CAPTURE)", "CALLBACK_TILOPAY", {
+            providerRef, bookingId, amountCents,
+          });
+        } else {
+          // Ya procesado por el redirect del cliente — solo actualizar estado
           await (prisma as any).paymentIntent.update({
             where: { id: existing.id },
             data: { status: "SUCCEEDED" },
           }).catch(() => null);
+          logger.info("Tilopay webhook: pago ya procesado (idempotente)", "CALLBACK_TILOPAY", {
+            providerRef, bookingId,
+          });
         }
-
-        // Notificar al booking-service.
-        // Sin paymentType explícito: booking-service determina ANTICIPO_PAID vs FULLY_PAID
-        // comparando amountCents con anticipoAmount / totalPrice del booking.
-        if (bookingId) {
-          await bookingClient.markPayment(
-            bookingId,
-            amountCents,
-            "TILOPAY",
-            providerRef,
-          ).catch((err: any) =>
-            logger.error("Error notificando booking-service del pago Tilopay", "CALLBACK_TILOPAY", {
-              bookingId, error: err.message,
-            })
-          );
-        }
-
-        if (ticketPurchaseId) {
-          await bookingClient.markTicketPayment(
-            ticketPurchaseId,
-            amountCents,
-            "TILOPAY",
-            providerRef,
-          ).catch((err: any) =>
-            logger.error("Error notificando booking-service del pago de boleto", "CALLBACK_TILOPAY", {
-              ticketPurchaseId, error: err.message,
-            })
-          );
-        }
-
-        logger.info("Pago Tilopay aprobado procesado", "CALLBACK_TILOPAY", {
-          providerRef, bookingId, amountCents,
-        });
 
       } else {
         // Pago rechazado o error

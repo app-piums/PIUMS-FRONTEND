@@ -84,26 +84,16 @@ async function runPreEventCharge() {
       if (remaining <= 0) continue;
 
       try {
-        if (booking.savedCardToken) {
-          // Intentar cobro automático con tarjeta guardada
-          const result = await paymentsClient.createPaymentIntent({
-            bookingId: booking.id,
-            amount: remaining,
-            currency: booking.currency || "USD",
-            paymentType: "REMAINING",
-            userId: booking.clientId,
-          });
+        // Intentar cobro automático con tarjeta guardada del cliente
+        const charged = await paymentsClient.chargeRemainingBalance(booking.id);
 
-          if (result) {
-            logger.info("Cobro 72h iniciado", "CRON_72H", {
-              bookingId: booking.id,
-              remaining,
-            });
-          } else {
-            throw new Error("createPaymentIntent devolvió null");
-          }
+        if (charged) {
+          logger.info("Cobro 72h exitoso", "CRON_72H", {
+            bookingId: booking.id,
+            remaining,
+          });
         } else {
-          // Sin tarjeta guardada: notificar al cliente
+          // Sin tarjeta guardada o cobro rechazado: notificar al cliente para pago manual
           notificationsClient.sendNotification({
             userId: booking.clientId,
             type: "PAYMENT_REMAINING_DUE",
@@ -115,7 +105,18 @@ async function runPreEventCharge() {
             category: "payment",
           }).catch(err => logger.error("Error notificando cobro 72h", "CRON_72H", { error: err.message }));
 
-          logger.info("Cliente notificado: saldo pendiente 72h", "CRON_72H", {
+          notificationsClient.sendNotification({
+            userId: booking.clientId,
+            type: "PAYMENT_REMAINING_DUE",
+            channel: "PUSH",
+            title: "Pago pendiente",
+            message: `Tienes un saldo pendiente de $${(remaining / 100).toFixed(2)} para tu reserva. Completa el pago ahora.`,
+            data: { bookingId: booking.id, amount: remaining },
+            priority: "high",
+            category: "payment",
+          }).catch(() => {});
+
+          logger.info("Cliente notificado: saldo pendiente 72h (sin tarjeta guardada)", "CRON_72H", {
             bookingId: booking.id,
             remaining,
           });

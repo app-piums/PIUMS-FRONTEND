@@ -157,7 +157,7 @@ function BookingSummary({ booking }: { booking: Booking }) {
           {booking.anticipoRequired && booking.anticipoAmount != null && (
             <>
               <div className="border-t border-orange-200 pt-2 flex justify-between font-bold text-[#FF6B35] text-base">
-                <span>Anticipo a pagar ahora</span>
+                <span>Anticipo (se cobra al confirmar artista)</span>
                 <span>${centsToDisplay(booking.anticipoAmount)}</span>
               </div>
               <div className="flex justify-between text-gray-500 text-xs">
@@ -168,7 +168,7 @@ function BookingSummary({ booking }: { booking: Booking }) {
           )}
           {!booking.anticipoRequired && (
             <div className="border-t border-orange-200 pt-2 flex justify-between font-bold text-[#FF6B35] text-base">
-              <span>A pagar ahora</span>
+              <span>Total (se cobra al confirmar artista)</span>
               <span>${centsToDisplay(booking.totalPrice)}</span>
             </div>
           )}
@@ -245,10 +245,9 @@ function PaymentFormInner({ booking, bookingId }: { booking: Booking; bookingId:
         <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-2xl">
           <InfoIcon className="h-5 w-5 text-[#FF6B35] shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-orange-800">Pago en dos partes</p>
+            <p className="text-sm font-semibold text-orange-800">Cobro garantizado</p>
             <p className="text-sm text-orange-700 mt-0.5">
-              Pagas el anticipo de <strong>${centsToDisplay(booking.anticipoAmount)}</strong> ahora
-              para confirmar la reserva. El saldo restante (<strong>${centsToDisplay(booking.totalPrice - booking.anticipoAmount)}</strong>) se cobrará automáticamente 72 horas antes del evento.
+              Tu tarjeta se reservará por <strong>${centsToDisplay(booking.anticipoAmount)}</strong> pero <strong>solo se cobrará cuando el artista confirme</strong>. Si no confirma, la retención se libera automáticamente sin ningún cargo. El saldo restante (<strong>${centsToDisplay(booking.totalPrice - booking.anticipoAmount)}</strong>) se cobrará 72 horas antes del evento.
             </p>
           </div>
         </div>
@@ -355,7 +354,7 @@ function PaymentFormInner({ booking, bookingId }: { booking: Booking; bookingId:
             <><div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />Procesando...</>
           ) : paymentMethod === 'card' ? (
             <>
-              {booking.anticipoRequired ? 'Pagar Anticipo ' : 'Confirmar y Pagar '}
+              {booking.anticipoRequired ? 'Reservar y Autorizar ' : 'Reservar y Pagar '}
               ${centsToDisplay(amountDue)}
               <ArrowRightIcon className="h-5 w-5" />
             </>

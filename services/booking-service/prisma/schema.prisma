@@ -39,6 +39,7 @@ enum RescheduleStatus {
 
 enum PaymentStatus {
   PENDING
+  CARD_AUTHORIZED    // Tarjeta pre-autorizada (fondos retenidos), esperando confirmación del artista
   ANTICIPO_PAID      // Anticipo pagado, saldo restante pendiente
   DEPOSIT_PAID       // Legacy — usar ANTICIPO_PAID
   FULLY_PAID         // Totalmente pagado

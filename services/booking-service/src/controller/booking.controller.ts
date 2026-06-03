@@ -675,6 +675,19 @@ export class BookingController {
     }
   }
 
+  async internalMarkCardAuthorized(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { paymentIntentId } = req.body as { paymentIntentId?: string };
+      const booking = await bookingService.markCardAuthorized(
+        req.params.id as string,
+        paymentIntentId
+      );
+      res.json(booking);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async confirmDelivery(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const bookingId = req.params.id as string;

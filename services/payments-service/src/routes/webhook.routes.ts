@@ -1,9 +1,13 @@
 import { Router, Request, Response } from "express";
 import { stripeProvider } from "../providers/stripe.provider";
 import { paymentService } from "../services/payment.service";
+import { bookingClient } from "../clients/booking.client";
+import { PaymentMethodService } from "../services/paymentMethod.service";
 import { logger } from "../utils/logger";
 import { webhookLimiter } from "../middleware/rateLimiter";
 import { PrismaClient, PaymentType } from "@prisma/client";
+
+const paymentMethodService = new PaymentMethodService();
 
 const router: Router = Router();
 const prisma = new PrismaClient();
@@ -81,6 +85,10 @@ router.post(
 
         case "payment_intent.canceled":
           await handlePaymentIntentCanceled(event);
+          break;
+
+        case "payment_intent.amount_capturable_updated":
+          await handleAmountCapturableUpdated(event);
           break;
 
         default:
@@ -211,6 +219,63 @@ async function handlePaymentIntentCanceled(event: any) {
       cancelledAt: new Date(),
     },
   });
+}
+
+/**
+ * payment_intent.amount_capturable_updated
+ * Se dispara cuando el PI entra en estado requires_capture (tarjeta pre-autorizada).
+ * Marcamos el booking como CARD_AUTHORIZED: fondos retenidos, esperando artista.
+ */
+async function handleAmountCapturableUpdated(event: any) {
+  const paymentIntent = event.data.object;
+  const bookingId: string | undefined = paymentIntent.metadata?.bookingId;
+  const paymentMethodId: string | undefined = paymentIntent.payment_method;
+
+  logger.info("Payment Intent requires_capture (pre-auth)", "WEBHOOK_HANDLER", {
+    paymentIntentId: paymentIntent.id,
+    amountCapturable: paymentIntent.amount_capturable,
+    bookingId,
+    paymentMethodId,
+  });
+
+  await prisma.paymentIntent.updateMany({
+    where: { stripePaymentIntentId: paymentIntent.id },
+    data: { status: "REQUIRES_CAPTURE" },
+  });
+
+  if (bookingId) {
+    await bookingClient.markCardAuthorized(bookingId, paymentIntent.id).catch((err: any) =>
+      logger.error("Error marcando CARD_AUTHORIZED desde webhook Stripe", "WEBHOOK_HANDLER", {
+        bookingId, paymentIntentId: paymentIntent.id, error: err.message,
+      })
+    );
+
+    // Guardar el PM de Stripe para el cobro automático del saldo (cron 72h pre-evento).
+    // Sin este paso, chargeRemainingBalance() no encuentra ningún método guardado.
+    if (paymentMethodId) {
+      const booking = await bookingClient.getBooking(bookingId).catch(() => null);
+      if (booking?.clientId) {
+        try {
+          const stripeMethod = await stripeProvider.retrievePaymentMethod(paymentMethodId);
+          await paymentMethodService.saveProviderToken(booking.clientId, {
+            provider: 'STRIPE',
+            token: paymentMethodId,
+            cardBrand: stripeMethod.card?.brand,
+            cardLast4: stripeMethod.card?.last4,
+            cardExpMonth: stripeMethod.card?.exp_month,
+            cardExpYear: stripeMethod.card?.exp_year,
+          });
+          logger.info("PM Stripe guardado tras pre-auth", "WEBHOOK_HANDLER", {
+            bookingId, userId: booking.clientId, paymentMethodId,
+          });
+        } catch (err: any) {
+          logger.error("Error guardando PM Stripe tras pre-auth", "WEBHOOK_HANDLER", {
+            bookingId, paymentMethodId, error: err.message,
+          });
+        }
+      }
+    }
+  }
 }
 
 export default router;

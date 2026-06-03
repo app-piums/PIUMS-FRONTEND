@@ -351,12 +351,13 @@ enum PaymentType {
 }
 
 enum PaymentIntentStatus {
-  CREATED       // Creado
-  REQUIRES_ACTION // Requiere acción del usuario (3D Secure)
-  PROCESSING    // Procesando
-  SUCCEEDED     // Exitoso
-  CANCELLED     // Cancelado
-  FAILED        // Fallido
+  CREATED           // Creado
+  REQUIRES_ACTION   // Requiere acción del usuario (3D Secure)
+  REQUIRES_CAPTURE  // Pre-autorizado (capture_method=manual), listo para capturar
+  PROCESSING        // Procesando
+  SUCCEEDED         // Exitoso
+  CANCELLED         // Cancelado
+  FAILED            // Fallido
 }
 
 enum RefundStatus {

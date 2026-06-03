@@ -60,12 +60,13 @@ export class PaymentController {
   async initCheckout(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { bookingId, currency, countryCode, description, returnUrl } = req.body as {
+      const { bookingId, currency, countryCode, description, returnUrl, captureMode } = req.body as {
         bookingId: string;
         currency?: string;
         countryCode?: string;
         description?: string;
         returnUrl?: string;
+        captureMode?: 'manual' | 'automatic';
       };
 
       if (!bookingId) return res.status(400).json({ error: 'bookingId es requerido' });
@@ -77,6 +78,7 @@ export class PaymentController {
         countryCode,
         description,
         returnUrl,
+        captureMode,
       });
 
       res.status(201).json(result);
@@ -240,6 +242,38 @@ export class PaymentController {
   }
 
   // ==================== STATISTICS ====================
+
+  // ==================== INTERNAL: CAPTURE / VOID ====================
+
+  async chargeRemainingBalance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.bookingId as string;
+      const result = await paymentService.chargeRemainingBalance(bookingId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async captureBookingPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.bookingId as string;
+      await paymentService.captureBookingPayment(bookingId);
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async voidBookingPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.bookingId as string;
+      await paymentService.voidBookingPayment(bookingId);
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
 
   async getPaymentStats(req: Request, res: Response, next: NextFunction) {
     try {

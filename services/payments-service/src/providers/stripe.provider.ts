@@ -33,6 +33,7 @@ export class StripeProvider implements IPaymentProvider {
     description?: string;
     metadata?: Record<string, string>;
     paymentMethodTypes?: string[];
+    captureMethod?: "automatic" | "manual";
   }): Promise<Stripe.PaymentIntent> {
     try {
       const paymentIntent = await stripe.paymentIntents.create({
@@ -41,6 +42,7 @@ export class StripeProvider implements IPaymentProvider {
         description: params.description,
         metadata: params.metadata || {},
         payment_method_types: params.paymentMethodTypes || ["card"],
+        capture_method: params.captureMethod || "automatic",
       });
 
       logger.info("Payment Intent creado", "STRIPE_PROVIDER", {
@@ -125,6 +127,28 @@ export class StripeProvider implements IPaymentProvider {
       return paymentIntent;
     } catch (error: any) {
       logger.error("Error cancelando Payment Intent", "STRIPE_PROVIDER", {
+        paymentIntentId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Capturar Payment Intent (capture_method=manual)
+   */
+  async capturePaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent> {
+    try {
+      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+
+      logger.info("Payment Intent capturado", "STRIPE_PROVIDER", {
+        paymentIntentId,
+        status: paymentIntent.status,
+      });
+
+      return paymentIntent;
+    } catch (error: any) {
+      logger.error("Error capturando Payment Intent", "STRIPE_PROVIDER", {
         paymentIntentId,
         error: error.message,
       });
@@ -450,6 +474,7 @@ export class StripeProvider implements IPaymentProvider {
   // ==================== IPaymentProvider ====================
 
   async createCheckout(params: CheckoutParams): Promise<CheckoutResult> {
+    const isManual = params.captureMode !== 'automatic';
     const intent = await this.createPaymentIntent({
       amount: params.amount,
       currency: params.currency,
@@ -457,9 +482,11 @@ export class StripeProvider implements IPaymentProvider {
       metadata: {
         bookingId: params.bookingId,
         userId: params.userId,
+        captureMode: isManual ? "MANUAL" : "AUTOMATIC",
         ...params.metadata,
       },
       paymentMethodTypes: ["card"],
+      captureMethod: isManual ? "manual" : "automatic",
     });
 
     return {

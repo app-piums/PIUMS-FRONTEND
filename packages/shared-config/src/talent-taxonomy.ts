@@ -50,6 +50,7 @@ const MUSICA: TalentGroup = {
         { id: 'guitarrista',       label: 'Guitarrista',         category: 'MUSICO', keywords: ['guitarra', 'guitarrista'] },
         { id: 'violinista',        label: 'Violinista',          category: 'MUSICO', keywords: ['violín', 'violin', 'cuerdas'] },
         { id: 'baterista',         label: 'Baterista',           category: 'MUSICO', keywords: ['batería', 'baterista', 'percusión'] },
+        { id: 'bajista',           label: 'Bajista',             category: 'MUSICO', keywords: ['bajo', 'bajista', 'bass'] },
         { id: 'saxofonista',       label: 'Saxofonista',         category: 'MUSICO', keywords: ['saxofón', 'saxo'] },
         { id: 'productor_musical', label: 'Productor Musical',   category: 'MUSICO', keywords: ['productor', 'beatmaker', 'producción'] },
       ],

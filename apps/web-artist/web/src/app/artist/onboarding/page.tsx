@@ -23,6 +23,7 @@ const TALENT_BY_DISCIPLINE: Record<string, { id: string; label: string; keywords
     { id: 'guitarrista',       label: 'Guitarrista',           keywords: ['guitarra', 'guitarrista'] },
     { id: 'pianista',          label: 'Pianista',              keywords: ['piano', 'pianista', 'teclado'] },
     { id: 'baterista',         label: 'Baterista',             keywords: ['batería', 'baterista'] },
+    { id: 'bajista',           label: 'Bajista',               keywords: ['bajo', 'bajista', 'bass'] },
     { id: 'violinista',        label: 'Violinista',            keywords: ['violín', 'violin', 'cuerdas'] },
     { id: 'saxofonista',       label: 'Saxofonista',           keywords: ['saxofón', 'saxo'] },
     { id: 'banda_musical',     label: 'Banda Musical',         keywords: ['banda', 'grupo musical'] },
@@ -68,6 +69,7 @@ const SERVICE_SUGGESTIONS: Record<string, { name: string; category: string; desc
   guitarrista:          { name: 'Guitarra en Vivo para Eventos',           category: 'Música en vivo',        description: 'Actuación de guitarra en vivo para bodas, eventos corporativos y celebraciones.' },
   pianista:             { name: 'Piano en Vivo para Eventos',              category: 'Música en vivo',        description: 'Música de piano en vivo para crear una atmósfera elegante en tu evento.' },
   baterista:            { name: 'Batería en Vivo para Eventos',            category: 'Música en vivo',        description: 'Show de batería en vivo y servicios de sesión para conciertos y grabaciones.' },
+  bajista:              { name: 'Bajo en Vivo para Eventos',               category: 'Música en vivo',        description: 'Actuación de bajo eléctrico o acústico en vivo para bandas, eventos y sesiones de grabación.' },
   violinista:           { name: 'Violín en Vivo para Eventos',             category: 'Música en vivo',        description: 'Actuación de violín en vivo para bodas, eventos y celebraciones especiales.' },
   saxofonista:          { name: 'Saxofón en Vivo para Eventos',            category: 'Música en vivo',        description: 'Show de saxofón en vivo para brindar un toque de elegancia y estilo a tu evento.' },
   banda_musical:        { name: 'Banda Musical para Eventos',              category: 'Música en vivo',        description: 'Show completo de banda musical en vivo para bodas, fiestas y eventos corporativos.' },
@@ -478,8 +480,10 @@ export default function ArtistOnboardingPage() {
           bio: shortBio || undefined,
           instagram: instagramHandle || undefined,
           website: portfolioUrl || undefined,
+          linkedin: linkedinUrl || undefined,
           spotify: spotifyUrl || undefined,
           youtube: youtubeUrl || undefined,
+          extraLinks: extraLinks.length > 0 ? extraLinks : undefined,
           hourlyRateMin: hourlyRateMin > 0 ? hourlyRateMin : undefined,
           hourlyRateMax: hourlyRateMax > 0 ? hourlyRateMax : undefined,
           currency,
@@ -497,15 +501,22 @@ export default function ArtistOnboardingPage() {
       // Create first service if user filled step 6
       const artistId = (profileData as any)?.id ?? (profileData as any)?.artist?.id;
       if (artistId && serviceName.trim()) {
-        const CATEGORY_ID_MAP: Record<string, string> = {
-          'Música en vivo':        'ffffffff-ffff-ffff-ffff-ffffffffffff',
-          'Fotografía de eventos': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          'Fotografía de retrato': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          'Videografía y edición': 'dddddddd-dddd-dddd-dddd-dddddddddddd',
-          'Entretenimiento':       '44444444-4444-4444-4444-444444444444',
-          'Animación de eventos':  '11111111-1111-1111-1111-111111111111',
-        };
-        const categoryId = CATEGORY_ID_MAP[serviceCategory] || '44444444-4444-4444-4444-444444444444';
+        // Fetch categories from backend and match by name to get a real ID
+        let categoryId: string | undefined;
+        try {
+          const catRes = await fetch('/api/catalog/categories', { credentials: 'include' });
+          if (catRes.ok) {
+            const cats: Array<{ id: string; name: string; slug?: string }> = await catRes.json().catch(() => []);
+            const matched = cats.find(c =>
+              c.name.toLowerCase().includes(serviceCategory.toLowerCase()) ||
+              serviceCategory.toLowerCase().includes(c.name.toLowerCase()) ||
+              c.slug?.toLowerCase().replace(/-/g, ' ').includes(serviceCategory.toLowerCase())
+            ) ?? cats[0];
+            categoryId = matched?.id;
+          }
+        } catch {
+          // silencioso — continuamos sin categoryId y el backend usará un default
+        }
         const slug = `${serviceName.trim().toLowerCase()
           .normalize('NFD').replace(/[̀-ͯ]/g, '')
           .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`;

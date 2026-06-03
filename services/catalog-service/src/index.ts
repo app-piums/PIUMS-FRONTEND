@@ -44,6 +44,9 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Trust the first proxy (K8s ingress) so express-rate-limit can read X-Forwarded-For correctly
+app.set('trust proxy', 1);
+
 // Health check first — exempt from rate limiting (kube probes would exhaust the limit)
 app.use("/health", healthRoutes);
 

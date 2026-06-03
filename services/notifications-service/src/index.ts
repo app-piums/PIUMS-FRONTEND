@@ -13,6 +13,7 @@ import bookingRoutes from './routes/booking.routes';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 const PORT = process.env.PORT || 4006;
 
 // ============================================================================

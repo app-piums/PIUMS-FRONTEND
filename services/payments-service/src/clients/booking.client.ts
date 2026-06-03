@@ -20,8 +20,7 @@ export class BookingClient {
     try {
       const response = await fetch(
         `${this.baseUrl}/api/bookings/internal/${bookingId}`,
-        { headers: internalHeaders }
-          signal: AbortSignal.timeout(10_000),
+        { headers: internalHeaders, signal: AbortSignal.timeout(10_000) }
       );
       if (!response.ok) {
         logger.error('Error obteniendo booking', 'BOOKING_CLIENT', { error: await response.text() });
@@ -58,6 +57,28 @@ export class BookingClient {
       return await response.json();
     } catch (error) {
       logger.error('Error de conexion con booking-service', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
+      return null;
+    }
+  }
+
+  async markCardAuthorized(bookingId: string, paymentIntentId: string): Promise<any> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/api/bookings/internal/${bookingId}/mark-card-authorized`,
+        {
+          signal: AbortSignal.timeout(10_000),
+          method: "POST",
+          headers: internalHeaders,
+          body: JSON.stringify({ paymentIntentId }),
+        }
+      );
+      if (!response.ok) {
+        logger.error('Error marcando CARD_AUTHORIZED', 'BOOKING_CLIENT', { error: await response.text() });
+        return null;
+      }
+      return await response.json();
+    } catch (error) {
+      logger.error('Error de conexion con booking-service (markCardAuthorized)', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

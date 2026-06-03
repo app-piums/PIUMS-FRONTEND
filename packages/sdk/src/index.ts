@@ -1035,11 +1035,10 @@ class PiumsSDK {
     }
   }
 
-  async getArtistServices(_artistId: string): Promise<Service[]> {
+  async getArtistServices(artistId: string): Promise<Service[]> {
     try {
       const response = await fetch(
-        `${this.baseUrl}/catalog/services/mine`,
-        this.withAuth(),
+        `${this.baseUrl}/catalog/services?artistId=${encodeURIComponent(artistId)}`,
       );
 
       if (!response.ok) {
@@ -1047,7 +1046,7 @@ class PiumsSDK {
       }
 
       const result = await response.json();
-      return result.services || [];
+      return result.services || result.data || (Array.isArray(result) ? result : []);
     } catch (error) {
       console.error('Error fetching artist services:', error);
       return [];
@@ -1877,13 +1876,14 @@ class PiumsSDK {
     currency: string,
     countryCode?: string,
     description?: string,
+    captureMode?: 'manual' | 'automatic',
   ): Promise<PaymentIntent> {
     try {
       const response = await fetch(`${this.baseUrl}/payments/checkout`,
         this.withAuth({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId, amount, currency, countryCode, description }),
+          body: JSON.stringify({ bookingId, amount, currency, countryCode, description, captureMode }),
         })
       );
       if (!response.ok) {

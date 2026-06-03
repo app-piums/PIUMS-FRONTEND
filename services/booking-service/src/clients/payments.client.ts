@@ -398,6 +398,102 @@ export class PaymentsClient {
   }
 
   /**
+   * Cobrar el saldo restante de una reserva con la tarjeta guardada del cliente.
+   * Llamado por el cron job 72h antes del evento.
+   * Retorna true si se cobró exitosamente o si ya estaba pagado.
+   * Retorna false si no hay tarjeta guardada o si el cobro falló.
+   */
+  async chargeRemainingBalance(bookingId: string): Promise<boolean> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      const response = await fetch(
+        `${this.baseUrl}/api/payments/internal/charge-remaining/${bookingId}`,
+        {
+          signal: AbortSignal.timeout(30_000),
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': internalSecret || '',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        logger.error('Error cobrando saldo restante', 'PAYMENTS_CLIENT', { bookingId, error: (error as any)?.message });
+        return false;
+      }
+
+      const result = await response.json() as any;
+      return result.success === true;
+    } catch (error) {
+      logger.error('Error de conexion al cobrar saldo restante', 'PAYMENTS_CLIENT', { bookingId, error: typeof error === 'string' ? error : (error as any)?.message });
+      return false;
+    }
+  }
+
+  /**
+   * Capturar el pago pre-autorizado de una reserva (artista confirmó).
+   * Llama al endpoint interno del payments-service.
+   */
+  async captureBooking(bookingId: string): Promise<boolean> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      const response = await fetch(
+        `${this.baseUrl}/api/payments/internal/capture-booking/${bookingId}`,
+        {
+          signal: AbortSignal.timeout(15_000),
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': internalSecret || '',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        logger.error('Error capturando pago del booking', 'PAYMENTS_CLIENT', { bookingId, error: (error as any)?.message });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      logger.error('Error de conexion al capturar pago', 'PAYMENTS_CLIENT', { bookingId, error: typeof error === 'string' ? error : (error as any)?.message });
+      return false;
+    }
+  }
+
+  /**
+   * Liberar la pre-autorización de una reserva (artista rechazó o no confirmó).
+   */
+  async voidBooking(bookingId: string): Promise<boolean> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      const response = await fetch(
+        `${this.baseUrl}/api/payments/internal/void-booking/${bookingId}`,
+        {
+          signal: AbortSignal.timeout(15_000),
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': internalSecret || '',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
+        logger.error('Error liberando pre-autorización del booking', 'PAYMENTS_CLIENT', { bookingId, error: (error as any)?.message });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      logger.error('Error de conexion al liberar pre-autorización', 'PAYMENTS_CLIENT', { bookingId, error: typeof error === 'string' ? error : (error as any)?.message });
+      return false;
+    }
+  }
+
+  /**
    * Buscar pagos de un booking
    */
   async getBookingPayments(bookingId: string, userId: string): Promise<any | null> {

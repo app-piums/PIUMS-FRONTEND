@@ -12,6 +12,7 @@ import { runPurgeJob } from "./services/purge.service";
 import { withCronLock } from "./utils/distributedLock";
 
 const app = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 
 // Middlewares globales
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:3000"];

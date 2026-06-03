@@ -13,6 +13,7 @@ import { searchService } from './services/search.service';
 dotenv.config();
 
 const app: Express = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 const PORT = process.env.PORT || 4009;
 
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];

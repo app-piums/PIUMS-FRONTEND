@@ -684,6 +684,7 @@ export class PaymentService {
     description?: string;
     returnUrl?: string;
     metadata?: Record<string, string>;
+    captureMode?: 'manual' | 'automatic';
   }) {
     const currency = data.currency || process.env.DEFAULT_CURRENCY || "USD";
 
@@ -715,6 +716,7 @@ export class PaymentService {
       userId: data.userId,
       userEmail: data.userEmail,
       returnUrl: data.returnUrl,
+      captureMode: data.captureMode || 'manual',
       metadata: {
         bookingId: data.bookingId,
         userId: data.userId,
@@ -810,10 +812,181 @@ export class PaymentService {
       processing: "PROCESSING",
       succeeded: "SUCCEEDED",
       canceled: "CANCELLED",
-      requires_capture: "PROCESSING",
+      requires_capture: "REQUIRES_CAPTURE",
     };
 
     return statusMap[stripeStatus] || "FAILED";
+  }
+
+  // ==================== CAPTURE / VOID (Auth+Capture flow) ====================
+
+  /**
+   * Capturar el pago pre-autorizado de una reserva.
+   * Se llama desde booking-service cuando el artista confirma.
+   */
+  async captureBookingPayment(bookingId: string) {
+    const pi = await (prisma as any).paymentIntent.findFirst({
+      where: { bookingId, status: "REQUIRES_CAPTURE" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!pi) {
+      throw new AppError(404, `No se encontró un pago pre-autorizado para la reserva ${bookingId}`);
+    }
+
+    const provider: string = (pi.metadata as any)?.provider || "STRIPE";
+    const orderNumber: string = pi.stripePaymentIntentId;
+
+    logger.info("Iniciando captura de pago pre-autorizado", "PAYMENT_SERVICE", {
+      bookingId, provider, orderNumber,
+    });
+
+    if (provider === "TILOPAY") {
+      const { approved, responseCode } = await (await import("../providers/tilopay.provider")).tilopayProvider.capturePayment(orderNumber);
+      if (!approved) {
+        throw new AppError(502, `Tilopay capture rechazado: código ${responseCode}`);
+      }
+    } else {
+      await stripeProvider.capturePaymentIntent(orderNumber);
+    }
+
+    await (prisma as any).paymentIntent.update({
+      where: { id: pi.id },
+      data: { status: "SUCCEEDED" },
+    });
+
+    await bookingClient.markPayment(bookingId, pi.amount, provider, orderNumber);
+
+    notificationsClient.sendNotification({
+      userId: pi.userId,
+      type: "PAYMENT_RECEIVED",
+      channel: "IN_APP",
+      title: "Reserva Confirmada y Pago Procesado",
+      message: `Tu artista confirmó la reserva y tu pago de $${(pi.amount / 100).toFixed(2)} fue procesado.`,
+      data: { bookingId, amount: pi.amount, currency: pi.currency },
+      priority: "high",
+      category: "payment",
+    }).catch(() => {});
+
+    notificationsClient.sendNotification({
+      userId: pi.userId,
+      type: "PAYMENT_RECEIVED",
+      channel: "PUSH",
+      title: "Pago Procesado",
+      message: `Tu pago de $${(pi.amount / 100).toFixed(2)} fue procesado correctamente.`,
+      data: { bookingId },
+      priority: "high",
+      category: "payment",
+    }).catch(() => {});
+
+    logger.info("Pago capturado exitosamente", "PAYMENT_SERVICE", { bookingId, provider, orderNumber });
+  }
+
+  /**
+   * Liberar la pre-autorización de una reserva (artista rechazó o expiró).
+   * No hubo cobro — solo se libera la retención en la tarjeta del cliente.
+   */
+  async voidBookingPayment(bookingId: string) {
+    const pi = await (prisma as any).paymentIntent.findFirst({
+      where: { bookingId, status: "REQUIRES_CAPTURE" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!pi) {
+      logger.warn("voidBookingPayment: no se encontró PI con REQUIRES_CAPTURE", "PAYMENT_SERVICE", { bookingId });
+      return;
+    }
+
+    const provider: string = (pi.metadata as any)?.provider || "STRIPE";
+    const orderNumber: string = pi.stripePaymentIntentId;
+
+    logger.info("Liberando pre-autorización", "PAYMENT_SERVICE", { bookingId, provider, orderNumber });
+
+    if (provider === "TILOPAY") {
+      await (await import("../providers/tilopay.provider")).tilopayProvider.voidPayment(orderNumber);
+    } else {
+      await stripeProvider.cancelPaymentIntent(orderNumber);
+    }
+
+    await (prisma as any).paymentIntent.update({
+      where: { id: pi.id },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+
+    notificationsClient.sendNotification({
+      userId: pi.userId,
+      type: "PAYMENT_CANCELLED",
+      channel: "IN_APP",
+      title: "Reserva No Confirmada",
+      message: "El artista no confirmó tu reserva. No se realizó ningún cobro — la retención en tu tarjeta fue liberada.",
+      data: { bookingId },
+      priority: "high",
+      category: "payment",
+    }).catch(() => {});
+
+    notificationsClient.sendNotification({
+      userId: pi.userId,
+      type: "PAYMENT_CANCELLED",
+      channel: "PUSH",
+      title: "Sin Cobro",
+      message: "La retención en tu tarjeta fue liberada. No se realizó ningún cargo.",
+      data: { bookingId },
+      priority: "high",
+      category: "payment",
+    }).catch(() => {});
+
+    logger.info("Pre-autorización liberada", "PAYMENT_SERVICE", { bookingId, provider, orderNumber });
+  }
+
+  /**
+   * Cobrar el saldo restante de una reserva usando el método de pago guardado del cliente.
+   * Llamado por el cron job 72h antes del evento.
+   * Usa chargeWithSavedCard() — cobro inmediato, sin pre-autorización.
+   */
+  async chargeRemainingBalance(bookingId: string): Promise<{ success: boolean; reason?: string }> {
+    const booking = await bookingClient.getBooking(bookingId);
+    if (!booking) {
+      logger.error("chargeRemainingBalance: booking no encontrado", "PAYMENT_SERVICE", { bookingId });
+      return { success: false, reason: 'booking_not_found' };
+    }
+
+    const remaining = booking.totalPrice - (booking.paidAmount ?? 0);
+    if (remaining <= 0) {
+      logger.info("chargeRemainingBalance: saldo ya pagado", "PAYMENT_SERVICE", { bookingId });
+      return { success: true };
+    }
+
+    const defaultMethod = await paymentMethodService.getDefaultPaymentMethod(booking.clientId);
+    if (!defaultMethod) {
+      logger.info("chargeRemainingBalance: sin método de pago guardado", "PAYMENT_SERVICE", { bookingId, clientId: booking.clientId });
+      return { success: false, reason: 'no_saved_method' };
+    }
+
+    logger.info("Iniciando cobro automático del saldo restante", "PAYMENT_SERVICE", {
+      bookingId, clientId: booking.clientId, remaining, methodId: defaultMethod.id,
+    });
+
+    await paymentMethodService.chargeWithSavedCard(
+      booking.clientId,
+      defaultMethod.id,
+      bookingId,
+      remaining,
+      booking.currency || 'USD',
+    );
+
+    notificationsClient.sendNotification({
+      userId: booking.clientId,
+      type: "PAYMENT_RECEIVED",
+      channel: "IN_APP",
+      title: "Saldo Restante Cobrado",
+      message: `El saldo restante de $${(remaining / 100).toFixed(2)} de tu reserva fue cobrado exitosamente.`,
+      data: { bookingId, amount: remaining },
+      priority: "high",
+      category: "payment",
+    }).catch(() => {});
+
+    logger.info("Cobro de saldo restante exitoso", "PAYMENT_SERVICE", { bookingId, remaining });
+    return { success: true };
   }
 
   private mapStripeRefundStatus(stripeStatus: string): RefundStatus {
@@ -875,6 +1048,8 @@ export class PaymentService {
         ? booking.anticipoAmount
         : Math.max(0, booking.totalPrice - (booking.paidAmount || 0));
 
+      // PI en estado REQUIRES_CAPTURE: la tarjeta está pre-autorizada (capture='0')
+      // pero aún no cobrada. El cobro se hará cuando el artista confirme.
       await (prisma as any).paymentIntent.create({
         data: {
           stripePaymentIntentId: data.orderNumber,
@@ -882,22 +1057,19 @@ export class PaymentService {
           bookingId: data.bookingId,
           amount: amountCents,
           currency: data.currency,
-          status: "SUCCEEDED",
-          metadata: { provider: "TILOPAY", auth: data.auth },
+          status: "REQUIRES_CAPTURE",
+          metadata: { provider: "TILOPAY", auth: data.auth, captureMode: "MANUAL" },
         },
       });
 
-      // No pasar paymentType — booking-service determina ANTICIPO_PAID vs FULLY_PAID
-      // comparando el monto contra anticipoAmount / totalPrice del booking.
-      const tilopayMarked = await bookingClient.markPayment(
+      // Marcar la tarjeta como pre-autorizada en el booking (no como pagado aún)
+      const cardAuthorized = await bookingClient.markCardAuthorized(
         data.bookingId,
-        amountCents,
-        "TILOPAY",
         data.orderNumber,
       );
-      if (!tilopayMarked) {
+      if (!cardAuthorized) {
         logger.error(
-          "RECONCILIATION_NEEDED: Tilopay markPayment falló tras registrar pago",
+          "RECONCILIATION_NEEDED: Tilopay markCardAuthorized falló tras pre-auth",
           "PAYMENT_SERVICE",
           {
             bookingId: data.bookingId,
@@ -920,7 +1092,7 @@ export class PaymentService {
         );
       }
 
-      logger.info("Tilopay redirect: pago confirmado", "PAYMENT_SERVICE", {
+      logger.info("Tilopay redirect: tarjeta pre-autorizada (REQUIRES_CAPTURE)", "PAYMENT_SERVICE", {
         bookingId: data.bookingId,
         orderNumber: data.orderNumber,
         amountCents,

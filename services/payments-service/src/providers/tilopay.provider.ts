@@ -31,7 +31,10 @@ export class TilopayProvider implements IPaymentProvider {
       amount: amountDecimal,
       currency: params.currency.toUpperCase(),
       orderNumber,
-      capture: '1',
+      // capture='0': pre-autorización (auth-only). Usado para anticipo — el cobro se hace
+      // cuando el artista confirma via processModification type=1.
+      // capture='1': captura inmediata. Usado para saldo restante (artista ya confirmó).
+      capture: params.captureMode === 'automatic' ? '1' : '0',
       // Tilopay tokenization: returns card hash in `crd` field of the redirect URL
       // so future payments can be done with subscriptionPayment endpoint
       subscription: '1',
@@ -139,6 +142,86 @@ export class TilopayProvider implements IPaymentProvider {
       status: data.status || 'pending',
       amount: params.amount ?? 0,
     };
+  }
+
+  /**
+   * Capturar un pago pre-autorizado (capture='0' → processModification type=1).
+   * Se llama cuando el artista confirma la reserva.
+   */
+  async capturePayment(orderNumber: string): Promise<{ approved: boolean; responseCode: string }> {
+    const token = await getTilopayToken();
+
+    let res: Response;
+    try {
+      res = await fetch(`${TILOPAY_API_URL}/processModification`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: TILOPAY_API_KEY,
+          orderNumber,
+          type: '1', // capture
+        }),
+      });
+    } catch (networkErr: any) {
+      logger.error('Tilopay capturePayment network error', 'TILOPAY_PROVIDER', { error: networkErr.message });
+      throw new Error(`Tilopay network error: ${networkErr.message}`);
+    }
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      logger.error('Tilopay capturePayment failed', 'TILOPAY_PROVIDER', { status: res.status, body: errBody, orderNumber });
+      throw new Error(`Tilopay capture failed: HTTP ${res.status}`);
+    }
+
+    const data = await res.json() as any;
+    const responseCode: string = data.responseCode || data.response_code || '';
+    const approved = responseCode === '00';
+
+    logger.info('Tilopay capturePayment result', 'TILOPAY_PROVIDER', { orderNumber, approved, responseCode });
+    return { approved, responseCode };
+  }
+
+  /**
+   * Anular una pre-autorización (capture='0' → processModification type=3).
+   * Se llama cuando el artista rechaza o no confirma la reserva.
+   */
+  async voidPayment(orderNumber: string): Promise<{ approved: boolean; responseCode: string }> {
+    const token = await getTilopayToken();
+
+    let res: Response;
+    try {
+      res = await fetch(`${TILOPAY_API_URL}/processModification`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: TILOPAY_API_KEY,
+          orderNumber,
+          type: '3', // void / reversal
+        }),
+      });
+    } catch (networkErr: any) {
+      logger.error('Tilopay voidPayment network error', 'TILOPAY_PROVIDER', { error: networkErr.message });
+      throw new Error(`Tilopay network error: ${networkErr.message}`);
+    }
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      logger.error('Tilopay voidPayment failed', 'TILOPAY_PROVIDER', { status: res.status, body: errBody, orderNumber });
+      throw new Error(`Tilopay void failed: HTTP ${res.status}`);
+    }
+
+    const data = await res.json() as any;
+    const responseCode: string = data.responseCode || data.response_code || '';
+    const approved = responseCode === '00';
+
+    logger.info('Tilopay voidPayment result', 'TILOPAY_PROVIDER', { orderNumber, approved, responseCode });
+    return { approved, responseCode };
   }
 
   /**

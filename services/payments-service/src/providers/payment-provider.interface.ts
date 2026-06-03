@@ -8,6 +8,7 @@ export interface CheckoutParams {
   userEmail?: string;   // requerido por Tilopay (billToEmail)
   returnUrl?: string;
   ticketMode?: boolean; // si true, orderNumber = piums_ticket_{bookingId}_{ts}
+  captureMode?: 'manual' | 'automatic'; // 'manual'=pre-auth (anticipo), 'automatic'=cobro inmediato (saldo)
 }
 
 export interface CheckoutResult {

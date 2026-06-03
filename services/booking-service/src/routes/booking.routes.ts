@@ -428,4 +428,10 @@ router.post(
   bookingController.internalMarkPayment.bind(bookingController)
 );
 
+router.post(
+  "/bookings/internal/:id/mark-card-authorized",
+  internalAuth,
+  bookingController.internalMarkCardAuthorized.bind(bookingController)
+);
+
 export default router;

@@ -349,7 +349,7 @@ export class BookingService {
       }).catch(err => logger.error("Error creando availability reservation", "BOOKING_SERVICE", { error: err.message }));
     }
 
-    // Si no se requiere anticipo, enviar email de confirmación inmediatamente
+    // Si no se requiere anticipo, enviar email + push de inmediato (ya se puede confirmar)
     if (!depositRequired) {
       ;(async () => {
         try {
@@ -358,11 +358,17 @@ export class BookingService {
             artistsClient.getArtist(data.artistId),
             catalogClient.getService(data.serviceId),
           ]);
+          const clientName = (user as any)?.fullName || (user as any)?.nombre || 'Cliente';
+          const serviceName = (service as any)?.name || 'Servicio';
+          const bookingDate = new Date(booking.scheduledDate).toLocaleDateString('es-GT', {
+            day: 'numeric', month: 'long',
+          });
+
           await notifyBookingCreated({
             bookingId: booking.id,
             bookingCode: booking.code || booking.id.slice(0, 8).toUpperCase(),
             clientId: booking.clientId,
-            clientName: (user as any)?.fullName || (user as any)?.nombre || 'Cliente',
+            clientName,
             clientEmail: (user as any)?.email || '',
             clientNotes: booking.clientNotes || '',
             artistId: booking.artistId,
@@ -370,7 +376,7 @@ export class BookingService {
             artistEmail: (artist as any)?.email || '',
             artistCategory: (artist as any)?.category || '',
             artistImage: (artist as any)?.avatar || '',
-            serviceName: (service as any)?.name || 'Servicio',
+            serviceName,
             scheduledDate: booking.scheduledDate.toISOString(),
             durationMinutes: booking.durationMinutes,
             location: booking.location || '',
@@ -381,6 +387,29 @@ export class BookingService {
             anticipoAmount: 0,
             eventType: booking.eventType || undefined,
           });
+
+          // Push + IN_APP al artista para que confirme
+          const pushMsg = `${clientName} reservó "${serviceName}" para el ${bookingDate}. Confírmala en tu app.`;
+          notificationsClient.sendNotification({
+            userId: booking.artistId,
+            type: 'NEW_BOOKING',
+            channel: 'IN_APP',
+            title: 'Nueva solicitud de reserva',
+            message: pushMsg,
+            data: { bookingId: booking.id, bookingCode: booking.code || '' },
+            priority: 'high',
+            category: 'booking',
+          }).catch(() => {});
+          notificationsClient.sendNotification({
+            userId: booking.artistId,
+            type: 'NEW_BOOKING',
+            channel: 'PUSH',
+            title: 'Nueva solicitud de reserva',
+            message: pushMsg,
+            data: { bookingId: booking.id, bookingCode: booking.code || '' },
+            priority: 'high',
+            category: 'booking',
+          }).catch(() => {});
         } catch (err: any) {
           logger.error('Error enviando notificación de reserva sin anticipo', 'BOOKING_SERVICE', { error: err.message });
         }
@@ -628,6 +657,13 @@ export class BookingService {
       artistId,
     });
 
+    // Capturar el pago pre-autorizado si la tarjeta fue reservada antes de la confirmación
+    if (booking.paymentStatus === 'CARD_AUTHORIZED') {
+      paymentsClient.captureBooking(id).catch(err =>
+        logger.error("Error capturando pago pre-autorizado al confirmar", "BOOKING_SERVICE", { bookingId: id, error: err.message })
+      );
+    }
+
     // Bloquear el slot de disponibilidad del artista
     const endAt = new Date(booking.scheduledDate);
     endAt.setMinutes(endAt.getMinutes() + booking.durationMinutes);
@@ -807,6 +843,13 @@ export class BookingService {
       artistId,
     });
 
+    // Liberar la pre-autorización si la tarjeta estaba retenida
+    if (booking.paymentStatus === 'CARD_AUTHORIZED') {
+      paymentsClient.voidBooking(id).catch(err =>
+        logger.error("Error liberando pre-auth al rechazar reserva", "BOOKING_SERVICE", { bookingId: id, error: err.message })
+      );
+    }
+
     // Enviar notificación al cliente de rechazo
     notificationsClient.sendNotification({
       userId: booking.clientId,
@@ -918,6 +961,13 @@ export class BookingService {
       by: isClient ? "client" : "artist",
       refundAmount,
     });
+
+    // Liberar la pre-autorización si la tarjeta estaba retenida (booking aún PENDING)
+    if (booking.paymentStatus === 'CARD_AUTHORIZED') {
+      paymentsClient.voidBooking(id).catch(err =>
+        logger.error("Error liberando pre-auth al cancelar reserva", "BOOKING_SERVICE", { bookingId: id, error: err.message })
+      );
+    }
 
     // Liberar el slot de disponibilidad del artista
     removeAvailabilityReservation(id)
@@ -1554,6 +1604,30 @@ export class BookingService {
   /**
    * Marcar pago
    */
+  /**
+   * Marcar la tarjeta del cliente como pre-autorizada (fondos retenidos, no cobrados).
+   * Se llama cuando el PI entra en estado REQUIRES_CAPTURE.
+   */
+  async markCardAuthorized(id: string, paymentIntentId?: string) {
+    const booking = await this.getBookingById(id);
+
+    if (booking.paymentStatus === 'CARD_AUTHORIZED') {
+      logger.info("markCardAuthorized: ya está en CARD_AUTHORIZED, ignorando", "BOOKING_SERVICE", { bookingId: id });
+      return booking;
+    }
+
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: {
+        paymentStatus: 'CARD_AUTHORIZED',
+        ...(paymentIntentId && { providerPaymentId: paymentIntentId }),
+      },
+    });
+
+    logger.info("Booking marcado como CARD_AUTHORIZED", "BOOKING_SERVICE", { bookingId: id, paymentIntentId });
+    return updated;
+  }
+
   async markPayment(
     id: string,
     amount: number,
@@ -1564,8 +1638,22 @@ export class BookingService {
     const booking = await this.getBookingById(id);
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Idempotency guard: if providerPaymentId already matches, this payment was already
+      // processed (e.g. both the Tilopay redirect and the server webhook arrived). Skip increment.
+      if (paymentIntentId) {
+        const current = await tx.booking.findUnique({
+          where: { id },
+          select: { providerPaymentId: true },
+        });
+        if (current?.providerPaymentId === paymentIntentId) {
+          logger.warn("markPayment: providerPaymentId ya procesado, ignorando duplicado", "BOOKING_SERVICE", {
+            bookingId: id, paymentIntentId,
+          });
+          return tx.booking.findUniqueOrThrow({ where: { id } });
+        }
+      }
+
       // Atomically increment paidAmount to avoid read-modify-write race conditions
-      // when concurrent callbacks (e.g. Tilopay server callback + redirect confirm) fire simultaneously
       const afterIncrement = await tx.booking.update({
         where: { id },
         data: { paidAmount: { increment: amount } },
@@ -1659,11 +1747,18 @@ export class BookingService {
             artistsClient.getArtist(updated.artistId),
             catalogClient.getService(updated.serviceId),
           ]);
+
+          const clientName = user?.fullName || user?.nombre || 'Cliente';
+          const serviceName = service?.name || 'Servicio';
+          const bookingDate = new Date(updated.scheduledDate).toLocaleDateString('es-GT', {
+            day: 'numeric', month: 'long',
+          });
+
           await notifyBookingCreated({
             bookingId: updated.id,
             bookingCode: updated.code || updated.id.slice(0, 8).toUpperCase(),
             clientId: updated.clientId,
-            clientName: user?.fullName || user?.nombre || 'Cliente',
+            clientName,
             clientEmail: user?.email || '',
             clientNotes: updated.clientNotes || '',
             artistId: updated.artistId,
@@ -1671,7 +1766,7 @@ export class BookingService {
             artistEmail: artist?.email || '',
             artistCategory: artist?.category || '',
             artistImage: artist?.avatar || '',
-            serviceName: service?.name || 'Servicio',
+            serviceName,
             scheduledDate: updated.scheduledDate.toISOString(),
             durationMinutes: updated.durationMinutes,
             location: updated.location || '',
@@ -1682,6 +1777,29 @@ export class BookingService {
             anticipoAmount: Number(updated.anticipoAmount),
             eventType: (updated as any).eventType || undefined,
           });
+
+          // Push + IN_APP al artista para que confirme la reserva
+          const pushMsg = `${clientName} reservó "${serviceName}" para el ${bookingDate}. Confírmala en tu app.`;
+          notificationsClient.sendNotification({
+            userId: updated.artistId,
+            type: 'NEW_BOOKING',
+            channel: 'IN_APP',
+            title: 'Nueva solicitud de reserva',
+            message: pushMsg,
+            data: { bookingId: updated.id, bookingCode: updated.code || '' },
+            priority: 'high',
+            category: 'booking',
+          }).catch(() => {});
+          notificationsClient.sendNotification({
+            userId: updated.artistId,
+            type: 'NEW_BOOKING',
+            channel: 'PUSH',
+            title: 'Nueva solicitud de reserva',
+            message: pushMsg,
+            data: { bookingId: updated.id, bookingCode: updated.code || '' },
+            priority: 'high',
+            category: 'booking',
+          }).catch(() => {});
         } catch (err: any) {
           logger.error('Error enviando notificación de reserva con pago confirmado', 'BOOKING_SERVICE', { error: err.message });
         }

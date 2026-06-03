@@ -192,7 +192,8 @@ export default function BookingDetailsPage({ params }: { params: Promise<{ id: s
         remaining,
         booking.currency ?? 'USD',
         artist?.country,
-        'Saldo restante de reserva'
+        'Saldo restante de reserva',
+        'automatic'
       );
       if (intent.redirectUrl) {
         window.location.href = intent.redirectUrl;
