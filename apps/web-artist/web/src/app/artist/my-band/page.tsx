@@ -106,9 +106,9 @@ function MembersSection({ band, isAdmin, currentUserId, onRefresh }: {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/artists?q=${encodeURIComponent(searchQuery)}&limit=5`, { credentials: 'include' });
+      const res = await fetch(`/api/artists/search?q=${encodeURIComponent(searchQuery)}&limit=5`, { credentials: 'include' });
       const data = await res.json();
-      const list: ArtistSearchResult[] = (data.artists ?? data.data ?? []).map((a: ArtistSearchResult) => ({
+      const list: ArtistSearchResult[] = (data.artists ?? data.data ?? data.results ?? []).map((a: ArtistSearchResult) => ({
         id: a.id,
         nombre: a.nombre ?? a.artistName ?? a.name ?? 'Artista',
         city: a.city,
@@ -125,7 +125,7 @@ function MembersSection({ band, isAdmin, currentUserId, onRefresh }: {
     if (!selectedArtist) return;
     setInviting(true);
     try {
-      const res = await fetch(`/api/bands/${band.id}/members/invite`, {
+      const res = await fetch(`/api/bands/${band.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -342,9 +342,11 @@ function OpeningsSection({ band, isAdmin, onRefresh }: { band: Band; isAdmin: bo
   };
 
   const handleClose = async (oid: string) => {
-    const res = await fetch(`/api/bands/${band.id}/openings/${oid}/close`, {
+    const res = await fetch(`/api/bands/${band.id}/openings/${oid}`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
+      body: JSON.stringify({ close: true }),
     });
     if (res.ok) { toast.success('Posición cerrada'); onRefresh(); }
   };
@@ -616,11 +618,11 @@ function PendingInvitationsSection({ onAccepted }: { onAccepted: () => void }) {
   const handleRespond = async (bandId: string, accept: boolean) => {
     setResponding(bandId);
     try {
-      const res = await fetch(`/api/bands/${bandId}/members/respond`, {
+      const res = await fetch(`/api/bands/${bandId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ accept }),
+        body: JSON.stringify({ respond: true, accept }),
       });
       if (!res.ok) {
         const d = await res.json();
