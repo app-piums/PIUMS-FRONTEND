@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth.middleware";
 import {
-  createBand, getMyBand, getBand, searchBands, updateBand,
+  createBand, getMyBand, getMyBands, getBand, searchBands, updateBand, deleteBand,
   inviteMember, respondToInvite, listMembers, removeMember, requestToJoin,
   createOpening, listOpenings, closeOpening,
   applyToOpening, listApplications, respondToApplication,
@@ -19,13 +19,15 @@ router.get("/openings/all", getAllOpenings);
 // Mis invitaciones pendientes
 router.get("/invitations/my", authenticateToken, getMyInvitations);
 
-// Mi banda
+// Mis bandas
+router.get("/my/all", authenticateToken, getMyBands);
 router.get("/my", authenticateToken, getMyBand);
 
 // CRUD de banda
 router.post("/", authenticateToken, createBand);
 router.get("/:id", getBand);
 router.put("/:id", authenticateToken, updateBand);
+router.delete("/:id", authenticateToken, deleteBand);
 
 // Miembros
 router.get("/:id/members", authenticateToken, listMembers);

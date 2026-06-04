@@ -90,10 +90,11 @@ model BandMember {
   bandId   String
   band     Band             @relation(fields: [bandId], references: [id], onDelete: Cascade)
   artistId String           // Artist.authId
-  role     String?
-  status   BandMemberStatus @default(PENDING)
-  isAdmin  Boolean          @default(false)
-  joinedAt DateTime         @default(now())
+  role          String?
+  status        BandMemberStatus @default(PENDING)
+  isAdmin       Boolean          @default(false)
+  inviteMessage String?          @db.Text
+  joinedAt      DateTime         @default(now())
 
   @@unique([bandId, artistId])
   @@index([bandId])

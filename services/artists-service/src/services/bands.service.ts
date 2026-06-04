@@ -57,6 +57,25 @@ export const createBand = async (
   return band;
 };
 
+export const getMyBands = async (artistId: string) => {
+  const memberships = await prisma.bandMember.findMany({
+    where: { artistId, status: { in: ["ACTIVE", "PENDING"] } },
+    include: {
+      band: {
+        include: {
+          members: { where: { status: { in: ["ACTIVE", "PENDING"] } } },
+          openings: { where: { isOpen: true }, include: { _count: { select: { applications: true } } } },
+        },
+      },
+    },
+    orderBy: { joinedAt: "asc" },
+  });
+
+  return memberships
+    .filter((m) => m.band.isActive && !m.band.deletedAt)
+    .map((m) => ({ ...m.band, myRole: m.role, myStatus: m.status, isMyBandAdmin: m.isAdmin }));
+};
+
 export const getMyBand = async (artistId: string) => {
   const membership = await prisma.bandMember.findFirst({
     where: { artistId, status: { in: ["ACTIVE", "PENDING"] } },
@@ -132,17 +151,28 @@ export const updateBand = async (
   return prisma.band.update({ where: { id: bandId }, data });
 };
 
-export const inviteMember = async (bandId: string, adminId: string, artistId: string, role?: string) => {
+export const deleteBand = async (bandId: string, artistId: string) => {
+  const band = await prisma.band.findFirst({ where: { id: bandId, isActive: true, deletedAt: null } });
+  if (!band) throw new AppError(404, "Banda no encontrada");
+  if (band.leadArtistId !== artistId) throw new AppError(403, "Solo el fundador puede eliminar la banda");
+
+  await prisma.band.update({
+    where: { id: bandId },
+    data: { isActive: false, deletedAt: new Date() },
+  });
+};
+
+export const inviteMember = async (bandId: string, adminId: string, artistId: string, role?: string, inviteMessage?: string) => {
   await requireBandAdmin(bandId, adminId);
 
   const existing = await prisma.bandMember.findUnique({ where: { bandId_artistId: { bandId, artistId } } });
   if (existing) {
     if (existing.status === "ACTIVE") throw new AppError(409, "El artista ya es miembro de la banda");
     if (existing.status === "PENDING") throw new AppError(409, "El artista ya tiene una invitación pendiente");
-    return await prisma.bandMember.update({ where: { id: existing.id }, data: { status: "PENDING", role } });
+    return await prisma.bandMember.update({ where: { id: existing.id }, data: { status: "PENDING", role, inviteMessage } });
   }
 
-  const member = await prisma.bandMember.create({ data: { bandId, artistId, role, status: "PENDING" } });
+  const member = await prisma.bandMember.create({ data: { bandId, artistId, role, status: "PENDING", inviteMessage } });
 
   const band = await prisma.band.findUnique({ where: { id: bandId }, select: { name: true } });
   notificationsClient.send({
@@ -150,8 +180,10 @@ export const inviteMember = async (bandId: string, adminId: string, artistId: st
     type: "BAND_INVITATION",
     channel: "IN_APP",
     title: "Te invitaron a una banda",
-    message: `Has sido invitado a unirte a ${band?.name ?? "una banda"}${role ? ` como ${role}` : ""}.`,
-    data: { bandId, role },
+    message: inviteMessage
+      ? `${band?.name ?? "Una banda"} te invitó${role ? ` como ${role}` : ""}: "${inviteMessage}"`
+      : `Has sido invitado a unirte a ${band?.name ?? "una banda"}${role ? ` como ${role}` : ""}.`,
+    data: { bandId, role, inviteMessage },
   });
 
   return member;

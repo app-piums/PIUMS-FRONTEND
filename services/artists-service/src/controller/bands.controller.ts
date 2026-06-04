@@ -16,10 +16,24 @@ export const createBand = async (req: AuthRequest, res: Response, next: NextFunc
   } catch (err) { next(err); }
 };
 
+export const getMyBands = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const bands = await bandsService.getMyBands(req.user!.id);
+    res.json({ bands });
+  } catch (err) { next(err); }
+};
+
 export const getMyBand = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const band = await bandsService.getMyBand(req.user!.id);
     res.json(band);
+  } catch (err) { next(err); }
+};
+
+export const deleteBand = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    await bandsService.deleteBand(p(req.params.id), req.user!.id);
+    res.status(204).send();
   } catch (err) { next(err); }
 };
 
@@ -48,9 +62,9 @@ export const updateBand = async (req: AuthRequest, res: Response, next: NextFunc
 
 export const inviteMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { artistId, role } = req.body;
+    const { artistId, role, inviteMessage } = req.body;
     if (!artistId) return res.status(400).json({ error: "artistId es requerido" });
-    const member = await bandsService.inviteMember(p(req.params.id), req.user!.id, artistId, role);
+    const member = await bandsService.inviteMember(p(req.params.id), req.user!.id, artistId, role, inviteMessage);
     res.status(201).json(member);
   } catch (err) { next(err); }
 };
