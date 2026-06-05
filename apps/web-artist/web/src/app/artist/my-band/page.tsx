@@ -1039,6 +1039,21 @@ export default function MyBandPage() {
   const myId = user?.id ?? '';
   const isLead = band.leadArtistId === myId;
   const isAdmin = isLead || band.members?.some((m) => m.artistId === myId && m.isAdmin && m.status === 'ACTIVE');
+  const [uploadingBandPhoto, setUploadingBandPhoto] = useState(false);
+  const bandAvatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBandAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBandPhoto(true);
+    try {
+      const form = new FormData();
+      form.append('avatar', file);
+      const res = await fetch(`/api/bands/${band.id}/avatar`, { method: 'POST', credentials: 'include', body: form });
+      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al subir foto'); }
+      else { toast.success('Foto actualizada'); setLoading(true); fetchBands(); }
+    } finally { setUploadingBandPhoto(false); if (bandAvatarInputRef.current) bandAvatarInputRef.current.value = ''; }
+  };
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'members', label: `Integrantes (${(band.members ?? []).filter((m) => m.status !== 'INACTIVE').length})` },
@@ -1061,7 +1076,20 @@ export default function MyBandPage() {
             </button>
           )}
           <div className="flex items-center gap-4 flex-1">
-            <AvatarCircle name={band.name} size="lg" src={band.avatar} />
+            {isAdmin ? (
+              <div className="relative flex-shrink-0 group cursor-pointer" onClick={() => bandAvatarInputRef.current?.click()}>
+                <AvatarCircle name={band.name} size="lg" src={uploadingBandPhoto ? band.avatar : band.avatar} />
+                <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  {uploadingBandPhoto
+                    ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  }
+                </div>
+                <input ref={bandAvatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleBandAvatarChange} />
+              </div>
+            ) : (
+              <AvatarCircle name={band.name} size="lg" src={band.avatar} />
+            )}
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{band.name}</h1>
               <p className="text-sm text-gray-500">{band.city}, {band.country}</p>
