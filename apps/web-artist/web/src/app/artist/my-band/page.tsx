@@ -402,7 +402,7 @@ function OpeningsSection({ band, isAdmin, onRefresh }: { band: Band; isAdmin: bo
   };
 
   const handleRespond = async (aid: string, accept: boolean) => {
-    const res = await fetch(`/api/bands/applications/${aid}/respond`, {
+    const res = await fetch(`/api/bands/applications/${aid}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -648,7 +648,7 @@ function PendingInvitationsSection({ onAccepted }: { onAccepted: () => void }) {
   const [responding, setResponding] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/bands/invitations/my', { credentials: 'include' })
+    fetch('/api/bands/invitations', { credentials: 'include' })
       .then((r) => r.json())
       .then((d) => setInvitations(Array.isArray(d) ? d : []))
       .catch(() => setInvitations([]))
