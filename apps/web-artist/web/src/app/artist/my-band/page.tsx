@@ -1038,7 +1038,7 @@ export default function MyBandPage() {
 
   // ── Band detail ──
   const band = selectedBand;
-  const myId = user?.artistId ?? user?.id ?? '';
+  const myId = user?.authId ?? user?.id ?? '';
   const isLead = band.leadArtistId === myId;
   const isAdmin = isLead || band.members?.some((m) => m.artistId === myId && m.isAdmin && m.status === 'ACTIVE');
 
