@@ -50,6 +50,7 @@ jobs:
           - notifications-service
           - search-service
           - chat-service
+          - moderation-service
           - gateway
 
     steps:
@@ -147,6 +148,7 @@ jobs:
           - notifications-service
           - search-service
           - chat-service
+          - moderation-service
 
     steps:
       - name: Checkout code
@@ -266,6 +268,7 @@ jobs:
           - notifications-service
           - search-service
           - chat-service
+          - moderation-service
 
     steps:
       - name: Run Trivy vulnerability scanner

@@ -60,6 +60,7 @@ jobs:
             "notifications-service"
             "search-service"
             "chat-service"
+            "moderation-service"
             "gateway"
             "web-client"
             "web-artist"
@@ -143,6 +144,7 @@ jobs:
           - notifications-service
           - search-service
           - chat-service
+          - moderation-service
 
     steps:
       - name: Checkout code
