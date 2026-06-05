@@ -171,6 +171,9 @@ services:
       SEARCH_SERVICE_URL: http://search-service:4009
       MODERATION_SERVICE_URL: http://moderation-service:4011
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -258,6 +261,7 @@ services:
       context: ../../services/notifications-service
       dockerfile: Dockerfile
     container_name: piums-notifications-service
+    command: sh -c "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"
     ports:
       - "4007:4007"
     environment:
