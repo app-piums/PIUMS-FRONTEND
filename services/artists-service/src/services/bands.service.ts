@@ -73,7 +73,7 @@ export const getMyBands = async (artistId: string) => {
 
   return memberships
     .filter((m) => m.band.isActive && !m.band.deletedAt)
-    .map((m) => ({ ...m.band, myRole: m.role, myStatus: m.status, isMyBandAdmin: m.isAdmin }));
+    .map((m) => ({ ...m.band, myRole: m.role, myStatus: m.status, isMyBandAdmin: m.isAdmin, isMyBandLead: m.band.leadArtistId === m.artistId, myArtistId: m.artistId }));
 };
 
 export const getMyBand = async (artistId: string) => {

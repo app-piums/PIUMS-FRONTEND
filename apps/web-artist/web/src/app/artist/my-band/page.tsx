@@ -53,6 +53,8 @@ interface Band {
   myRole?: string;
   myStatus?: string;
   isMyBandAdmin?: boolean;
+  isMyBandLead?: boolean;
+  myArtistId?: string;
 }
 
 interface Invitation {
@@ -1038,9 +1040,8 @@ export default function MyBandPage() {
 
   // ── Band detail ──
   const band = selectedBand;
-  const myId = user?.authId ?? user?.id ?? '';
-  const isLead = band.leadArtistId === myId;
-  const isAdmin = isLead || band.members?.some((m) => m.artistId === myId && m.isAdmin && m.status === 'ACTIVE');
+  const isAdmin = !!band.isMyBandAdmin;
+  const isLead = !!band.isMyBandLead;
 
   const handleBandAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1115,7 +1116,7 @@ export default function MyBandPage() {
         {/* Tab content */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           {activeTab === 'members' && (
-            <MembersSection band={band} isAdmin={!!isAdmin} currentUserId={myId} onRefresh={() => { setLoading(true); fetchBands(); }} />
+            <MembersSection band={band} isAdmin={!!isAdmin} currentUserId={band.myArtistId} onRefresh={() => { setLoading(true); fetchBands(); }} />
           )}
           {activeTab === 'openings' && (
             <OpeningsSection band={band} isAdmin={!!isAdmin} onRefresh={() => { setLoading(true); fetchBands(); }} />
