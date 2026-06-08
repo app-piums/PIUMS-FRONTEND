@@ -30,7 +30,7 @@ export const updateLimiter = rateLimit({
 // Rate limiter para búsquedas
 export const searchLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 50, // 50 búsquedas por ventana
+  max: 300,
   message: "Límite de búsquedas alcanzado, intenta más tarde",
   standardHeaders: true,
   legacyHeaders: false,

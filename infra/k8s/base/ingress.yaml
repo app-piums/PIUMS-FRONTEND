@@ -24,10 +24,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - api.piums.app
+        - backend.piums.io
       secretName: piums-api-tls
   rules:
-    - host: api.piums.app
+    - host: backend.piums.io
       http:
         paths:
           - path: /

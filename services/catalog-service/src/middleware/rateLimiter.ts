@@ -9,7 +9,7 @@ const asRequestHandler = (handler: ReturnType<typeof rateLimit>): RequestHandler
 // Rate limiter general
 export const apiLimiter: RequestHandler = asRequestHandler(rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: isDev ? 10000 : 100,
+  max: isDev ? 10000 : 1000,
   message: "Demasiadas solicitudes desde esta IP, intenta de nuevo más tarde",
   standardHeaders: true,
   legacyHeaders: false,
@@ -36,7 +36,7 @@ export const updateLimiter: RequestHandler = asRequestHandler(rateLimit({
 // Rate limiter para búsquedas
 export const searchLimiter: RequestHandler = asRequestHandler(rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: isDev ? 5000 : 50,
+  max: isDev ? 5000 : 300,
   message: "Límite de búsquedas alcanzado",
   standardHeaders: true,
   legacyHeaders: false,
