@@ -41,7 +41,7 @@ data:
   ENABLE_EMAIL: "true"
 
   # Google Calendar OAuth callback
-  GOOGLE_CALENDAR_CALLBACK_URL: "https://backend.piums.io/api/auth/google-calendar/callback"
+  GOOGLE_CALENDAR_CALLBACK_URL: "https://backend.piums.io/api/auth/google/calendar-connect/callback"
 
   # Email
   EMAIL_FROM_NAME: "Piums"

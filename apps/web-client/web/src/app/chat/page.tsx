@@ -29,6 +29,7 @@ function ChatPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const socketRef = useRef<Socket | null>(null);
+  const currentConversationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/chat');
@@ -46,7 +47,7 @@ function ChatPageInner() {
           .then(data => cb({ token: data?.token || '' }))
           .catch(() => cb({ token: '' }));
       },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
       randomizationFactor: 0.5,
@@ -66,18 +67,18 @@ function ChatPageInner() {
       setConversations(prev =>
         prev.map(c =>
           c.id === msg.conversationId
-            ? { ...c, lastMessageAt: msg.createdAt, unreadCount: c.id === currentConversation?.id ? 0 : (c.unreadCount ?? 0) + 1 }
+            ? { ...c, lastMessageAt: msg.createdAt, unreadCount: c.id === currentConversationIdRef.current ? 0 : (c.unreadCount ?? 0) + 1 }
             : c
         )
       );
     });
 
     socket.on('typing:start', ({ userId, conversationId }: { userId: string; conversationId?: string }) => {
-      if (userId !== user.id && (!conversationId || conversationId === currentConversation?.id)) setIsTyping(true);
+      if (userId !== user.id && (!conversationId || conversationId === currentConversationIdRef.current)) setIsTyping(true);
     });
 
     socket.on('typing:stop', ({ userId, conversationId }: { userId: string; conversationId?: string }) => {
-      if (userId !== user.id && (!conversationId || conversationId === currentConversation?.id)) setIsTyping(false);
+      if (userId !== user.id && (!conversationId || conversationId === currentConversationIdRef.current)) setIsTyping(false);
     });
 
     socketRef.current = socket;
@@ -87,6 +88,12 @@ function ChatPageInner() {
       socketRef.current = null;
     };
   }, [user, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ref in sync so socket handlers always see the current conversation
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversation?.id ?? null;
+    setIsTyping(false);
+  }, [currentConversation?.id]);
 
   // Join conversation room when selection changes
   useEffect(() => {

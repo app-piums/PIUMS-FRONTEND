@@ -43,7 +43,7 @@ export default function ChatPage() {
           .then(data => cb({ token: data?.token || '' }))
           .catch(() => cb({ token: '' }));
       },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
       randomizationFactor: 0.5,

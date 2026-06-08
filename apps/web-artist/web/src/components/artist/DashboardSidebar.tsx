@@ -29,31 +29,26 @@ function NotificationBell() {
 
   // Real-time: listen for new notifications via chat-service socket
   useEffect(() => {
-    let socket: Socket | null = null;
+    const socket = io(CHAT_SOCKET_URL, {
+      path: '/socket.io/',
+      transports: ['polling', 'websocket'],
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.5,
+      auth: (cb: (data: object) => void) => {
+        fetch('/api/chat/token', { credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => cb({ token: data?.token || '' }))
+          .catch(() => cb({ token: '' }));
+      },
+    });
 
-    fetch('/api/chat/token', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data?.token) return;
-
-        socket = io(CHAT_SOCKET_URL, {
-          path: '/socket.io/',
-          transports: ['websocket', 'polling'],
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 30000,
-          randomizationFactor: 0.5,
-          auth: { token: data.token },
-          reconnectionAttempts: 3,
-        });
-
-        socket.on('notification:new', (notif: any) => {
-          setNotifications((prev) => [notif, ...prev]);
-        });
-      })
-      .catch(() => { /* auth not available — skip socket */ });
+    socket.on('notification:new', (notif: any) => {
+      setNotifications((prev) => [notif, ...prev]);
+    });
 
     return () => {
-      socket?.disconnect();
+      socket.disconnect();
     };
   }, []);
 

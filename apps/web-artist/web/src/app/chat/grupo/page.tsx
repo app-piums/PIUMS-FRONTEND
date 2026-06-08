@@ -73,7 +73,7 @@ function GroupChatPageInner() {
           .then(d => cb({ token: d?.token || '' }))
           .catch(() => cb({ token: '' }));
       },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
       randomizationFactor: 0.5,

@@ -9,7 +9,7 @@ export function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
   const returnUrl = `${origin}/artist/dashboard/settings?calendarConnected=true`;
 
   const backendBase = process.env.NEXT_PUBLIC_CHAT_SERVICE_URL ?? 'https://backend.piums.io';
