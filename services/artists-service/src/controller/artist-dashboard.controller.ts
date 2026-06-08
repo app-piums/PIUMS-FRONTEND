@@ -316,9 +316,10 @@ export const getMyStats = async (
       throw new AppError(401, "No autenticado");
     }
     // Obtener datos de booking-service y payments-service en paralelo
+    const authToken = req.headers.authorization?.substring(7);
     const artist = await artistsService.getArtistByAuthId(authId);
     const [bookingStats, paymentStats] = await Promise.all([
-      bookingServiceClient.getArtistStats(artist.id),
+      bookingServiceClient.getArtistStats(artist.id, authToken),
       paymentsServiceClient.getArtistPaymentStats(artist.id),
     ]);
 

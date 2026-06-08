@@ -110,16 +110,21 @@ export class BookingServiceClient {
   /**
    * Obtener estadísticas de bookings del artista
    */
-  async getArtistStats(artistId: string): Promise<BookingStatsResponse> {
+  async getArtistStats(artistId: string, authToken?: string): Promise<BookingStatsResponse> {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(
-        `${BOOKING_SERVICE_URL}/api/stats?artistId=${artistId}`,
+        `${BOOKING_SERVICE_URL}/api/bookings/stats?artistId=${artistId}`,
         {
           signal: AbortSignal.timeout(10_000),
           method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
         }
       );
 
@@ -139,7 +144,14 @@ export class BookingServiceClient {
       }
 
       const data = await response.json() as any;
-      return data as BookingStatsResponse;
+      return {
+        total: data.total ?? 0,
+        thisMonth: data.thisMonth ?? 0,
+        pending: data.pending ?? 0,
+        confirmed: data.confirmed ?? 0,
+        completed: data.completed ?? 0,
+        upcoming: data.upcoming ?? [],
+      };
     } catch (error: any) {
       logger.error("Error in getArtistStats", "BOOKING_CLIENT", {
         error: error.message,
