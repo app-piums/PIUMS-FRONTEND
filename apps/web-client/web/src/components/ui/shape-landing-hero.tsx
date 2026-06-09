@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
@@ -23,22 +20,20 @@ function ElegantShape({
   gradient?: string;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -150, rotate: rotate - 15 }}
-      animate={{ opacity: 1, y: 0, rotate }}
-      transition={{
-        duration: 2.4,
-        delay,
-        ease: "easeOut",
-        opacity: { duration: 1.2 },
-      }}
+    <div
       className={cn("absolute pointer-events-none", className)}
+      style={{
+        animation: `shape-enter 2.4s ease-out ${delay}s both`,
+        transform: `rotate(${rotate}deg)`,
+      } as CSSProperties}
     >
-      <motion.div
-        animate={{ y: [0, 15, 0] }}
-        transition={{ duration: 12, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-        style={{ width, height }}
-        className="relative"
+      <div
+        className="relative shape-float"
+        style={{
+          width,
+          height,
+          animation: `shape-float 12s ease-in-out ${delay + 2.4}s infinite`,
+        } as CSSProperties}
       >
         <div
           className={cn(
@@ -51,8 +46,8 @@ function ElegantShape({
             "after:bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.08),transparent_70%)]"
           )}
         />
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }
 
@@ -82,7 +77,7 @@ function HeroPiums({
   ctaPrimary,
   ctaSecondary,
   perks = [],
-  logoSrc = "/logo-color.png",
+  logoSrc = "/logo-color.webp",
 }: {
   badge: string;
   headline: React.ReactNode;
@@ -106,7 +101,7 @@ function HeroPiums({
         }}
       />
 
-      {/* Floating shapes — Piums discipline colors */}
+      {/* Floating shapes — CSS animations, no JS dependency */}
       <ElegantShape delay={0.2} width={580} height={130} rotate={12} gradient="from-[#FF6B35]/[0.11]" className="left-[-8%] top-[18%]" />
       <ElegantShape delay={0.45} width={460} height={108} rotate={-15} gradient="from-[#14B8A6]/[0.11]" className="right-[-4%] top-[58%]" />
       <ElegantShape delay={0.3} width={270} height={68} rotate={-8} gradient="from-[#A855F7]/[0.11]" className="left-[4%] bottom-[12%]" />
@@ -128,8 +123,8 @@ function HeroPiums({
         </FadeUp>
 
         <div
-          className="inline-block mb-3 hero-logo-float"
-          style={{ animation: `fade-up 0.9s ease-out 0.49s both, hero-logo-float 5s ease-in-out 1.5s infinite` } as CSSProperties}
+          className="inline-block mb-3"
+          style={{ animation: `hero-logo-float 5s ease-in-out 1.5s infinite` } as CSSProperties}
         >
           <Image
             src={logoSrc}
@@ -141,15 +136,13 @@ function HeroPiums({
           />
         </div>
 
-        {/* Headline */}
-        <FadeUp delay={0.63}>
-          <h1
-            className="text-3xl sm:text-4xl md:text-5xl font-bold leading-[1.1] mb-5"
-            style={{ letterSpacing: "-0.025em" }}
-          >
-            {headline}
-          </h1>
-        </FadeUp>
+        {/* Headline — visible immediately for LCP */}
+        <h1
+          className="text-3xl sm:text-4xl md:text-5xl font-bold leading-[1.1] mb-5"
+          style={{ letterSpacing: "-0.025em", animation: "fade-up 0.9s ease-out 0.63s both" } as CSSProperties}
+        >
+          {headline}
+        </h1>
 
         {/* Subtitle */}
         <FadeUp delay={0.77}>
