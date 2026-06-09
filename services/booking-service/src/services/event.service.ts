@@ -1,4 +1,5 @@
-import { PrismaClient, EventStatus, BookingStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { EventStatus, BookingStatus } from '../types/prisma-enums';
 import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
@@ -118,8 +119,8 @@ export const eventService = {
         BookingStatus.PAYMENT_PENDING,
       ];
       const bookingIds = event.bookings
-        .filter((b) => cancellableStatuses.includes(b.status))
-        .map((b) => b.id);
+        .filter((b: any) => cancellableStatuses.includes(b.status))
+        .map((b: any) => b.id);
 
       if (bookingIds.length > 0) {
         await prisma.booking.updateMany({
@@ -205,7 +206,7 @@ export const eventService = {
     });
     if (!event) throw new Error('EVENT_NOT_FOUND');
 
-    const bookingTotals = event.bookings.map((b) => ({
+    const bookingTotals = event.bookings.map((b: any) => ({
       bookingId: b.id,
       code: b.code,
       artistId: b.artistId,
@@ -216,7 +217,7 @@ export const eventService = {
       currency: b.currency,
     }));
 
-    const grandTotal = bookingTotals.reduce((sum, b) => sum + (b.totalPrice ?? 0), 0);
+    const grandTotal = bookingTotals.reduce((sum: number, b: any) => sum + (b.totalPrice ?? 0), 0);
     const currency = event.bookings[0]?.currency || 'USD';
 
     return {

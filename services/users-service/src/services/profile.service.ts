@@ -98,7 +98,7 @@ export class ProfileService {
           throw new AppError(400, modResult.rejectMessage);
         }
         if (modResult.action === 'CENSOR') {
-          (data as Record<string, unknown>)[field] = modResult.censored ?? value;
+          (data as unknown as Record<string, unknown>)[field] = modResult.censored ?? value;
         }
       }
 

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { payoutService } from "../services/payout.service";
-import { PayoutStatus, PayoutType } from "@prisma/client";
+import { PayoutStatus, PayoutType } from "../types/prisma-enums";
 
 export class PayoutController {
   // ==================== CREATE PAYOUT ====================
@@ -68,8 +68,9 @@ export class PayoutController {
         message: "Payout procesado exitosamente",
         payout,
       });
+      return;
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -138,8 +139,9 @@ export class PayoutController {
       });
 
       res.json(result);
+      return;
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -199,8 +201,9 @@ export class PayoutController {
       const stats = await payoutService.getArtistPayoutStats(artistId);
 
       res.json(stats);
+      return;
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 

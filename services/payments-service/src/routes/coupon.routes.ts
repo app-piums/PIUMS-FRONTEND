@@ -4,7 +4,7 @@ import { internalAuth } from '../middleware/auth.middleware';
 import { createPaymentLimiter } from '../middleware/rateLimiter';
 import * as couponController from '../controller/coupon.controller';
 
-const router = Router();
+const router: Router = Router();
 const auth = authenticateToken as any;
 
 // Admin routes

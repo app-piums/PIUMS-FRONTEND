@@ -1,4 +1,27 @@
-import { PrismaClient, NotificationChannel, NotificationStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+// NOTE: NotificationChannel/NotificationStatus are not re-exported by the local
+// (ungenerated) @prisma/client stub and `prisma generate` is unavailable offline.
+// These mirror the enums in prisma/schema.prisma exactly (same names and values),
+// so runtime behavior is identical to the generated client.
+const NotificationChannel = {
+  EMAIL: 'EMAIL',
+  SMS: 'SMS',
+  PUSH: 'PUSH',
+  IN_APP: 'IN_APP',
+} as const;
+type NotificationChannel = (typeof NotificationChannel)[keyof typeof NotificationChannel];
+
+const NotificationStatus = {
+  PENDING: 'PENDING',
+  SCHEDULED: 'SCHEDULED',
+  SENDING: 'SENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  FAILED: 'FAILED',
+  READ: 'READ',
+} as const;
+type NotificationStatus = (typeof NotificationStatus)[keyof typeof NotificationStatus];
 import { emailProvider } from '../providers/email.provider';
 import { smsProvider } from '../providers/sms.provider';
 import { pushProvider } from '../providers/push.provider';

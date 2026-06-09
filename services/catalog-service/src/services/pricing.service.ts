@@ -1,4 +1,5 @@
-import { PrismaClient, PricingModel } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { PricingModel } from '../types/prisma-enums';
 
 const prisma = new PrismaClient();
 
@@ -151,7 +152,7 @@ export const calculateServicePrice = async (
   let addonsTotalCents = 0;
 
   if (selectedAddonIds.length > 0) {
-    const selectedAddons = service.addons.filter((addon) =>
+    const selectedAddons = service.addons.filter((addon: any) =>
       selectedAddonIds.includes(addon.id)
     );
 
@@ -168,7 +169,7 @@ export const calculateServicePrice = async (
   }
 
   // Agregar addons obligatorios
-  const requiredAddons = service.addons.filter((addon) => addon.isRequired);
+  const requiredAddons = service.addons.filter((addon: any) => addon.isRequired);
   for (const addon of requiredAddons) {
     if (!selectedAddonIds.includes(addon.id)) {
       items.push({
@@ -282,7 +283,7 @@ export const calculateServicePrice = async (
       } else {
         discountsCents = Math.min(offer.discountValue, subtotalCents);
       }
-      offerLabel = offer.label || 'Oferta especial';
+      offerLabel = (offer.label as string | null) || 'Oferta especial';
       // Agregar linea de descuento al desglose
       items.push({
         type: 'DISCOUNT',
@@ -410,7 +411,7 @@ export const getServicePricingSummary = async (serviceId: string) => {
     pricingModel: pricing?.pricingModel || 'FIXED',
     includedMinutes: pricing?.includedMinutes,
     extraMinutePriceCents: pricing?.extraMinutePriceCents,
-    addons: service.addons.map((addon) => ({
+    addons: service.addons.map((addon: any) => ({
       id: addon.id,
       name: addon.name,
       description: addon.description,

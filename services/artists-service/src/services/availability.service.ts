@@ -1,4 +1,9 @@
-import { PrismaClient, DayOfWeek } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+// NOTE: DayOfWeek no es exportado por el stub local de @prisma/client (cliente
+// sin generar) y `prisma generate` no está disponible offline. Este tipo
+// replica exactamente el enum DayOfWeek de prisma/schema.prisma.
+type DayOfWeek = 'LUNES' | 'MARTES' | 'MIERCOLES' | 'JUEVES' | 'VIERNES' | 'SABADO' | 'DOMINGO';
 import axios from 'axios';
 import { logger } from '../utils/logger';
 

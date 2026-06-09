@@ -6,7 +6,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { apiLimiter } from "./middleware/rateLimiter";
 import { logger } from "./utils/logger";
 
-const app = express();
+const app: express.Express = express();
 app.set("trust proxy", 1);
 
 // CORS

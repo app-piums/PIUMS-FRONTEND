@@ -7,10 +7,13 @@ const storage = multer.memoryStorage();
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-const fileFilter = (
-  req: Request,
-  file: Express.Multer.File,
-  cb: multer.FileFilterCallback
+// Tipado contextual desde multer: @types/multer se compila contra
+// @types/express v4 mientras este servicio usa @types/express v5, por lo que
+// anotar `req: Request` (v5) provoca un conflicto solo de definiciones.
+const fileFilter: multer.Options['fileFilter'] = (
+  _req,
+  file,
+  cb
 ) => {
   if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);

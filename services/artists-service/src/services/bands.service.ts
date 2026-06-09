@@ -72,8 +72,8 @@ export const getMyBands = async (artistId: string) => {
   });
 
   return memberships
-    .filter((m) => m.band.isActive && !m.band.deletedAt)
-    .map((m) => ({ ...m.band, myRole: m.role, myStatus: m.status, isMyBandAdmin: m.isAdmin, isMyBandLead: m.band.leadArtistId === m.artistId, myArtistId: m.artistId }));
+    .filter((m: any) => m.band.isActive && !m.band.deletedAt)
+    .map((m: any) => ({ ...m.band, myRole: m.role, myStatus: m.status, isMyBandAdmin: m.isAdmin, isMyBandLead: m.band.leadArtistId === m.artistId, myArtistId: m.artistId }));
 };
 
 export const getMyBand = async (artistId: string) => {
@@ -188,10 +188,10 @@ export const inviteMember = async (bandId: string, adminId: string, artistId: st
 
   // Email de invitación — fire-and-forget
   prisma.artist.findUnique({ where: { id: artistId }, select: { email: true, nombre: true, artistName: true } })
-    .then((invited) => {
+    .then((invited: { email: string | null; nombre: string; artistName: string | null } | null) => {
       if (!invited?.email) return;
       return prisma.artist.findUnique({ where: { id: adminId }, select: { nombre: true, artistName: true } })
-        .then((inviter) => notificationsClient.sendBandInvitationEmail({
+        .then((inviter: { nombre: string; artistName: string | null } | null) => notificationsClient.sendBandInvitationEmail({
           invitedArtistEmail: invited.email!,
           invitedArtistName: invited.artistName || invited.nombre,
           bandName: band?.name ?? 'una banda',

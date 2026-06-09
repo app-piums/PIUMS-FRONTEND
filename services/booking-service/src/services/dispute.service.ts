@@ -1,4 +1,5 @@
-import { PrismaClient, DisputeType, DisputeStatus, DisputeResolution } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { DisputeType, DisputeStatus, DisputeResolution } from "../types/prisma-enums";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { paymentsClient } from "../clients/payments.client";

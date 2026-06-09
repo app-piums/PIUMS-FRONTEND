@@ -194,7 +194,7 @@ export class PaymentController {
 
       return res.json(refund);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -237,7 +237,7 @@ export class PaymentController {
 
       return res.json(result);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 

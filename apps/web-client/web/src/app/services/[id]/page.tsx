@@ -3,6 +3,7 @@
 import { cImg } from '@/lib/cloudinaryImg';
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loading } from '@/components/Loading';
@@ -12,6 +13,18 @@ import { toast } from '@/lib/toast';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_ABBR    = ['Do','Lu','Ma','Mi','Ju','Vi','Sá'];
+
+const TIME_SLOTS = ['08:00 AM', '10:30 AM', '02:00 PM', '04:00 PM'];
+
+// Blocked days (just for demo)
+const BLOCKED_DAYS = new Set([3, 10, 17, 22, 28]);
+
+// Fallback de demo (solo los campos que aún se usan)
+const MOCK_SERVICE = {
+  title: 'Creación de Mural en Vivo: Esencia Latina',
+  description:
+    'Este servicio de Pintura Mural en Vivo está diseñado para transformar espacios comerciales y convertirlos en obras de arte con una experiencia netamente latina. Este servicio forma parte de la Economía Naranja, buscamos visibilizar el arte como motor de crecimiento y valor.',
+};
 
 
 type DisplayService = {

@@ -33,7 +33,7 @@ export class PostingController {
 
   async getPostingById(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const posting = await postingService.getPostingById(req.params.id, req.user?.id);
+      const posting = await postingService.getPostingById(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user?.id);
       res.json({ posting });
     } catch (error) { next(error); }
   }
@@ -47,14 +47,14 @@ export class PostingController {
 
   async updatePosting(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const posting = await postingService.updatePosting(req.params.id, req.user!.id, req.body);
+      const posting = await postingService.updatePosting(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id, req.body);
       res.json({ posting });
     } catch (error) { next(error); }
   }
 
   async deletePosting(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      await postingService.deletePosting(req.params.id, req.user!.id);
+      await postingService.deletePosting(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (error) { next(error); }
   }
@@ -63,14 +63,14 @@ export class PostingController {
 
   async applyToPosting(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const application = await postingService.applyToPosting(req.params.id, req.user!.id, req.body);
+      const application = await postingService.applyToPosting(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id, req.body);
       res.status(201).json({ application });
     } catch (error) { next(error); }
   }
 
   async getApplicationsForPosting(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const applications = await postingService.getApplicationsForPosting(req.params.id, req.user!.id);
+      const applications = await postingService.getApplicationsForPosting(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id);
       res.json({ applications });
     } catch (error) { next(error); }
   }
@@ -78,21 +78,21 @@ export class PostingController {
   async respondToApplication(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { accept } = req.body;
-      const application = await postingService.respondToApplication(req.params.appId, req.user!.id, !!accept);
+      const application = await postingService.respondToApplication(Array.isArray(req.params.appId) ? req.params.appId[0] : req.params.appId, req.user!.id, !!accept);
       res.json({ application });
     } catch (error) { next(error); }
   }
 
   async markApplicationReviewed(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const application = await postingService.markApplicationReviewed(req.params.appId, req.user!.id);
+      const application = await postingService.markApplicationReviewed(Array.isArray(req.params.appId) ? req.params.appId[0] : req.params.appId, req.user!.id);
       res.json({ application });
     } catch (error) { next(error); }
   }
 
   async withdrawApplication(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const application = await postingService.withdrawApplication(req.params.appId, req.user!.id);
+      const application = await postingService.withdrawApplication(Array.isArray(req.params.appId) ? req.params.appId[0] : req.params.appId, req.user!.id);
       res.json({ application });
     } catch (error) { next(error); }
   }

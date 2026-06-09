@@ -472,7 +472,7 @@ export class PostingService {
 
     // Enrich with artist info
     const enriched = await Promise.all(
-      applications.map(async app => {
+      applications.map(async (app: any) => {
         const info = await artistsClient.getArtist(app.artistId).catch(() => null);
         return {
           ...app,
@@ -607,7 +607,7 @@ export class PostingService {
 
     // For accepted applications, look up the group chat created with applicationId as bookingId
     const enriched = await Promise.all(
-      applications.map(async app => {
+      applications.map(async (app: any) => {
         if (app.status !== 'ACCEPTED') return app;
         const group = await chatClient.getGroupByBookingId(app.id).catch(() => null);
         return { ...app, chatGroupId: group?.id ?? null };

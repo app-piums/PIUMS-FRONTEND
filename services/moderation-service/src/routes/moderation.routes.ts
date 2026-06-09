@@ -1,10 +1,15 @@
-import { Router } from "express";
+import { Router, RequestHandler } from "express";
 import { ModerationController } from "../controller/moderation.controller";
 import { authenticateToken, requireAdmin, requireAdminOrService } from "../middleware/auth.middleware";
 import { checkLimiter, adminLimiter } from "../middleware/rateLimiter";
 
-const router = Router();
+const router: Router = Router();
 const ctrl = new ModerationController();
+
+// Cast necesario: los handlers usan AuthRequest (user requerido tras
+// authenticateToken), que no coincide con la firma genérica RequestHandler
+// (user opcional). Solo afecta a las definiciones de tipos, no al runtime.
+const h = (fn: (...args: any[]) => any): RequestHandler => fn as RequestHandler;
 
 // ── Endpoints internos (servicio a servicio) ──────────────────────────────────
 
@@ -14,7 +19,7 @@ router.post(
   checkLimiter,
   authenticateToken,
   requireAdminOrService,
-  ctrl.check.bind(ctrl)
+  h(ctrl.check.bind(ctrl))
 );
 
 // POST /api/moderation/test — Probar texto sin guardar log (solo admin)
@@ -23,7 +28,7 @@ router.post(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.testCheck.bind(ctrl)
+  h(ctrl.testCheck.bind(ctrl))
 );
 
 // ── Gestión del blacklist (admin) ─────────────────────────────────────────────
@@ -34,7 +39,7 @@ router.get(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.listWords.bind(ctrl)
+  h(ctrl.listWords.bind(ctrl))
 );
 
 // POST /api/moderation/blacklist
@@ -43,7 +48,7 @@ router.post(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.createWord.bind(ctrl)
+  h(ctrl.createWord.bind(ctrl))
 );
 
 // PUT  /api/moderation/blacklist/:id
@@ -52,7 +57,7 @@ router.put(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.updateWord.bind(ctrl)
+  h(ctrl.updateWord.bind(ctrl))
 );
 
 // DELETE /api/moderation/blacklist/:id (desactiva, no borra físicamente)
@@ -61,7 +66,7 @@ router.delete(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.deactivateWord.bind(ctrl)
+  h(ctrl.deactivateWord.bind(ctrl))
 );
 
 // ── Logs de auditoría (admin) ─────────────────────────────────────────────────
@@ -72,7 +77,7 @@ router.get(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.getLogs.bind(ctrl)
+  h(ctrl.getLogs.bind(ctrl))
 );
 
 // ── Cola de revisión manual (admin) ──────────────────────────────────────────
@@ -83,7 +88,7 @@ router.get(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.getQueue.bind(ctrl)
+  h(ctrl.getQueue.bind(ctrl))
 );
 
 // POST /api/moderation/queue/:logId/resolve
@@ -92,7 +97,7 @@ router.post(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.resolveQueue.bind(ctrl)
+  h(ctrl.resolveQueue.bind(ctrl))
 );
 
 // ── Strikes (admin) ───────────────────────────────────────────────────────────
@@ -103,7 +108,7 @@ router.get(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.getStrikes.bind(ctrl)
+  h(ctrl.getStrikes.bind(ctrl))
 );
 
 // POST   /api/moderation/strikes/:strikeId/resolve
@@ -112,7 +117,7 @@ router.post(
   adminLimiter,
   authenticateToken,
   requireAdmin,
-  ctrl.resolveStrikeHandler.bind(ctrl)
+  h(ctrl.resolveStrikeHandler.bind(ctrl))
 );
 
 export default router;

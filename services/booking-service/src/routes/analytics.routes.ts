@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { trackFunnelEvent, getBookingFunnel } from '../controller/analytics.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
-const router = Router();
+const router: Router = Router();
 
 // POST /api/analytics/funnel — fire-and-forget tracking (requires auth to attach userId)
 router.post('/funnel', authenticateToken, trackFunnelEvent);

@@ -4,7 +4,7 @@ import { authenticateToken } from '../middleware/auth.middleware';
 import { AppError } from '../middleware/errorHandler';
 
 const prisma = new PrismaClient();
-const router = Router();
+const router: Router = Router();
 
 // Verify service belongs to the given artistId
 async function resolveOwnership(serviceId: string, artistId: string) {

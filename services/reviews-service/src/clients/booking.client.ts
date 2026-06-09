@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import { logger } from '../utils/logger';
 
 const BOOKING_SERVICE_URL = process.env.BOOKING_SERVICE_URL || 'http://localhost:4005';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 const generateServiceToken = (userId: string): string => {
   return jwt.sign({ userId, email: 'service@internal', isService: true }, JWT_SECRET, { expiresIn: '5m' });

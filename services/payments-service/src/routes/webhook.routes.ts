@@ -5,7 +5,8 @@ import { bookingClient } from "../clients/booking.client";
 import { PaymentMethodService } from "../services/paymentMethod.service";
 import { logger } from "../utils/logger";
 import { webhookLimiter } from "../middleware/rateLimiter";
-import { PrismaClient, PaymentType } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PaymentType } from "../types/prisma-enums";
 
 const paymentMethodService = new PaymentMethodService();
 

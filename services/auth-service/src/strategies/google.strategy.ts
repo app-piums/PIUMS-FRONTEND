@@ -67,7 +67,11 @@ export const configureGoogleStrategy = () => {
           return done(error, undefined);
         }
       }
-    )
+      // Cast necesario: @types/passport-google-oauth20 se compila contra
+      // @types/express v5 mientras @types/passport usa @types/express v4.
+      // Solo es una incompatibilidad de definiciones de tipos; en runtime
+      // la Strategy es totalmente compatible con passport.use().
+    ) as unknown as passport.Strategy
   );
 };
 

@@ -1,4 +1,5 @@
-import { PrismaClient, PayoutStatus, PayoutType } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PayoutStatus, PayoutType } from "../types/prisma-enums";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { bookingClient } from "../clients/booking.client";

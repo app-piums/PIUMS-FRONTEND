@@ -1,5 +1,6 @@
 import crypto from "crypto";
-import { PrismaClient, ModerationAction, Severity, ContentType } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { ModerationAction, Severity, ContentType } from "../types/prisma-enums";
 import { normalizeText, normalizeWord, escapeRegex } from "../utils/normalizer";
 import {
   getBlacklistFromCache,
@@ -98,7 +99,7 @@ function detectMatches(
  */
 function maxSeverity(matches: Match[]): Severity {
   const order: Severity[] = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL];
-  let max = Severity.LOW;
+  let max: Severity = Severity.LOW;
   for (const m of matches) {
     if (order.indexOf(m.severity) > order.indexOf(max)) {
       max = m.severity;

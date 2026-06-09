@@ -1,5 +1,25 @@
 import PDFDocument from 'pdfkit';
-import { Booking } from '@prisma/client';
+
+// NOTE: El tipo `Booking` no es exportado por el stub local de @prisma/client
+// (cliente sin generar) y `prisma generate` no está disponible offline.
+// Se declaran aquí los campos del modelo Booking usados por este módulo
+// (ver prisma/schema.prisma); el index signature cubre el resto de campos.
+interface Booking {
+  id: string;
+  code?: string | null;
+  scheduledDate: Date;
+  durationMinutes: number;
+  location?: string | null;
+  servicePrice: number;
+  addonsPrice: number;
+  totalPrice: number;
+  currency: string;
+  anticipoRequired: boolean;
+  anticipoAmount?: number | null;
+  status: string;
+  clientNotes?: string | null;
+  [key: string]: any;
+}
 
 interface PDFBookingData extends Booking {
   artistName?: string;

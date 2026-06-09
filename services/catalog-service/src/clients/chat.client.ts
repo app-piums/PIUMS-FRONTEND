@@ -34,7 +34,7 @@ export class ChatClient {
         logger.error('[ChatClient] Error creando grupo postulación', 'CHAT_CLIENT', { error: error.message });
         return null;
       }
-      return await response.json();
+      return (await response.json()) as { group: any };
     } catch (error: any) {
       logger.error('[ChatClient] Error de conexión con chat-service', 'CHAT_CLIENT', { error: error.message });
       return null;

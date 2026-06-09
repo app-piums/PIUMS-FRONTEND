@@ -265,6 +265,7 @@ export class ArtistsService {
     const where: any = {
       isActive: true,
       deletedAt: null,
+      category: { not: 'OTRO' },
     };
 
     if (q) {
@@ -277,7 +278,7 @@ export class ArtistsService {
         { city:       { contains: normalizedQ, mode: 'insensitive' } },
       ];
     }
-    if (category) where.category = category;
+    if (category && category !== 'OTRO') where.category = category;
     if (city) where.city = { contains: city, mode: "insensitive" };
     if (country) where.country = { contains: country, mode: "insensitive" };
     if (minRating) where.rating = { gte: minRating };
@@ -312,7 +313,7 @@ export class ArtistsService {
 
     if (lat !== undefined && lng !== undefined) {
       const RAD = Math.PI / 180;
-      filteredArtists = artists.filter(a => {
+      filteredArtists = artists.filter((a: { coverageRadius: number | null; baseLocationLat: number | null; baseLocationLng: number | null }) => {
         if (a.coverageRadius === null) return true; // national coverage
         if (!a.baseLocationLat || !a.baseLocationLng) return true; // no base coords on file
         const dLat = (a.baseLocationLat - lat) * RAD;

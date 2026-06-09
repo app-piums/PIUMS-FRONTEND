@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { mediaService } from "../services/media.service";
-import { MediaType, MediaEntityType } from "@prisma/client";
+import { MediaType, MediaEntityType } from "../types/prisma-enums";
 import { AuthRequest } from "../middleware/auth.middleware";
 
 export class MediaController {

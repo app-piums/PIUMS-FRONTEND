@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { cImg } from '@/lib/cloudinaryImg';
-import { Map, Marker } from 'pigeon-maps';
+import { Map as PigeonMap, Marker } from 'pigeon-maps';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loading } from '@/components/Loading';
 import ClientSidebar from '@/components/ClientSidebar';
@@ -915,7 +915,7 @@ function BuscarArtistasContent() {
 
                   {/* Map */}
                   <div className="h-64 w-full rounded-xl overflow-hidden border border-gray-200">
-                    <Map
+                    <PigeonMap
                       defaultCenter={mapCenter}
                       center={mapCenter}
                       defaultZoom={11}
@@ -930,7 +930,7 @@ function BuscarArtistasContent() {
                       {location && (
                         <Marker anchor={[location.lat, location.lng]} width={40} color="#FF6B35" />
                       )}
-                    </Map>
+                    </PigeonMap>
                   </div>
 
                   {location && (

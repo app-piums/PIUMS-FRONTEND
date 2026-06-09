@@ -2,12 +2,16 @@
 export interface Artist {
   id: string;
   nombre: string;
+  artistName?: string; // alias legacy usado por algunos endpoints (dashboard/recomendados)
   slug?: string;
   coverPhoto?: string;
   email?: string;
   categoria?: string;
   ciudad?: string;
   city?: string;
+  country?: string;
+  createdAt?: string;
+  experienceYears?: number; // alias legacy de yearsExperience
   rating?: number;
   precioDesde?: number;
   imagenPerfil?: string;

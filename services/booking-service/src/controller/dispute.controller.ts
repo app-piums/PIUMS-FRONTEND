@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { disputeService } from "../services/dispute.service";
-import { DisputeType, DisputeStatus, DisputeResolution } from "@prisma/client";
+import { DisputeType, DisputeStatus, DisputeResolution } from "../types/prisma-enums";
 
 export class DisputeController {
   // ==================== CREATE DISPUTE ====================

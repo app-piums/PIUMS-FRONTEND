@@ -1,4 +1,5 @@
-import { PrismaClient, BookingStatus, PaymentStatus, RescheduleStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { BookingStatus, PaymentStatus, RescheduleStatus } from "../types/prisma-enums";
 import crypto from "crypto";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
@@ -787,7 +788,7 @@ export class BookingService {
             select: { artistId: true },
           });
           if (confirmedInEvent.length >= 2) {
-            const artistIds = [...new Set(confirmedInEvent.map(b => b.artistId))];
+            const artistIds = [...new Set<string>(confirmedInEvent.map((b: { artistId: string }) => b.artistId))];
             await chatClient.createOrGetGroupConversation({
               eventId: booking.eventId!,
               createdBy: booking.artistId,
@@ -1686,7 +1687,7 @@ export class BookingService {
   ) {
     const booking = await this.getBookingById(id);
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx: any) => {
       // Idempotency guard: if providerPaymentId already matches, this payment was already
       // processed (e.g. both the Tilopay redirect and the server webhook arrived). Skip increment.
       if (paymentIntentId) {
@@ -2588,7 +2589,7 @@ export class BookingService {
       take: limit,
     });
 
-    return grouped.map((g) => ({
+    return grouped.map((g: any) => ({
       artistId: g.artistId,
       bookings: g._count.id,
       revenue: Number(g._sum.totalPrice ?? 0),
@@ -2703,7 +2704,7 @@ export class BookingService {
     });
 
     // IDs únicos de artistas ocupados
-    return [...new Set(bookings.map((b) => b.artistId))];
+    return [...new Set<string>(bookings.map((b: { artistId: string }) => b.artistId))];
   }
 
   // ==================== SOLICITUDES DE CAMBIO DE FECHA ====================

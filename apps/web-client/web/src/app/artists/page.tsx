@@ -32,7 +32,6 @@ const CATEGORIES = [
   { value: 'MAGO',       label: 'Mago / Ilusionista' },
   { value: 'ACROBATA',          label: 'Acróbata / Circo' },
   { value: 'CREADOR_CONTENIDO', label: 'Creador de Contenido' },
-  { value: 'OTRO',              label: 'Otro' },
 ];
 
 const CITIES_BY_COUNTRY: Record<string, { label: string; regions: { value: string; label: string }[] }> = {

@@ -45,8 +45,8 @@ export class SearchService {
     // Merge explicit category into specialties filter (ArtistIndex stores the
     // category value inside the specialties array, e.g. ['MUSICO', 'Guitarrista'])
     const allSpecialties = [
-      ...(specialties ?? []),
-      ...(category ? [category] : []),
+      ...(specialties ?? []).filter(s => s !== 'OTRO'),
+      ...(category && category !== 'OTRO' ? [category] : []),
     ];
 
     // Build where clause
@@ -119,7 +119,7 @@ export class SearchService {
               )
             )
         `;
-        andConditions.push({ id: { in: matchedIds.map(r => r.id) } });
+        andConditions.push({ id: { in: matchedIds.map((r: { id: string }) => r.id) } });
       } catch (err: any) {
         logger.warn(`Unaccent search failed, falling back to ILIKE: ${err.message}`);
         const fieldConditions: any[] = [];
@@ -328,6 +328,7 @@ export class SearchService {
         results.artists = await prisma.artistIndex.findMany({
           where: {
             isActive: true,
+            NOT: { specialties: { equals: ['OTRO'] } },
             OR: [
               { name: { contains: query, mode: 'insensitive' } },
               { specialties: { hasSome: [query] } }
@@ -421,8 +422,8 @@ export class SearchService {
           // category-based search filters (hasSome: ["MUSICO"]) work correctly.
           specialties: [
             ...new Set([
-              ...(artist.category ? [artist.category] : []),
-              ...(artist.specialties || []),
+              ...(artist.category && artist.category !== 'OTRO' ? [artist.category] : []),
+              ...(artist.specialties || []).filter((s: string) => s !== 'OTRO'),
             ]),
           ],
           city: artist.city,
@@ -869,7 +870,7 @@ export class SearchService {
         }),
       ]);
 
-      const directArtistIds = directArtistRows.map(r => r.id);
+      const directArtistIds = directArtistRows.map((r: { id: string }) => r.id);
       const directArtistMatches = directArtistIds.length
         ? await prisma.artistIndex.findMany({
             where: { id: { in: directArtistIds }, ...artistWhereClause },
@@ -915,11 +916,11 @@ export class SearchService {
       for (const a of directArtistMatches) {
         const nameLower = (a.name || '').toLowerCase();
         const bioLower = (a.bio || '').toLowerCase();
-        const specialtiesLower = (a.specialties || []).map(s => s.toLowerCase());
+        const specialtiesLower = (a.specialties || []).map((s: string) => s.toLowerCase());
 
         const isNameMatch = exactTerms.some(t => nameLower.includes(t));
         const isBioMatch = exactTerms.some(t => bioLower.includes(t));
-        const isSpecMatch = exactTerms.some(t => specialtiesLower.some(s => s.includes(t)));
+        const isSpecMatch = exactTerms.some(t => specialtiesLower.some((s: string) => s.includes(t)));
 
         const directScore =
           (isNameMatch ? 4 : 0) +
@@ -958,7 +959,7 @@ export class SearchService {
         .slice((page - 1) * limit, page * limit);
 
       const results = sorted.map(([artistId, { service, score, isExactMatch }]) => {
-        const artist = artists.find(a => a.id === artistId);
+        const artist = artists.find((a: { id: string }) => a.id === artistId);
         if (!artist) return null;
         return {
           ...artist,

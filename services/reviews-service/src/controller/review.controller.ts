@@ -173,7 +173,7 @@ export class ReviewController {
     }
   }
 
-  async getAdminStats(req: AuthRequest, res: Response, next: NextFunction) {
+  async getAdminStats(_req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const stats = await reviewService.getAdminStats();
       res.json(stats);
@@ -190,7 +190,8 @@ export class ReviewController {
 
       const status = action === "dismissed" ? "DISMISSED" : "RESOLVED";
 
-      const report = await reviewService.resolveReport(id, resolvedBy, {
+      const reportId = Array.isArray(id) ? id[0] : id;
+      const report = await reviewService.resolveReport(reportId, resolvedBy, {
         status,
         resolution: notes,
       });
@@ -204,7 +205,7 @@ export class ReviewController {
   async getReportMessages(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const messages = await reviewService.getReportMessages(id);
+      const messages = await reviewService.getReportMessages(Array.isArray(id) ? id[0] : id);
       res.json({ messages });
     } catch (error) {
       next(error);
@@ -216,7 +217,7 @@ export class ReviewController {
       const { id } = req.params;
       const { message } = req.body;
       const senderId = req.user.id;
-      const msg = await reviewService.addReportMessage(id, senderId, "staff", message);
+      const msg = await reviewService.addReportMessage(Array.isArray(id) ? id[0] : id, senderId, "staff", message);
       res.status(201).json(msg);
     } catch (error) {
       next(error);

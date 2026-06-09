@@ -76,7 +76,7 @@ export class ModerationController {
 
   async updateWord(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const id = req.params.id;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const data = updateWordSchema.parse(req.body);
       const adminId = req.user.id || req.user.userId || "unknown";
       const word = await updateBlacklistWord(id, data, adminId as string);
@@ -88,7 +88,7 @@ export class ModerationController {
 
   async deactivateWord(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const id = req.params.id;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const adminId = req.user.id || req.user.userId || "unknown";
       const word = await deactivateBlacklistWord(id, adminId as string);
       res.json({ status: "ok", word });
@@ -128,7 +128,7 @@ export class ModerationController {
 
   async resolveQueue(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const logId = req.params.logId;
+      const logId = Array.isArray(req.params.logId) ? req.params.logId[0] : req.params.logId;
       const { note } = resolveReviewSchema.parse(req.body);
       const adminId = req.user.id || req.user.userId || "unknown";
       const log = await resolveManualReview(logId, adminId as string, note);
@@ -144,7 +144,7 @@ export class ModerationController {
 
   async getStrikes(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.params.userId;
+      const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
       const result = await getUserStrikes(userId);
       res.json({ status: "ok", ...result });
     } catch (error) {
@@ -154,7 +154,7 @@ export class ModerationController {
 
   async resolveStrikeHandler(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const strikeId = req.params.strikeId;
+      const strikeId = Array.isArray(req.params.strikeId) ? req.params.strikeId[0] : req.params.strikeId;
       const { note } = resolveStrikeSchema.parse(req.body);
       const adminId = req.user.id || req.user.userId || "unknown";
       const strike = await resolveStrike(strikeId, adminId as string, note);

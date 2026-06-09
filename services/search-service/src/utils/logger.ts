@@ -9,7 +9,10 @@ export const logger = {
     }));
   },
 
-  error: (message: string, error?: any) => {
+  // `_data` accepted for call-site compatibility with other services' loggers
+  // (logger.error(message, context, data)); it is intentionally not logged here
+  // to keep runtime output unchanged.
+  error: (message: string, error?: any, _data?: any) => {
     console.error(JSON.stringify({
       timestamp: new Date().toISOString(),
       level: 'ERROR',

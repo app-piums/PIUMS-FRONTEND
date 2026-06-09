@@ -25,7 +25,7 @@ export class CollaboratorService {
       throw new AppError(400, 'No puedes invitarte a ti mismo');
     }
 
-    const existing = booking.collaborators.find(c => c.artistId === targetArtistId);
+    const existing = booking.collaborators.find((c: any) => c.artistId === targetArtistId);
     if (existing && existing.status !== 'REJECTED' && existing.status !== 'CANCELLED') {
       throw new AppError(409, 'Este artista ya fue invitado');
     }
@@ -53,8 +53,8 @@ export class CollaboratorService {
 
     // Ensure a group conversation exists for this booking (lead + collaborator)
     const currentCollaboratorIds = booking.collaborators
-      .filter(c => c.status === 'ACCEPTED')
-      .map(c => c.artistId);
+      .filter((c: any) => c.status === 'ACCEPTED')
+      .map((c: any) => c.artistId);
 
     await chatClient.createOrGetGroupConversation({
       bookingId,
@@ -156,7 +156,7 @@ export class CollaboratorService {
 
     const isLead = booking.artistId === requesterId;
     const isClient = booking.clientId === requesterId;
-    const isCollaborator = booking.collaborators.some(c => c.artistId === requesterId);
+    const isCollaborator = booking.collaborators.some((c: any) => c.artistId === requesterId);
 
     if (!isLead && !isClient && !isCollaborator) {
       throw new AppError(403, 'Sin acceso');
@@ -164,7 +164,7 @@ export class CollaboratorService {
 
     // Enrich with artist info
     const enriched = await Promise.all(
-      booking.collaborators.map(async c => {
+      booking.collaborators.map(async (c: any) => {
         const artistInfo = await artistsClient.getArtist(c.artistId).catch(() => null);
         return {
           ...c,

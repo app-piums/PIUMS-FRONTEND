@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken, internalAuth, requireActiveSession } from '../middleware/auth.middleware';
 import { ticketEventService } from '../services/ticket-event.service';
 
-const router = Router();
+const router: Router = Router();
 
 // ==================== PUBLIC ====================
 

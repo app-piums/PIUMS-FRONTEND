@@ -1,4 +1,5 @@
-import { PrismaClient, MediaType, MediaEntityType, MediaStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { MediaType, MediaEntityType, MediaStatus } from "../types/prisma-enums";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 

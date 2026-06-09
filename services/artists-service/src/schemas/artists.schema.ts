@@ -77,6 +77,7 @@ export const updateArtistSchema = z.object({
   nombre: z.string().min(2).optional(),
   artistName: z.string().optional(),
   avatar: z.string().url("URL inválida").optional(),
+  coverPhoto: z.string().url("URL inválida").optional(),
   bio: z.string().max(1000).optional(),
   
   category: ArtistCategoryEnum.optional(),
@@ -104,6 +105,7 @@ export const updateArtistSchema = z.object({
   
   equipment: z.array(z.string()).optional(),
 
+  telefono: z.string().optional(),
   website: z.string().url().optional(),
   instagram: z.string().optional(),
   facebook: z.string().optional(),

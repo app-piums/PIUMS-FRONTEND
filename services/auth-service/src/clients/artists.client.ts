@@ -7,8 +7,10 @@ export const artistsClient = {
       if (!internalSecret) return [];
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/auth-ids?category=${encodeURIComponent(category)}`,
-        { headers: { 'x-internal-secret': internalSecret } }
+        {
+          headers: { 'x-internal-secret': internalSecret },
           signal: AbortSignal.timeout(10_000),
+        }
       );
       if (!res.ok) return [];
       const data = await res.json() as { authIds: string[] };
@@ -24,8 +26,10 @@ export const artistsClient = {
       if (!internalSecret) return {};
       const res = await fetch(
         `${ARTISTS_SERVICE_URL}/artists/internal/stats`,
-        { headers: { 'x-internal-secret': internalSecret } }
+        {
+          headers: { 'x-internal-secret': internalSecret },
           signal: AbortSignal.timeout(10_000),
+        }
       );
       if (!res.ok) return {};
       const data = await res.json() as { byCategory: Record<string, number> };

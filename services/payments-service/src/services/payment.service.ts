@@ -1,4 +1,5 @@
-import { PrismaClient, PaymentStatus, PaymentType, PaymentIntentStatus, RefundStatus, CreditStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PaymentStatus, PaymentType, PaymentIntentStatus, RefundStatus, CreditStatus } from "../types/prisma-enums";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { stripeProvider } from "../providers/stripe.provider";
@@ -393,7 +394,7 @@ export class PaymentService {
 
     // Dentro de la transacción: re-leer con bloqueo, verificar disponibilidad y reservar
     // creando el refund en estado PENDING como lock optimista.
-    const { refundRecord, payment, refundAmount } = await prisma.$transaction(async (tx) => {
+    const { refundRecord, payment, refundAmount } = await prisma.$transaction(async (tx: any) => {
       const payment = await tx.payment.findUnique({
         where: { id: data.paymentId },
         include: { refunds: { where: { status: { not: "FAILED" } } } },
@@ -403,7 +404,7 @@ export class PaymentService {
         throw new AppError(404, "Pago no encontrado");
       }
 
-      const alreadyRefunded = payment.refunds.reduce((sum, r) => sum + r.amount, 0);
+      const alreadyRefunded = payment.refunds.reduce((sum: number, r: { amount: number }) => sum + r.amount, 0);
       const availableForRefund = payment.amount - alreadyRefunded;
 
       if (availableForRefund <= 0) {
@@ -474,7 +475,7 @@ export class PaymentService {
     });
 
     // Actualizar estado del pago
-    const previousRefundedAmount = payment.refunds.reduce((sum, r) => sum + r.amount, 0);
+    const previousRefundedAmount = payment.refunds.reduce((sum: number, r: { amount: number }) => sum + r.amount, 0);
     const newRefundedAmount = previousRefundedAmount + refundAmount;
     const newStatus =
       newRefundedAmount >= payment.amount
@@ -583,7 +584,7 @@ export class PaymentService {
       totalRefunded: stats._sum.refundedAmount || 0,
       netAmount: (stats._sum.amount || 0) - (stats._sum.refundedAmount || 0),
       totalPayments: stats._count,
-      byStatus: statusBreakdown.map((s) => ({
+      byStatus: statusBreakdown.map((s: any) => ({
         status: s.status,
         count: s._count,
         amount: s._sum.amount || 0,

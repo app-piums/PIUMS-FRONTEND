@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth.middleware';
 import { collaboratorService } from '../services/collaborator.service';
 
-const router = Router();
+const router: Router = Router();
 router.use(authenticateToken);
 
 // Lead artist invites a collaborator

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, RequestHandler } from "express";
 import { authenticateToken } from "../middleware/auth.middleware";
 import {
   createBand, getMyBand, getMyBands, getBand, searchBands, updateBand, deleteBand,
@@ -29,7 +29,10 @@ router.post("/", authenticateToken, createBand);
 router.get("/:id", getBand);
 router.put("/:id", authenticateToken, updateBand);
 router.delete("/:id", authenticateToken, deleteBand);
-router.post("/:id/avatar", authenticateToken, upload.single("avatar"), handleMulterError, uploadBandAvatar);
+// Cast necesario: @types/multer se resuelve contra @types/express v4 mientras
+// este servicio usa @types/express v5. Solo difieren las definiciones de tipos;
+// el handler de multer es compatible en runtime.
+router.post("/:id/avatar", authenticateToken, upload.single("avatar") as unknown as RequestHandler, handleMulterError, uploadBandAvatar);
 
 // Miembros
 router.get("/:id/members", authenticateToken, listMembers);

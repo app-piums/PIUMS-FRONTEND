@@ -8,11 +8,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import ClientSidebar from '@/components/ClientSidebar';
 import { UNSAVED_CHANGES_MESSAGE } from '@/hooks/useUnsavedChangesPrompt';
 
-import PersonalInfoTab from './personal/page';
-import SecurityTab from './security/page';
-import NotificationsTab from './notifications/page';
+import PersonalInfoTab from './personal/PersonalInfoTab';
+import SecurityTab from './security/SecurityTab';
+import NotificationsTab from './notifications/NotificationsTab';
 import PaymentsTab from './payments/page';
-import DeleteAccountTab from './delete/page';
+import DeleteAccountTab from './delete/DeleteAccountTab';
 import LegalTab from './legal/page';
 import VerifyClientTab from './verify/page';
 

@@ -112,7 +112,7 @@ const internalAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  next();
+  return next();
 };
 
 // Cobrar saldo restante con tarjeta guardada (cron 72h pre-evento)

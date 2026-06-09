@@ -64,7 +64,7 @@ export class GroupChatService {
     if (!group) throw new AppError(404, 'Grupo no encontrado');
 
     if (!skipCheck) {
-      const isParticipant = group.participants.some(p => p.userId === requesterId);
+      const isParticipant = group.participants.some((p: { userId: string }) => p.userId === requesterId);
       if (!isParticipant) throw new AppError(403, 'No tienes acceso a este grupo');
     }
 
@@ -114,7 +114,7 @@ export class GroupChatService {
       orderBy: { group: { lastMessageAt: 'desc' } },
     });
 
-    return participations.map(p => ({
+    return participations.map((p: { group: object; unreadCount: number }) => ({
       ...p.group,
       unreadCount: p.unreadCount,
     }));
@@ -134,7 +134,7 @@ export class GroupChatService {
 
     if (!group) throw new AppError(404, 'Grupo no encontrado');
 
-    const isParticipant = group.participants.some(p => p.userId === userId);
+    const isParticipant = group.participants.some((p: { userId: string }) => p.userId === userId);
     if (!isParticipant) throw new AppError(403, 'No tienes acceso a este grupo');
 
     return group;
@@ -165,7 +165,7 @@ export class GroupChatService {
     if (!group) throw new AppError(404, 'Grupo no encontrado');
     if (group.status !== 'ACTIVE') throw new AppError(400, 'El grupo no está activo');
 
-    const isParticipant = group.participants.some(p => p.userId === senderId);
+    const isParticipant = group.participants.some((p: { userId: string }) => p.userId === senderId);
     if (!isParticipant) throw new AppError(403, 'No eres participante de este grupo');
 
     const message = await prisma.groupMessage.create({
@@ -187,7 +187,7 @@ export class GroupChatService {
       data: { unreadCount: { increment: 1 } },
     });
 
-    chatEmitter.emit('group:new_message', { groupId, message, senderIds: group.participants.map(p => p.userId) });
+    chatEmitter.emit('group:new_message', { groupId, message, senderIds: group.participants.map((p: { userId: string }) => p.userId) });
 
     return message;
   }

@@ -73,7 +73,7 @@ export class ArtistsClient {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return null;
-      const data = await response.json();
+      const data = await response.json() as any;
       // Normalize fields: internal endpoint returns { id, authId, artistName, avatar, nombre?, email?, category? }
       // Provide aliases expected by posting.service.ts
       if (!data || data.error) return null;

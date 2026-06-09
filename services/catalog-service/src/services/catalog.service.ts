@@ -1,4 +1,5 @@
-import { PrismaClient, PricingType, ServiceStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PricingType, ServiceStatus } from "../types/prisma-enums";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 

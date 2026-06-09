@@ -7,7 +7,6 @@ import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { Loading } from '@/components/Loading';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import { CalendarPicker } from '@/components/booking/CalendarPicker';
 import { PricingBreakdown } from '@/components/booking/PricingBreakdown';
@@ -16,6 +15,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { sdk } from '@piums/sdk';
 import type { ArtistProfile, Service, TimeSlot, PriceQuote, CalculateServicePricePayload, CouponValidation, ServiceDayOffer } from '@piums/sdk';
 import { LocationPickerMap } from '@/components/LocationPickerMap';
+import { LocationSearchField, reverseGeocode } from '@/components/LocationSearchField';
+import { CreateEventModal } from '@/components/CreateEventModal';
 import { toast } from '@/lib/toast';
 import { formatArtistCategory } from '@/lib/artistCategory';
 import { CurrencyToggle, useCurrency } from '@/contexts/CurrencyContext';
@@ -310,6 +311,7 @@ function BookingContent() {
   const [clientEvents, setClientEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(eventId);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [publicDayOffers, setPublicDayOffers] = useState<ServiceDayOffer[]>([]);
 
   useEffect(() => {
@@ -362,7 +364,9 @@ function BookingContent() {
           lng: position.coords.longitude,
         };
         setClientCoords(coords);
-        setLocation((prev) => prev || `Ubicación detectada (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`);
+        reverseGeocode(coords.lat, coords.lng).then((address) => {
+          setLocation((prev) => prev || address || `Ubicación detectada (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`);
+        });
       },
       (error: GeolocationPositionError) => {
         setRequestingLocation(false);
@@ -392,8 +396,10 @@ function BookingContent() {
   const handleMapLocationSelect = useCallback((lat: number, lng: number) => {
     setClientCoords({ lat, lng });
     setLocationMode('auto');
-    setLocation((prev) => prev || `Coordenadas ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
     setLocationError(null);
+    reverseGeocode(lat, lng).then((address) => {
+      setLocation((prev) => prev || address || `Coordenadas ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+    });
   }, []);
 
   useEffect(() => {
@@ -1315,19 +1321,23 @@ function BookingContent() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Ubicación del Evento *
                           </label>
-                          <Input
-                            placeholder="Dirección completa del evento"
+                          <LocationSearchField
                             value={location}
-                            onChange={(e) => {
-                              setLocation(e.target.value);
-                              if (locationMode !== 'manual') {
-                                setLocationMode('manual');
-                              }
+                            coords={clientCoords}
+                            onAddressChange={(addr) => {
+                              setLocation(addr);
+                              if (locationMode !== 'manual') setLocationMode('manual');
+                            }}
+                            onSelect={(result) => {
+                              setLocation(result.address);
+                              setClientCoords({ lat: result.lat, lng: result.lng });
+                              setLocationMode('manual');
+                              setLocationError(null);
                             }}
                             required={!clientCoords}
                           />
                           <p className="text-sm text-gray-500 mt-1">
-                            Proporciona la dirección exacta donde se realizará el servicio
+                            Escribe el nombre del lugar o dirección del evento
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -1353,11 +1363,6 @@ function BookingContent() {
                               </Button>
                             )}
                           </div>
-                          {clientCoords && (
-                            <p className="text-sm text-green-600">
-                              Ubicación detectada: {clientCoords.lat.toFixed(4)}, {clientCoords.lng.toFixed(4)}
-                            </p>
-                          )}
                           {locationError && (
                             <p className="text-sm text-red-600">{locationError}</p>
                           )}
@@ -1479,44 +1484,67 @@ function BookingContent() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Asociar a un Evento <span className="text-gray-400 font-normal">(Opcional)</span>
                         </label>
-                        {eventId ? (
-                          <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl">
-                            <svg className="h-5 w-5 text-[#FF6B35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <div>
-                              <p className="text-sm font-semibold text-orange-800">
-                                {clientEvents.find((e: any) => e.id === eventId)?.name || 'Cargando evento…'}
-                              </p>
-                              <p className="text-xs text-orange-600 mt-0.5">Esta reserva quedará asociada a este evento automáticamente</p>
-                            </div>
-                          </div>
-                        ) : eventsLoading ? (
-                          <p className="text-sm text-gray-400">Cargando eventos…</p>
-                        ) : clientEvents.length === 0 ? (
-                          <p className="text-sm text-gray-500">No tienes eventos activos. <a href="/events" className="text-[#FF6B35] underline">Crea uno aquí</a>.</p>
-                        ) : (
-                          <div className="relative">
-                            <select
-                              value={selectedEventId ?? ''}
-                              onChange={(e) => setSelectedEventId(e.target.value || null)}
-                              className="w-full appearance-none rounded-xl border-2 border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm text-gray-700 focus:border-[#FF6B35] focus:ring-2 focus:ring-[#FF6B35]/20 focus:bg-white outline-none transition hover:border-gray-300"
-                            >
-                              <option value="">Sin evento</option>
-                              {clientEvents.map((ev: any) => (
-                                <option key={ev.id} value={ev.id}>
-                                  {ev.name} — {ev.status === 'DRAFT' ? 'Borrador' : 'Activo'} · {(ev.bookings ?? []).length} reservas
-                                </option>
-                              ))}
-                            </select>
-                            <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        <div className="space-y-2">
+                          {eventId ? (
+                            <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                              <svg className="h-5 w-5 text-[#FF6B35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
+                              <div>
+                                <p className="text-sm font-semibold text-orange-800">
+                                  {clientEvents.find((e: any) => e.id === eventId)?.name || 'Cargando evento…'}
+                                </p>
+                                <p className="text-xs text-orange-600 mt-0.5">Esta reserva quedará asociada a este evento automáticamente</p>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          ) : eventsLoading ? (
+                            <p className="text-sm text-gray-400">Cargando eventos…</p>
+                          ) : clientEvents.length === 0 ? (
+                            <p className="text-sm text-gray-500">No tienes eventos activos.</p>
+                          ) : (
+                            <div className="relative">
+                              <select
+                                value={selectedEventId ?? ''}
+                                onChange={(e) => setSelectedEventId(e.target.value || null)}
+                                className="w-full appearance-none rounded-xl border-2 border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm text-gray-700 focus:border-[#FF6B35] focus:ring-2 focus:ring-[#FF6B35]/20 focus:bg-white outline-none transition hover:border-gray-300"
+                              >
+                                <option value="">Sin evento</option>
+                                {clientEvents.map((ev: any) => (
+                                  <option key={ev.id} value={ev.id}>
+                                    {ev.name} — {ev.status === 'DRAFT' ? 'Borrador' : 'Activo'} · {(ev.bookings ?? []).length} reservas
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setShowCreateEvent(true)}
+                            className="text-sm text-[#FF6B35] font-medium hover:underline flex items-center gap-1"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Crear nuevo evento
+                          </button>
+                        </div>
                       </div>
+
+                      {showCreateEvent && (
+                        <CreateEventModal
+                          onClose={() => setShowCreateEvent(false)}
+                          onCreate={(newEvent) => {
+                            setClientEvents((prev) => [newEvent, ...prev]);
+                            setSelectedEventId(newEvent.id);
+                            setShowCreateEvent(false);
+                          }}
+                        />
+                      )}
 
                       {/* Buttons */}
                       <div className="flex gap-3 pt-4">

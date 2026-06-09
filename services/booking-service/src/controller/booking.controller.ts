@@ -639,7 +639,7 @@ export class BookingController {
       const { proposedDate, reason } = createRescheduleRequestSchema.parse(req.body);
 
       const request = await bookingService.createRescheduleRequest(
-        bookingId,
+        Array.isArray(bookingId) ? bookingId[0] : bookingId,
         clientId,
         new Date(proposedDate),
         reason
@@ -658,7 +658,7 @@ export class BookingController {
       const artistId = await this.resolveArtistId(artistAuthId);
       const { accept, rejectionReason } = respondToRescheduleSchema.parse(req.body);
 
-      const result = await bookingService.respondToReschedule(requestId, artistId, accept, rejectionReason);
+      const result = await bookingService.respondToReschedule(Array.isArray(requestId) ? requestId[0] : requestId, artistId, accept, rejectionReason);
 
       res.json({ message: accept ? "Solicitud aceptada, enlace enviado al cliente" : "Solicitud rechazada", ...result });
     } catch (error) {
@@ -686,7 +686,7 @@ export class BookingController {
       const { id: bookingId } = req.params;
       const userId = req.user!.id;
 
-      const requests = await bookingService.listRescheduleRequests(bookingId, userId);
+      const requests = await bookingService.listRescheduleRequests(Array.isArray(bookingId) ? bookingId[0] : bookingId, userId);
       res.json({ requests });
     } catch (error) {
       next(error);
@@ -760,7 +760,7 @@ export class BookingController {
 
   async getReplacementSearch(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.getReplacementSearch(req.params.id, req.user!.id);
+      const result = await bookingService.getReplacementSearch(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id);
       res.json(result);
     } catch (error) {
       next(error);
@@ -769,7 +769,7 @@ export class BookingController {
 
   async acceptReplacement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.acceptReplacement(req.params.id, req.user!.id);
+      const result = await bookingService.acceptReplacement(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id);
       res.json(result);
     } catch (error) {
       next(error);
@@ -778,7 +778,7 @@ export class BookingController {
 
   async declineReplacement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.declineReplacement(req.params.id, req.user!.id);
+      const result = await bookingService.declineReplacement(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, req.user!.id);
       res.json(result);
     } catch (error) {
       next(error);

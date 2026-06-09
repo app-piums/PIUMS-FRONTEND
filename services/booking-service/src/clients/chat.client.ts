@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { logger } from "../utils/logger";
 
 const CHAT_SERVICE_URL = process.env.CHAT_SERVICE_URL || 'http://chat-service:4010';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_CHANGE_IN_PRODUCTION';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 interface CreateConversationPayload {
   artistId: string;
@@ -135,7 +135,7 @@ export class ChatClient {
         return null;
       }
 
-      return await response.json();
+      return (await response.json()) as { group: any };
     } catch (error: any) {
       logger.error('[ChatClient] Error de conexión con chat-service (grupo)', 'CHAT_CLIENT', { error: error.message });
       return null;

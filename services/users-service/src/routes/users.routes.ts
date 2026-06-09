@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, RequestHandler } from "express";
 import { PrismaClient } from "@prisma/client";
 import { cloudinaryProvider } from "../providers/cloudinary.provider";
 import {
@@ -21,7 +21,7 @@ import { authenticateToken, authorizeOwner } from "../middleware/auth.middleware
 import { updateLimiter, deleteLimiter } from "../middleware/rateLimiter";
 import { upload, handleMulterError, verifyMagicBytes } from "../middleware/upload.middleware";
 
-const router = Router();
+const router: Router = Router();
 const prisma = new PrismaClient();
 
 // Rutas públicas/internas
@@ -145,7 +145,9 @@ router.post("/internal/cloudinary-purge", async (req, res, next) => {
 });
 
 // Subida de documentos de identidad (requiere auth)
-router.post("/documents/upload", authenticateToken, upload.single('file'), handleMulterError, verifyMagicBytes, uploadDocument);
+// Cast necesario: @types/multer usa @types/express v4 y este servicio v5.
+// Incompatibilidad solo de definiciones de tipos; compatible en runtime.
+router.post("/documents/upload", authenticateToken, upload.single('file') as unknown as RequestHandler, handleMulterError, verifyMagicBytes, uploadDocument);
 // Eliminación de documento propio (requiere auth)
 router.delete("/me/documents", authenticateToken, deleteDocument);
 
@@ -156,7 +158,7 @@ router.put("/:id", authenticateToken, authorizeOwner, updateLimiter as any, upda
 router.delete("/:id", authenticateToken, authorizeOwner, deleteLimiter as any, deleteUserAccount);
 
 // Avatar
-router.post("/me/avatar", authenticateToken, upload.single('avatar'), handleMulterError, verifyMagicBytes, uploadAvatar);
+router.post("/me/avatar", authenticateToken, upload.single('avatar') as unknown as RequestHandler, handleMulterError, verifyMagicBytes, uploadAvatar);
 router.delete("/me/avatar", authenticateToken, deleteAvatar);
 
 // Notification Settings
