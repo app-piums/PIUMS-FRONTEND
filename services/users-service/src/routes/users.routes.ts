@@ -17,7 +17,7 @@ import {
   getNotificationSettings,
   updateNotificationSettings,
 } from "../controller/notificationSettings.controller";
-import { authenticateToken, authorizeOwner } from "../middleware/auth.middleware";
+import { authenticateToken, authorizeOwner, requireActiveSession } from "../middleware/auth.middleware";
 import { updateLimiter, deleteLimiter } from "../middleware/rateLimiter";
 import { upload, handleMulterError, verifyMagicBytes } from "../middleware/upload.middleware";
 
@@ -147,27 +147,27 @@ router.post("/internal/cloudinary-purge", async (req, res, next) => {
 // Subida de documentos de identidad (requiere auth)
 // Cast necesario: @types/multer usa @types/express v4 y este servicio v5.
 // Incompatibilidad solo de definiciones de tipos; compatible en runtime.
-router.post("/documents/upload", authenticateToken, upload.single('file') as unknown as RequestHandler, handleMulterError, verifyMagicBytes, uploadDocument);
+router.post("/documents/upload", authenticateToken, requireActiveSession, upload.single('file') as unknown as RequestHandler, handleMulterError, verifyMagicBytes, uploadDocument);
 // Eliminación de documento propio (requiere auth)
-router.delete("/me/documents", authenticateToken, deleteDocument);
+router.delete("/me/documents", authenticateToken, requireActiveSession, deleteDocument);
 
 // Rutas protegidas
 router.get("/me", authenticateToken, getMyProfile);
 router.get("/:id", authenticateToken, getUserProfile);
-router.put("/:id", authenticateToken, authorizeOwner, updateLimiter as any, updateUserProfile);
-router.delete("/:id", authenticateToken, authorizeOwner, deleteLimiter as any, deleteUserAccount);
+router.put("/:id", authenticateToken, requireActiveSession, authorizeOwner, updateLimiter as any, updateUserProfile);
+router.delete("/:id", authenticateToken, requireActiveSession, authorizeOwner, deleteLimiter as any, deleteUserAccount);
 
 // Avatar
-router.post("/me/avatar", authenticateToken, upload.single('avatar') as unknown as RequestHandler, handleMulterError, verifyMagicBytes, uploadAvatar);
-router.delete("/me/avatar", authenticateToken, deleteAvatar);
+router.post("/me/avatar", authenticateToken, requireActiveSession, upload.single('avatar') as unknown as RequestHandler, handleMulterError, verifyMagicBytes, uploadAvatar);
+router.delete("/me/avatar", authenticateToken, requireActiveSession, deleteAvatar);
 
 // Notification Settings
 router.get("/me/notifications-settings", authenticateToken, getNotificationSettings);
-router.put("/me/notifications-settings", authenticateToken, updateLimiter as any, updateNotificationSettings);
+router.put("/me/notifications-settings", authenticateToken, requireActiveSession, updateLimiter as any, updateNotificationSettings);
 
 // Direcciones
-router.post("/:id/addresses", authenticateToken, authorizeOwner, addAddress);
-router.put("/:id/addresses/:addressId", authenticateToken, authorizeOwner, updateAddress);
-router.delete("/:id/addresses/:addressId", authenticateToken, authorizeOwner, deleteAddress);
+router.post("/:id/addresses", authenticateToken, requireActiveSession, authorizeOwner, addAddress);
+router.put("/:id/addresses/:addressId", authenticateToken, requireActiveSession, authorizeOwner, updateAddress);
+router.delete("/:id/addresses/:addressId", authenticateToken, requireActiveSession, authorizeOwner, deleteAddress);
 
 export default router;

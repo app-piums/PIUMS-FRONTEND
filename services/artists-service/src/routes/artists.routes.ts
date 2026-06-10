@@ -15,7 +15,7 @@ import {
   getAvailability,
   setAvailability,
 } from "../controller/artists.controller";
-import { authenticateToken, authorizeArtistOwner } from "../middleware/auth.middleware";
+import { authenticateToken, authorizeArtistOwner, requireActiveSession } from "../middleware/auth.middleware";
 import { createArtistLimiter, updateLimiter, searchLimiter } from "../middleware/rateLimiter";
 import { PrismaClient } from "@prisma/client";
 import { triggerArtistReindex, triggerArtistUnindex } from "../utils/searchReindex";
@@ -326,25 +326,25 @@ router.get("/:id/portfolio", getPortfolio);
 router.get("/:id/availability", getAvailability);
 
 // Rutas protegidas - Crear artista
-router.post("/", authenticateToken, createArtistLimiter as any, createArtist);
+router.post("/", authenticateToken, requireActiveSession, createArtistLimiter as any, createArtist);
 
 // Rutas protegidas - Mi perfil
 router.get("/me/profile", authenticateToken, getMyArtistProfile);
 
 // Rutas protegidas - Actualizar perfil (solo el dueño)
-router.put("/:id", authenticateToken, authorizeArtistOwner, updateLimiter as any, updateArtistProfile);
-router.delete("/:id", authenticateToken, authorizeArtistOwner, deleteArtistProfile);
+router.put("/:id", authenticateToken, requireActiveSession, authorizeArtistOwner, updateLimiter as any, updateArtistProfile);
+router.delete("/:id", authenticateToken, requireActiveSession, authorizeArtistOwner, deleteArtistProfile);
 
 // Portfolio (solo el dueño puede modificar)
-router.post("/:id/portfolio", authenticateToken, authorizeArtistOwner, addPortfolioItem);
-router.put("/:id/portfolio/:itemId", authenticateToken, authorizeArtistOwner, updatePortfolioItem);
-router.delete("/:id/portfolio/:itemId", authenticateToken, authorizeArtistOwner, deletePortfolioItem);
+router.post("/:id/portfolio", authenticateToken, requireActiveSession, authorizeArtistOwner, addPortfolioItem);
+router.put("/:id/portfolio/:itemId", authenticateToken, requireActiveSession, authorizeArtistOwner, updatePortfolioItem);
+router.delete("/:id/portfolio/:itemId", authenticateToken, requireActiveSession, authorizeArtistOwner, deletePortfolioItem);
 
 // Certificaciones (solo el dueño puede modificar)
-router.post("/:id/certifications", authenticateToken, authorizeArtistOwner, addCertification);
-router.delete("/:id/certifications/:certId", authenticateToken, authorizeArtistOwner, deleteCertification);
+router.post("/:id/certifications", authenticateToken, requireActiveSession, authorizeArtistOwner, addCertification);
+router.delete("/:id/certifications/:certId", authenticateToken, requireActiveSession, authorizeArtistOwner, deleteCertification);
 
 // Disponibilidad (solo el dueño puede modificar)
-router.put("/:id/availability", authenticateToken, authorizeArtistOwner, setAvailability);
+router.put("/:id/availability", authenticateToken, requireActiveSession, authorizeArtistOwner, setAvailability);
 
 export default router;

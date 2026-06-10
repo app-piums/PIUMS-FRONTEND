@@ -74,3 +74,16 @@ export const refreshRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Rate limiter para upload de documentos KYC — bodies grandes (hasta 10mb)
+export const uploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 30,
+  keyGenerator: (req) => `upload:${req.ip}`,
+  message: {
+    error: "Too Many Requests",
+    message: "Too many upload attempts. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

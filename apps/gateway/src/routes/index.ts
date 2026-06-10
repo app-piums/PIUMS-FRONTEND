@@ -3,7 +3,7 @@ import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
 import { authMiddleware } from "../middleware/auth";
 import { healthRouter } from "./health";
 import { logger } from "../utils/logger";
-import { authRateLimiter, oauthRateLimiter, refreshRateLimiter } from "../middleware/rateLimiter";
+import { authRateLimiter, oauthRateLimiter, refreshRateLimiter, uploadRateLimiter } from "../middleware/rateLimiter";
 
 // Middleware para transformar cookie en header Authorization
 const cookieToAuthHeader = (req: Request, res: Response, next: NextFunction) => {
@@ -160,10 +160,13 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
-  // Document upload (PÚBLICO - llamado durante registro, antes de tener auth)
+  // Document upload (PROTEGIDO - users-service exige authenticateToken; el
+  // proxy dedicado existe para no pasar el multipart por fixRequestBody)
   // ============================================================================
   app.use(
     "/api/users/documents/upload",
+    uploadRateLimiter,
+    authMiddleware,
     createProxyMiddleware({
       target: process.env.USERS_SERVICE_URL || "http://localhost:4002",
       changeOrigin: true,

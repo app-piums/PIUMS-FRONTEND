@@ -1,6 +1,6 @@
 import { Router, RequestHandler } from "express";
 import { reviewController } from "../controller/review.controller";
-import { authenticateToken, requireAdmin } from "../middleware/auth.middleware";
+import { authenticateToken, requireAdmin, requireActiveSession } from "../middleware/auth.middleware";
 import {
   createReviewLimiter,
   responseReviewLimiter,
@@ -11,6 +11,7 @@ import {
 const router: Router = Router();
 const asHandler = (fn: Function): RequestHandler => fn as unknown as RequestHandler;
 const auth = authenticateToken as RequestHandler;
+const sessionActive = requireActiveSession as unknown as RequestHandler;
 const adminOnly = requireAdmin as RequestHandler;
 
 // ==================== REVIEWS ====================
@@ -18,6 +19,7 @@ const adminOnly = requireAdmin as RequestHandler;
 router.post(
   "/reviews",
   auth,
+  sessionActive,
   createReviewLimiter,
   asHandler(reviewController.createReview.bind(reviewController))
 );
@@ -35,12 +37,14 @@ router.get(
 router.patch(
   "/reviews/:id",
   auth,
+  sessionActive,
   asHandler(reviewController.updateReview.bind(reviewController))
 );
 
 router.delete(
   "/reviews/:id",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.deleteReview.bind(reviewController))
 );
@@ -50,6 +54,7 @@ router.delete(
 router.post(
   "/reviews/:id/respond",
   auth,
+  sessionActive,
   responseReviewLimiter,
   asHandler(reviewController.respondToReview.bind(reviewController))
 );
@@ -57,12 +62,14 @@ router.post(
 router.patch(
   "/reviews/responses/:id",
   auth,
+  sessionActive,
   asHandler(reviewController.updateResponse.bind(reviewController))
 );
 
 router.delete(
   "/reviews/responses/:id",
   auth,
+  sessionActive,
   asHandler(reviewController.deleteResponse.bind(reviewController))
 );
 
@@ -71,6 +78,7 @@ router.delete(
 router.post(
   "/reviews/:id/helpful",
   auth,
+  sessionActive,
   markHelpfulLimiter,
   asHandler(reviewController.markHelpful.bind(reviewController))
 );
@@ -80,6 +88,7 @@ router.post(
 router.post(
   "/reviews/:id/report",
   auth,
+  sessionActive,
   reportReviewLimiter,
   asHandler(reviewController.reportReview.bind(reviewController))
 );
@@ -88,6 +97,7 @@ router.post(
 router.get(
   "/reviews/admin/reports/pending",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.getPendingReports.bind(reviewController))
 );
@@ -95,6 +105,7 @@ router.get(
 router.get(
   "/reviews/admin/stats",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.getAdminStats.bind(reviewController))
 );
@@ -102,6 +113,7 @@ router.get(
 router.post(
   "/reviews/admin/batch-ratings",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.getBatchRatings.bind(reviewController))
 );
@@ -109,6 +121,7 @@ router.post(
 router.patch(
   "/reviews/admin/reports/:id/resolve",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.resolveReport.bind(reviewController))
 );
@@ -116,6 +129,7 @@ router.patch(
 router.get(
   "/reviews/admin/reports/:id/messages",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.getReportMessages.bind(reviewController))
 );
@@ -123,6 +137,7 @@ router.get(
 router.post(
   "/reviews/admin/reports/:id/messages",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.addReportMessage.bind(reviewController))
 );
@@ -137,12 +152,14 @@ router.get(
 router.get(
   "/reviews/users/:userId/stats",
   auth,
+  sessionActive,
   asHandler(reviewController.getUserStats.bind(reviewController))
 );
 
 router.post(
   "/reviews/artists/:artistId/rating/update",
   auth,
+  sessionActive,
   adminOnly,
   asHandler(reviewController.updateArtistRating.bind(reviewController))
 );
