@@ -150,6 +150,12 @@ function BookingSummary({ booking }: { booking: Booking }) {
               <span className="font-medium">${centsToDisplay(booking.addonsPrice)}</span>
             </div>
           )}
+          {(booking.travelPrice ?? 0) > 0 && (
+            <div className="flex justify-between text-gray-600">
+              <span>Viáticos / traslado</span>
+              <span className="font-medium">${centsToDisplay(booking.travelPrice!)}</span>
+            </div>
+          )}
           <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-800 text-base">
             <span>Total del servicio</span>
             <span>${centsToDisplay(booking.totalPrice)}</span>

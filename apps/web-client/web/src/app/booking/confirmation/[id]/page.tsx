@@ -495,6 +495,15 @@ END:VCALENDAR`;
                     </div>
                   )}
 
+                  {(booking.travelPrice ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Viáticos / traslado</span>
+                      <span className="font-medium text-gray-900">
+                        ${((booking.travelPrice ?? 0) / 100).toLocaleString('en-US')}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="pt-3 border-t border-gray-200">
                     <div className="flex justify-between">
                       <span className="font-semibold text-gray-900">Total</span>

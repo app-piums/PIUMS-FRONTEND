@@ -211,6 +211,7 @@ export interface Booking {
   status: string;
   servicePrice: number;
   addonsPrice: number;
+  travelPrice?: number;
   totalPrice: number;
   currency: string;
   anticipoRequired: boolean;
