@@ -2,10 +2,21 @@
  * Cliente HTTP para comunicarse con notifications-service
  */
 
+import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
 
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:4006';
-const SERVICE_TOKEN = process.env.JWT_SECRET; // Usamos el mismo secret para inter-service communication
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
+
+// El notif-service valida un JWT firmado (jwt.verify). Antes se enviaba el
+// secreto crudo como Bearer, que NO es un JWT válido → 401 silencioso.
+function getServiceToken(): string {
+  return jwt.sign(
+    { id: 'booking-service', email: 'booking@internal', role: 'service' },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
 
 interface SendNotificationPayload {
   userId: string;
@@ -43,11 +54,9 @@ interface BatchSendPayload {
 
 export class NotificationsClient {
   private baseUrl: string;
-  private serviceToken: string;
 
   constructor() {
     this.baseUrl = NOTIFICATIONS_SERVICE_URL;
-    this.serviceToken = SERVICE_TOKEN || '';
   }
 
   /**
@@ -60,7 +69,7 @@ export class NotificationsClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.serviceToken}`,
+          'Authorization': `Bearer ${getServiceToken()}`,
         },
         body: JSON.stringify(payload),
       });
@@ -88,7 +97,7 @@ export class NotificationsClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.serviceToken}`,
+          'Authorization': `Bearer ${getServiceToken()}`,
         },
         body: JSON.stringify(payload),
       });
@@ -116,7 +125,7 @@ export class NotificationsClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.serviceToken}`,
+          'Authorization': `Bearer ${getServiceToken()}`,
         },
         body: JSON.stringify(payload),
       });

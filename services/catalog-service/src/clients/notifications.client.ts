@@ -1,5 +1,17 @@
+import jwt from 'jsonwebtoken';
+
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:4006';
-const SERVICE_TOKEN = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return ''; })();
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
+
+// El notif-service valida un JWT firmado (jwt.verify). Antes se enviaba el
+// secreto crudo como Bearer, que NO es un JWT válido → 401 silencioso.
+function getServiceToken(): string {
+  return jwt.sign(
+    { id: 'catalog-service', email: 'catalog@internal', role: 'service' },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
 
 interface SendNotificationPayload {
   userId: string;
@@ -17,11 +29,9 @@ interface SendNotificationPayload {
 
 export class NotificationsClient {
   private baseUrl: string;
-  private serviceToken: string;
 
   constructor() {
     this.baseUrl = NOTIFICATIONS_SERVICE_URL;
-    this.serviceToken = SERVICE_TOKEN;
   }
 
   async sendNotification(payload: SendNotificationPayload): Promise<any> {
@@ -30,7 +40,7 @@ export class NotificationsClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.serviceToken}`,
+          Authorization: `Bearer ${getServiceToken()}`,
         },
         body: JSON.stringify(payload),
       });
