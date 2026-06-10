@@ -1,0 +1,39 @@
+# ServiceAccount dedicada con permisos mínimos para los pods de la app.
+# Sin esto, los pods usan la SA `default`, que en muchos clusters tiene un
+# token montado con acceso amplio al API server (riesgo de escalada si un pod
+# es comprometido).
+#
+# Para activar: añade `serviceAccountName: piums-app` al spec.template.spec de
+# cada Deployment, y deja `automountServiceAccountToken: false` salvo que un
+# servicio necesite hablar con el API server (ninguno de estos lo hace).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: piums-app
+  namespace: piums
+automountServiceAccountToken: false
+---
+# Role vacío a propósito: los servicios NO necesitan acceso al API de Kubernetes.
+# Existe para documentar el least-privilege y poder añadir permisos puntuales
+# (p.ej. lectura de un Secret concreto) si algún servicio lo requiriera.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: piums-app-minimal
+  namespace: piums
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: piums-app-minimal
+  namespace: piums
+subjects:
+  - kind: ServiceAccount
+    name: piums-app
+    namespace: piums
+roleRef:
+  kind: Role
+  name: piums-app-minimal
+  apiGroup: rbac.authorization.k8s.io

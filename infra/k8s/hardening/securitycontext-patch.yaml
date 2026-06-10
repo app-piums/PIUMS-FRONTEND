@@ -1,0 +1,30 @@
+# Patch estratégico: aplica securityContext no-root a TODOS los Deployments.
+# Usar con kustomize:
+#   patches:
+#     - path: hardening/securitycontext-patch.yaml
+#       target: { kind: Deployment }
+#
+# Requiere imágenes que corran como UID 1000 (node:alpine USER node — ya es el
+# caso en todos los servicios y el gateway). Si algún proceso necesita escribir
+# en el filesystem, montar un emptyDir en esa ruta en vez de bajar readOnlyRootFilesystem.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: PLACEHOLDER  # kustomize lo sobreescribe por target
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: "*"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # subir a true tras verificar /tmp y prisma
+            capabilities:
+              drop: ["ALL"]

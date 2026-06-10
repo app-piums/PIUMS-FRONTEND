@@ -1,0 +1,75 @@
+# NetworkPolicy baseline para el namespace piums.
+# ESTRATEGIA CONSERVADORA: default-deny de ingress, y se permite:
+#   - tráfico ENTRE pods del mismo namespace (los servicios se llaman entre sí)
+#   - tráfico desde el ingress-controller hacia el gateway
+#   - egress DNS (necesario para resolver nombres de servicio)
+# No segmenta tier-por-tier para no romper llamadas inter-servicio existentes;
+# es el primer escalón. Endurecer luego con reglas por par origen→destino.
+#
+# REQUIERE un CNI con soporte de NetworkPolicy (DOKS/Cilium lo tiene).
+# PROBAR EN STAGING: si las etiquetas no calzan, se corta el tráfico interno.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: piums
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Permite que cualquier pod del namespace reciba de otros pods del mismo namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: piums
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+---
+# Permite al ingress-controller (nginx) alcanzar el gateway.
+# Ajusta el namespaceSelector al namespace real de tu ingress controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-gateway
+  namespace: piums
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+---
+# Permite egress de DNS a kube-dns (sin esto, default-deny de egress rompería
+# la resolución; aquí solo declaramos egress DNS por si luego se activa
+# default-deny-egress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: piums
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to: []  # permite el resto de egress (DB managed, APIs externas, etc.)
