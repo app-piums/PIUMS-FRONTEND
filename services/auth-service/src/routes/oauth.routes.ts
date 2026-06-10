@@ -1,9 +1,11 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import passport from 'passport';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
+import { tokenService } from '../services/token.service';
 import {
   buildTikTokAuthUrl,
   exchangeTikTokCode,
@@ -12,6 +14,30 @@ import {
 } from '../strategies/tiktok.strategy';
 
 const router = Router();
+
+/**
+ * Emite un access token revocable para un login OAuth, replicando el flujo
+ * normal: jti único + registro de Session (para que requireActiveSession pueda
+ * revocarlo) y SIN email en el payload (PII-M2). Devuelve solo el access token,
+ * que es lo que el callback web/móvil consume hoy.
+ */
+async function issueOAuthAccessToken(
+  req: Request,
+  user: { id: string; role: string }
+): Promise<string> {
+  const jti = crypto.randomUUID();
+  const token = tokenService.signAccessToken({ id: user.id, role: user.role, jti });
+  await prisma.session.create({
+    data: {
+      jti,
+      userId: user.id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+  return token;
+}
 
 const CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
@@ -193,20 +219,12 @@ router.get(
     session: false,
     failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=google_auth_failed`
   }),
-  (req, res) => {
+  async (req, res) => {
     try {
       const user = req.user as any;
 
-      // Generar JWT
-      const token = jwt.sign(
-        { 
-          id: user.id, 
-          email: user.email, 
-          role: user.role 
-        },
-        process.env.JWT_SECRET!,
-        { expiresIn: '7d' }
-      );
+      // Token revocable con jti + Session, sin email en el payload
+      const token = await issueOAuthAccessToken(req, user);
 
       logger.info('User authenticated via Google', 'OAUTH', { userId: user.id });
 
@@ -235,20 +253,12 @@ router.get(
     session: false,
     failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=facebook_auth_failed`
   }),
-  (req, res) => {
+  async (req, res) => {
     try {
       const user = req.user as any;
 
-      // Generar JWT
-      const token = jwt.sign(
-        { 
-          id: user.id, 
-          email: user.email, 
-          role: user.role 
-        },
-        process.env.JWT_SECRET!,
-        { expiresIn: '7d' }
-      );
+      // Token revocable con jti + Session, sin email en el payload
+      const token = await issueOAuthAccessToken(req, user);
 
       logger.info('User authenticated via Facebook', 'OAUTH', { userId: user.id });
 
@@ -330,12 +340,8 @@ router.get('/tiktok/callback', async (req, res) => {
     // Find or create user in our DB
     const user = await findOrCreateTikTokUser(tiktokUser);
 
-    // Issue JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET!,
-      { expiresIn: '7d' }
-    );
+    // Token revocable con jti + Session, sin email en el payload
+    const token = await issueOAuthAccessToken(req, user);
 
     logger.info('User authenticated via TikTok', 'OAUTH', { userId: user.id });
     res.redirect(`${frontendUrl}/auth/callback?token=${token}&provider=tiktok`);
