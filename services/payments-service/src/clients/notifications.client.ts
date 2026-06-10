@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 
 const NOTIFICATIONS_SERVICE_URL =
   process.env.NOTIFICATIONS_SERVICE_URL || "http://notifications-service:4007";
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_CHANGE_IN_PRODUCTION';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 function getServiceToken(): string {
   return jwt.sign(

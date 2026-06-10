@@ -7,12 +7,15 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
   process.exit(1);
 }
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
 
+// Debe coincidir con la declaración global de Express.Request.user
+// en src/types/express.d.ts para que la extensión sea compatible.
 export interface AuthRequest extends Request {
   user?: {
     id: string;
+    email: string;
     role?: string;
   };
 }
@@ -53,6 +56,7 @@ export const authenticateToken: RequestHandler = (
 
     const decoded = jwt.verify(token, JWT_SECRET) as {
       id: string;
+      email: string;
     };
 
     authReq.user = decoded;

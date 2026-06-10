@@ -19,7 +19,7 @@ import jwt from "jsonwebtoken";
 const MODERATION_SERVICE_URL =
   process.env.MODERATION_SERVICE_URL || "http://localhost:4011";
 const JWT_SECRET =
-  process.env.JWT_SECRET || "dev-only-secret-not-for-production";
+  process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 const REQUEST_TIMEOUT_MS = 5_000;
 
 export type ContentType =

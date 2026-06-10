@@ -1,5 +1,5 @@
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:4006';
-const SERVICE_TOKEN = process.env.JWT_SECRET || '';
+const SERVICE_TOKEN = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return ''; })();
 
 interface SendNotificationPayload {
   userId: string;

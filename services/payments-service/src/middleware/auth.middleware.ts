@@ -7,7 +7,7 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
   process.exit(1);
 }
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-not-for-production';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 interface JwtPayload {
   id: string;
