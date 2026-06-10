@@ -17,6 +17,25 @@ import { createReplacementPrompt } from "./replacement.service";
 
 const prisma = new PrismaClient();
 
+const CITY_COORDS: Record<string, [number, number]> = {
+  'Guatemala':           [14.6349, -90.5069],
+  'Ciudad de Guatemala': [14.6349, -90.5069],
+  'Antigua Guatemala':   [14.5586, -90.7295],
+  'Antigua':             [14.5586, -90.7295],
+  'Quetzaltenango':      [14.8444, -91.5174],
+  'Xela':                [14.8444, -91.5174],
+  'Cobán':               [15.4667, -90.3667],
+  'Escuintla':           [14.3050, -90.7850],
+  'Flores':              [16.9333, -89.8833],
+  'Huehuetenango':       [15.3167, -91.4667],
+  'Puerto Barrios':      [15.7167, -88.6000],
+  'Mazatenango':         [14.5333, -91.5000],
+  'Jalapa':              [14.6333, -89.9833],
+  'Chiquimula':          [14.7958, -89.5458],
+  'Zacapa':              [14.9667, -89.5333],
+  'Retalhuleu':          [14.5333, -91.6833],
+};
+
 export class BookingService {
   private generateAttendanceCode(): string {
     return String(crypto.randomInt(100000, 999999));
@@ -110,22 +129,34 @@ export class BookingService {
 
     let distanceKm = 0;
     let sameDayBookingApplied = false;
-    if (!artist?.baseLocationLat || !artist?.baseLocationLng) {
-      logger.warn(`Artista sin coordenadas base — viáticos no aplicarán aunque haya distancia`, "BOOKING_SERVICE", { artistId: data.artistId });
+
+    // Coordenadas del artista: usar explícitas o fallback por ciudad
+    let artistLat = artist?.baseLocationLat;
+    let artistLng = artist?.baseLocationLng;
+    if ((!artistLat || !artistLng) && artist?.city) {
+      const cityCoords = CITY_COORDS[artist.city];
+      if (cityCoords) {
+        [artistLat, artistLng] = cityCoords;
+        logger.info(`Usando coordenadas de ciudad como fallback para artista`, "BOOKING_SERVICE", { city: artist.city, artistId: data.artistId });
+      }
+    }
+
+    if (!artistLat || !artistLng) {
+      logger.warn(`Artista sin coordenadas base ni ciudad reconocida — viáticos no aplicarán`, "BOOKING_SERVICE", { artistId: data.artistId });
     } else if (!data.locationLat || !data.locationLng) {
       logger.warn(`Cliente sin coordenadas — viáticos no aplicarán aunque haya distancia`, "BOOKING_SERVICE", { clientId: data.clientId });
     }
-    if (artist && artist.baseLocationLat && artist.baseLocationLng && data.locationLat && data.locationLng) {
+    if (artistLat && artistLng && data.locationLat && data.locationLng) {
       distanceKm = this.getDistance(
-        artist.baseLocationLat,
-        artist.baseLocationLng,
+        artistLat,
+        artistLng,
         data.locationLat,
         data.locationLng
       );
       logger.info(`Distancia calculada para reserva: ${distanceKm.toFixed(2)} km`, "BOOKING_SERVICE");
 
       // Regla 60km: si artista y cliente están a ≤60km y allowSameDayBooking=true → minAdvanceHours=3
-      if (distanceKm <= 60 && (artist as any)?.allowSameDayBooking !== false) {
+      if (distanceKm <= 60 && artist?.allowSameDayBooking !== false) {
         config.minAdvanceHours = 3;
         sameDayBookingApplied = true;
         logger.info(`Regla 60km aplicada: minAdvanceHours=3`, "BOOKING_SERVICE", { distanceKm });

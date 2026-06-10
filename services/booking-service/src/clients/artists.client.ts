@@ -9,6 +9,7 @@ export interface ArtistProfile {
   email: string;
   category: string;
   avatar?: string;
+  city?: string;
   baseLocationLabel?: string;
   baseLocationLat?: number;
   baseLocationLng?: number;

@@ -216,6 +216,16 @@ export class ArtistsService {
 
       logger.info("Artista actualizado", "ARTISTS_SERVICE", { artistId: id });
       triggerArtistReindex(id);
+
+      // Auto-geocode: si se actualizó baseLocationLabel sin lat/lng, derivar coords de Nominatim
+      if (
+        normalizedData.baseLocationLabel &&
+        !normalizedData.baseLocationLat &&
+        !normalizedData.baseLocationLng
+      ) {
+        geocodeAndSaveArtistLocation(id, normalizedData.baseLocationLabel as string).catch(() => {});
+      }
+
       return artist;
     } catch (error) {
       logger.error("Error actualizando artista", "ARTISTS_SERVICE", { error });
@@ -525,5 +535,29 @@ export class ArtistsService {
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
       body: JSON.stringify({ event, data }),
     }).catch(() => { /* non-critical */ });
+  }
+}
+
+async function geocodeAndSaveArtistLocation(artistId: string, label: string): Promise<void> {
+  try {
+    const encoded = encodeURIComponent(label);
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1`,
+      { headers: { 'User-Agent': 'PiumsPlatform/1.0 (soporte@piums.io)' } }
+    );
+    if (!res.ok) return;
+    const results = await res.json() as Array<{ lat: string; lon: string }>;
+    if (!results.length) return;
+    const { lat, lon } = results[0];
+    await prisma.artist.update({
+      where: { id: artistId },
+      data: {
+        baseLocationLat: parseFloat(lat),
+        baseLocationLng: parseFloat(lon),
+      },
+    });
+    logger.info('Base location geocodificada via Nominatim', 'ARTISTS_SERVICE', { artistId, label, lat, lon });
+  } catch {
+    // non-critical
   }
 }

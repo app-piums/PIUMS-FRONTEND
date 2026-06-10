@@ -72,6 +72,7 @@ export const updateMyProfile = async (
       'socialLinks', 'imageUrl', 'basePrice', 'experienceYears', 'yearsExperience',
       'availability', 'languages', 'tags', 'portfolioItems', 'avatar', 'coverPhoto',
       'instagram', 'facebook', 'youtube', 'tiktok', 'website',
+      'baseLocationLat', 'baseLocationLng', 'baseLocationLabel',
     ];
     const safeBody = Object.fromEntries(
       Object.entries(req.body).filter(([k]) => ALLOWED_FIELDS.includes(k))
