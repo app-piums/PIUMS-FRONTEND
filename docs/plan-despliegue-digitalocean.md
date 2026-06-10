@@ -1,20 +1,39 @@
 # Plan de Despliegue en DigitalOcean — Piums Platform (Producción)
 
+> **Actualizado 2026-06-09.** Versión anterior asumía migración desde AWS. La realidad: producción corre HOY en una máquina local (docker-compose) expuesta vía **Cloudflare Tunnel**. Este plan es el primer despliegue real a la nube e incluye migración de datos y corte de DNS.
+
 ## Resumen
 
-Migración de la infraestructura de producción de AWS a **DigitalOcean**, manteniendo la arquitectura Kubernetes existente para maximizar estabilidad y reutilizar los manifests actuales con cambios mínimos.
+Despliegue de la plataforma a **DigitalOcean Kubernetes (DOKS)**, reutilizando los manifests de `infra/k8s/` (backend) y las imágenes GHCR existentes. Incluye: infraestructura con Terraform, migración del Postgres local a Managed PostgreSQL, despliegue de las 3 webs Next.js (hoy solo cubiertas por docker-compose, no por K8s), y corte de DNS en Cloudflare manteniendo el túnel como rollback.
+
+### Estado actual (punto de partida)
+
+- Backend (gateway + 10 microservicios) y 3 webs corren en local con `docker-compose.prod.yml`, expuestos por `cloudflared` → `backend.piums.io` / `client.piums.io` responden sanos.
+- Postgres y Redis: contenedores locales. **Los datos de producción viven en la máquina local** — son el activo crítico a migrar.
+- Imágenes ya se publican a GHCR (`backend-ci.yml`).
+- DNS gestionado en **Cloudflare**.
+- `infra/k8s/base/` cubre solo backend; **faltan manifests para web-client, web-artist y web-admin**.
 
 ### Arquitectura objetivo
 
-| Componente | AWS (actual) | DigitalOcean (nuevo) |
+| Componente | Hoy (local + tunnel) | DigitalOcean (nuevo) |
 |---|---|---|
-| Kubernetes | EKS | **DOKS** (DigitalOcean Kubernetes) |
-| Base de datos | RDS PostgreSQL | **DO Managed PostgreSQL** |
-| Cache | ElastiCache Redis | **DO Managed Redis** |
-| Object Storage | S3 | **DO Spaces** (API S3-compatible) |
-| Load Balancer | ALB | **DO Load Balancer** (auto, via nginx-ingress) |
+| Orquestación | docker-compose local | **DOKS** (DigitalOcean Kubernetes) |
+| Base de datos | Postgres en contenedor local | **DO Managed PostgreSQL** (HA, backups automáticos) |
+| Cache | Redis en contenedor local | **DO Managed Redis** |
+| Object Storage | — (media en Cloudinary, sigue igual) | **DO Spaces** (Terraform state + backups) |
+| Entrada | Cloudflare Tunnel | **DO Load Balancer** (via nginx-ingress) + Cloudflare DNS |
 | Container Registry | GHCR | **GHCR** (sin cambio) |
-| CI/CD | GitHub Actions (aws-cli) | **GitHub Actions (doctl)** |
+| CI/CD | GitHub Actions (SSH + compose) | **GitHub Actions (doctl + kubectl)** |
+
+### Prerequisitos
+
+1. Cuenta DigitalOcean con billing activo + API token (write).
+2. CLI locales: `doctl`, `terraform >= 1.7`, `kubectl`, `helm`.
+3. Acceso al panel de Cloudflare (DNS de piums.io).
+4. Todas las imágenes (backend + webs) publicadas en GHCR con tag estable — verificar que las 3 webs también se construyen en CI.
+5. `JWT_SECRET` y demás secretos definidos: **desde junio 2026 los servicios fallan al arrancar en producción si falta `JWT_SECRET`** (endurecimiento intencional).
+6. Backup completo del Postgres local ANTES de empezar (`pg_dumpall`).
 
 ---
 
@@ -29,7 +48,11 @@ Migración de la infraestructura de producción de AWS a **DigitalOcean**, mante
 | DO Spaces (100 GB) | Terraform state + backups | ~$5 |
 | **Total estimado** | | **~$276/mes** |
 
-> Los nodos DOKS pueden reducirse a `s-2vcpu-4gb` ($72/mes × 3 = $72) para ahorrar en inicio, con posibilidad de escalar con HPA.
+> Los nodos DOKS pueden reducirse a `s-2vcpu-4gb` ($24/mes × 3 = $72) para ahorrar en inicio, con posibilidad de escalar con HPA.
+
+### Configuración recomendada para arrancar (~$135/mes)
+
+Para el volumen actual de la plataforma, empezar con: 3 nodos `s-2vcpu-4gb` ($72), **Managed PostgreSQL single-node `db-s-1vcpu-2gb` ($30)** — los backups diarios automáticos de DO cubren el riesgo mientras no haya tráfico que justifique HA — Redis managed mínimo ($15), LB small ($12) y Spaces ($5). Escalar a la configuración completa (~$276/mes) cuando haya tracción: subir Postgres a HA es un clic en el panel sin downtime. **Base de datos en contenedor dentro del cluster NO se recomienda**: el motivo principal de salir de la máquina local es no volver a tener los datos de producción en almacenamiento efímero.
 
 ---
 
@@ -262,6 +285,32 @@ spec:
             class: nginx
 ```
 
+### 2.3 Crear manifests para las 3 webs Next.js (NUEVO — hoy no existen)
+
+`infra/k8s/base/` solo cubre el backend. Crear `web-deployments.yaml` con Deployment + Service para `web-client`, `web-artist` y `web-admin` (mismo patrón que los microservicios, imágenes `ghcr.io/app-piums/piums-web-*`), y añadir al `ingress.yaml` los hosts:
+
+| Host | Service | Nota |
+|---|---|---|
+| **`piums.io`** | web-client:3000 | **Dominio final de la web de clientes (apex)** |
+| `www.piums.io` | redirect 308 → `piums.io` | |
+| `client.piums.io` | redirect 308 → `piums.io` | Transición; ver advertencia abajo |
+| `artist.piums.io` | web-artist:3000 | |
+| `admin.piums.io` | web-admin:3000 | |
+| `backend.piums.io` | gateway:3000 | |
+
+Variables clave: `GATEWAY_INTERNAL_URL=http://gateway:3000` (igual que en compose). Registrar los 3 nuevos deployments en `kustomization.yaml`.
+
+### 2.4 Cambio de dominio: `client.piums.io` → `piums.io` (checklist obligatorio)
+
+El cambio de dominio de la web de clientes NO es solo DNS. Actualizar:
+
+1. **Apps móviles de Cliente**: `PiumsClienteAndroid` tiene `BASE_URL = "https://client.piums.io/"` hardcodeado en `build.gradle.kts`, y el iOS usa `client.piums.io` como fallback en `APIEndpoint.swift`. ⚠️ **No dejar que las apps dependan de un redirect**: los POST no siguen redirects de forma fiable. Cambiar las apps a `https://backend.piums.io/api/` (API directa) o mantener `client.piums.io` sirviendo la app (no redirect) hasta que las apps publicadas se actualicen.
+2. **OAuth**: añadir `https://piums.io/auth/callback` a los redirect URIs autorizados en las consolas de Google, Facebook y TikTok (sin quitar los de `client.piums.io` hasta completar la transición). Actualizar `FRONTEND_URL` del auth-service.
+3. **CORS**: añadir `https://piums.io` a los orígenes permitidos del gateway/servicios.
+4. **Variables de entorno**: `NEXT_PUBLIC_*` y `.env.production` de web-client que referencien `client.piums.io`.
+5. **Webhooks de pagos** (Stripe/Tilopay): si alguno apunta a `client.piums.io`, actualizarlo.
+6. **SEO/links**: el redirect 308 de `client.piums.io` → `piums.io` se mantiene permanentemente (links viejos, emails enviados, QRs impresos).
+
 ---
 
 ## Fase 3 — GitHub Actions: Migrar a `doctl`
@@ -359,37 +408,96 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller
 
 ---
 
-## Fase 6 — DNS
+## Fase 6 — Migración de Datos (Postgres local → DO Managed PostgreSQL)
 
-Una vez obtenida la IP del Load Balancer de DO:
+**La fase más delicada: los datos de producción viven en tu máquina local.**
 
-| Dominio | Tipo | Valor |
+```bash
+# 1. CONGELAR escrituras: poner la plataforma local en mantenimiento
+#    (detener gateway o activar página de mantenimiento en nginx local)
+
+# 2. Dump por cada base (desde la máquina local)
+for db in piums_auth piums_users piums_artists piums_catalog piums_payments \
+          piums_reviews piums_notifications piums_booking piums_search piums_chat piums_moderation; do
+  docker exec piums-postgres-prod pg_dump -U piums -Fc $db > backup_$db.dump
+done
+
+# 3. Restaurar a DO Managed PG (host/credenciales del output de Terraform)
+for db in ...; do
+  pg_restore -h <do-pg-host> -p 25060 -U doadmin -d $db --no-owner --no-privileges backup_$db.dump
+done
+
+# 4. Verificar conteos de filas clave en ambos lados:
+#    users, artists, bookings, payments, reviews — deben coincidir exactamente.
+
+# 5. Ejecutar prisma migrate/db push solo si los schemas difieren
+#    (las imágenes de los servicios corren `prisma generate` en build; verificar versión de schema)
+```
+
+> **Ventana de mantenimiento estimada: 30–60 min.** Hacerla en horario valle (madrugada GT). Redis no se migra (solo cache/sesiones — los usuarios re-loguean).
+
+---
+
+## Fase 7 — DNS en Cloudflare + Corte
+
+El DNS está en **Cloudflare** y hoy apunta al túnel (`cloudflared`). El corte es editar los registros, no crear zona nueva:
+
+| Dominio | Hoy | Nuevo valor |
 |---|---|---|
-| `backend.piums.io` | A | `<EXTERNAL-IP>` |
-| `api.piums.app` | A | `<EXTERNAL-IP>` |
+| **`piums.io`** (apex) | (lo que tenga hoy) | **A → `<EXTERNAL-IP del DO LB>`** — web de clientes (dominio final) |
+| `www.piums.io` | — | A → `<EXTERNAL-IP>` (redirect en ingress) |
+| `backend.piums.io` | CNAME al tunnel | A → `<EXTERNAL-IP>` |
+| `client.piums.io` | CNAME al tunnel | A → `<EXTERNAL-IP>` (redirect 308 → piums.io; mantener hasta actualizar apps móviles) |
+| `artist.piums.io` | CNAME al tunnel | A → `<EXTERNAL-IP>` |
+| `admin.piums.io` | CNAME al tunnel | A → `<EXTERNAL-IP>` |
 
-Las apps web (`client.piums.io`, `artist.piums.io`, `admin.piums.io`) se mantienen donde están (Vercel / otro servidor). El backend es lo único que apunta al cluster DOKS.
+**Importante con el proxy de Cloudflare (nube naranja):**
+- Durante la emisión inicial de certificados Let's Encrypt (HTTP-01), poner los registros en **DNS only (nube gris)** para que cert-manager pueda validar. Una vez `READY=True`, puedes reactivar el proxy naranja (modo SSL **Full (strict)**).
+- TTL bajo (300s) antes del corte para poder revertir rápido.
+
+**Orden del corte:**
+1. Cluster desplegado y verificado con `curl -H "Host: backend.piums.io" http://<EXTERNAL-IP>/api/health` (antes de tocar DNS).
+2. Congelar escrituras local → migrar datos (Fase 6).
+3. Cambiar DNS en Cloudflare.
+4. Verificar salud + login + booking en producción nueva.
+5. **NO apagar el túnel ni borrar los datos locales durante al menos 7 días** — son tu rollback.
+
+**Rollback:** revertir los registros DNS al CNAME del túnel (propaga en minutos con TTL 300) y descongelar la plataforma local. Si hubo escrituras en DO post-corte, evaluar sync inverso antes de revertir.
 
 ---
 
 ## Orden de Ejecución Completo
 
 ```
-Paso 1:  Crear DO Spaces bucket manualmente (una vez, para el Terraform state)
-Paso 2:  cd infra/terraform-do && terraform init && terraform apply
-Paso 3:  Anotar outputs: DB host, Redis host, passwords
-Paso 4:  Actualizar infra/k8s/base/secrets.yaml con las URLs reales
-Paso 5:  doctl kubernetes cluster kubeconfig save piums-prod
-Paso 6:  Instalar nginx-ingress + cert-manager (helm)
-Paso 7:  kubectl apply -f infra/k8s/base/cert-manager-issuer.yaml
-Paso 8:  Actualizar infra/k8s/base/ingress.yaml (si falta alguna anotación)
-Paso 9:  kubectl apply -k infra/k8s/overlays/production
-Paso 10: kubectl get pods -n piums  →  verificar 0 CrashLoopBackOff
-Paso 11: Obtener EXTERNAL-IP y apuntar DNS
-Paso 12: curl https://backend.piums.io/api/health  →  {"status":"ok"}
-Paso 13: Agregar secrets DO_ACCESS_TOKEN y DO_CLUSTER_NAME en GitHub
-Paso 14: Actualizar .github/workflows/deploy-prod.yml  (doctl)
-Paso 15: Push a main → verificar GitHub Action exitoso
+── Preparación (sin tocar producción actual) ──────────────────────────────
+Paso 1:  Backup completo del Postgres local (pg_dumpall) y guardarlo fuera de la máquina
+Paso 2:  Verificar que CI publica imágenes de las 3 webs a GHCR (si no, añadirlas a backend-ci.yml)
+Paso 3:  Crear manifests K8s de las webs (Fase 2.3)
+Paso 4:  Crear DO Spaces bucket manualmente (una vez, para el Terraform state)
+Paso 5:  cd infra/terraform-do && terraform init && terraform apply
+Paso 6:  Anotar outputs: DB host, Redis host, passwords
+Paso 7:  Actualizar infra/k8s/base/secrets.yaml con URLs reales y TODOS los secretos
+         (JWT_SECRET obligatorio — los servicios fallan al arrancar sin él)
+Paso 8:  doctl kubernetes cluster kubeconfig save piums-prod
+Paso 9:  Instalar nginx-ingress + cert-manager (helm)
+Paso 10: kubectl apply -f infra/k8s/base/cert-manager-issuer.yaml
+Paso 11: kubectl apply -k infra/k8s/overlays/production
+Paso 12: kubectl get pods -n piums → 0 CrashLoopBackOff
+Paso 13: Probar contra la IP del LB sin DNS:
+         curl -H "Host: backend.piums.io" http://<EXTERNAL-IP>/api/health
+
+── Corte (ventana de mantenimiento, madrugada GT) ─────────────────────────
+Paso 14: Congelar escrituras en la plataforma local
+Paso 15: Migrar datos (Fase 6) y verificar conteos
+Paso 16: Cloudflare: registros A → EXTERNAL-IP (nube gris hasta tener TLS)
+Paso 17: kubectl get certificate -n piums → READY=True → reactivar proxy naranja (Full strict)
+Paso 18: curl https://backend.piums.io/api/health + smoke test (login, booking, chat, pago de prueba)
+
+── Post-corte ─────────────────────────────────────────────────────────────
+Paso 19: Agregar secrets DO_ACCESS_TOKEN y DO_CLUSTER_NAME en GitHub
+Paso 20: Actualizar .github/workflows/*deploy-prod.yml (doctl, Fase 3)
+Paso 21: Push a main → verificar deploy automático exitoso
+Paso 22: Mantener túnel + datos locales 7 días como rollback; luego apagar cloudflared
 ```
 
 ---
@@ -399,9 +507,17 @@ Paso 15: Push a main → verificar GitHub Action exitoso
 - [ ] `terraform plan` sin errores en `infra/terraform-do/`
 - [ ] `terraform apply` → cluster + PostgreSQL + Redis + Spaces creados
 - [ ] `kubectl get nodes` → 3 nodos `Ready`
-- [ ] `kubectl get pods -n piums` → todos `Running`, 0 `CrashLoopBackOff`
+- [ ] `kubectl get pods -n piums` → todos `Running`, 0 `CrashLoopBackOff` (backend + 3 webs)
+- [ ] Conteos de filas (users, artists, bookings, payments) idénticos local vs DO
 - [ ] `kubectl get certificate -n piums` → `READY=True` (TLS activo)
-- [ ] `curl https://backend.piums.io/api/health` → `{"status":"ok"}`
-- [ ] Login, booking y chat funcionan correctamente
+- [ ] `curl https://backend.piums.io/api/health` → todos los servicios `up`
+- [ ] `piums.io`, `artist.piums.io`, `admin.piums.io` cargan desde el cluster
+- [ ] `client.piums.io` y `www.piums.io` redirigen (308) a `piums.io`
+- [ ] OAuth con callback `piums.io` funciona (Google/Facebook/TikTok actualizados en sus consolas)
+- [ ] Login, booking, chat y un pago de prueba funcionan correctamente
+- [ ] Webhooks de Stripe/Tilopay apuntan al dominio correcto (verificar en sus dashboards)
+- [ ] OAuth (Google/Facebook/TikTok): callbacks siguen siendo los mismos dominios → sin cambios
 - [ ] Push a `main` → GitHub Actions deploy exitoso
-- [ ] `kubectl rollout status deployment -n piums` → todas las replicas activas
+- [ ] `kubectl rollout status deployment -n piums` → todas las réplicas activas
+- [ ] Backups automáticos activos en DO Managed PG (panel → Backups)
+- [ ] Día 7: apagar `cloudflared` local y archivar el último backup

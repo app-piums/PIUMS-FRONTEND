@@ -228,6 +228,14 @@ button[class*="bg-[#FF6B35]"]:not([class*="fixed"]):active::after {
   0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 32px rgba(255,107,53,0.2)); }
   50%       { transform: translateY(-10px) scale(1.03); filter: drop-shadow(0 0 72px rgba(255,107,53,0.6)); }
 }
+@keyframes shape-enter {
+  from { opacity: 0; transform: translateY(-150px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shape-float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(15px); }
+}
 
 /* ── Scroll reveal ── */
 .reveal {
