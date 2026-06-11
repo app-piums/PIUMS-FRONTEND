@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { searchService } from '../services/search.service';
+import { logger } from '../utils/logger';
+import { addDynamicSynonym, hasSynonym } from '../utils/synonyms';
 import {
   searchArtistsSchema,
   searchServicesSchema,
@@ -25,8 +27,8 @@ export const searchController = {
   // Smart search with synonym expansion
   async smartSearch(req: Request, res: Response, next: NextFunction) {
     try {
-      const { q, page, limit, city, country, minPrice, maxPrice, minGuests } = smartSearchSchema.parse(req.query);
-      const result = await searchService.smartSearch(q, { page, limit, city, country, minPrice, maxPrice, minGuests });
+      const { q, page, limit, city, country, minPrice, maxPrice, minGuests, isVerified } = smartSearchSchema.parse(req.query);
+      const result = await searchService.smartSearch(q, { page, limit, city, country, minPrice, maxPrice, minGuests, isVerified });
       res.json(result);
     } catch (error) {
       next(error);
@@ -91,13 +93,13 @@ export const searchController = {
       // Start indexing asynchronously
       if (type === 'artists' || type === 'all') {
         searchService.bulkIndexArtists(batchSize!).catch(error => {
-          console.error('Bulk artist indexing failed:', error);
+          logger.error('Bulk artist indexing failed', 'SEARCH', { error: typeof error === 'string' ? error : error?.message });
         });
       }
 
       if (type === 'services' || type === 'all') {
         searchService.bulkIndexServices(batchSize!).catch(error => {
-          console.error('Bulk service indexing failed:', error);
+          logger.error('Bulk service indexing failed', 'SEARCH', { error: typeof error === 'string' ? error : error?.message });
         });
       }
 
@@ -131,5 +133,24 @@ export const searchController = {
     } catch (error) {
       next(error);
     }
-  }
+  },
+
+  // Register a dynamic synonym from artist onboarding
+  async addSynonym(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { term, synonyms } = req.body as { term?: string; synonyms?: string[] };
+      if (!term || typeof term !== 'string' || term.trim().length < 2) {
+        res.status(400).json({ message: 'term debe tener al menos 2 caracteres' });
+        return;
+      }
+      const normalizedTerm = term.toLowerCase().trim();
+      const alreadyExists = hasSynonym(normalizedTerm);
+      const termSynonyms: string[] = Array.isArray(synonyms) ? synonyms.filter(s => typeof s === 'string') : [];
+      // Always include the term itself and a generic 'musica' bridge so it surfaces in music searches
+      addDynamicSynonym(normalizedTerm, [normalizedTerm, ...termSynonyms]);
+      res.json({ ok: true, term: normalizedTerm, wasNew: !alreadyExists });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

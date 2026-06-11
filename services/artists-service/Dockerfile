@@ -5,22 +5,18 @@ WORKDIR /app
 
 # Copiar archivos de dependencias
 COPY package*.json ./
-COPY pnpm-lock.yaml* ./
-
-# Instalar pnpm
-RUN npm install -g pnpm
 
 # Instalar dependencias
-RUN pnpm install --no-frozen-lockfile
+RUN npm install --legacy-peer-deps
 
 # Copiar código fuente
 COPY . .
 
-# Compilar TypeScript si existe tsconfig.json
-RUN if [ -f "tsconfig.json" ]; then pnpm run build 2>/dev/null || npm run build 2>/dev/null || echo "No build script found"; fi
-
-# Generar Prisma Client si existe schema.prisma
+# Generar Prisma Client antes de compilar TypeScript
 RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
+
+# Compilar TypeScript
+RUN npm run build
 
 # ============================================================================
 # Imagen final
@@ -28,9 +24,6 @@ RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
 FROM node:20-alpine
 
 WORKDIR /app
-
-# Instalar pnpm
-RUN npm install -g pnpm
 
 # Copiar dependencias y build desde builder
 COPY --from=builder /app/node_modules ./node_modules
@@ -50,4 +43,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Comando para iniciar
-CMD ["sh", "-c", "if [ -f 'prisma/schema.prisma' ]; then npx prisma db push; fi && node dist/index.js"]
+USER node
+CMD ["sh", "-c", "if [ -f 'prisma/migrations' ]; then npx prisma migrate deploy; elif [ -f 'prisma/schema.prisma' ]; then npx prisma db push; fi && node dist/index.js"]

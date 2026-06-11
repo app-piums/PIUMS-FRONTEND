@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { bookingController } from "../controller/booking.controller";
-import { authenticateToken } from "../middleware/auth.middleware";
+import { authenticateToken, requireAdmin, internalAuth, requireActiveSession } from "../middleware/auth.middleware";
 import {
   createBookingLimiter,
   updateLimiter,
@@ -19,8 +19,17 @@ const router: Router = Router();
 router.post(
   "/bookings",
   authenticateToken,
+  requireActiveSession,
   createBookingLimiter,
   bookingController.createBooking.bind(bookingController)
+);
+
+// ==================== ESTADÍSTICAS (deben ir ANTES de /bookings/:id) ====================
+
+router.get(
+  "/bookings/stats",
+  authenticateToken,
+  bookingController.getBookingStats.bind(bookingController)
 );
 
 /**
@@ -102,6 +111,68 @@ router.post(
 );
 
 /**
+ * GET  /api/bookings/:id/replacement       — obtener estado de búsqueda de reemplazo
+ * POST /api/bookings/:id/replacement/accept — el cliente acepta buscar reemplazo
+ * POST /api/bookings/:id/replacement/decline — el cliente rechaza la búsqueda
+ */
+router.get(
+  "/bookings/:id/replacement",
+  authenticateToken,
+  bookingController.getReplacementSearch.bind(bookingController)
+);
+router.post(
+  "/bookings/:id/replacement/accept",
+  authenticateToken,
+  bookingController.acceptReplacement.bind(bookingController)
+);
+router.post(
+  "/bookings/:id/replacement/decline",
+  authenticateToken,
+  bookingController.declineReplacement.bind(bookingController)
+);
+
+/**
+ * POST /api/bookings/:id/verify-attendance
+ * Artista ingresa el código de asistencia del cliente → completa la reserva sin esperar 24h.
+ * Para servicios con entrega de producto, solo marca IN_PROGRESS (pago se libera al entregar).
+ */
+router.post(
+  "/bookings/:id/verify-attendance",
+  authenticateToken,
+  bookingController.verifyAttendanceCode.bind(bookingController)
+);
+
+/**
+ * POST /api/bookings/:id/confirm-delivery
+ * Confirmar recepcion del servicio (solo el cliente de la reserva)
+ */
+router.post(
+  "/bookings/:id/confirm-delivery",
+  authenticateToken,
+  bookingController.confirmDelivery.bind(bookingController)
+);
+
+/**
+ * POST /api/bookings/:id/report-delivery-problem
+ * Reportar problema con la entrega — abre disputa y congela payout (solo el cliente)
+ */
+router.post(
+  "/bookings/:id/report-delivery-problem",
+  authenticateToken,
+  bookingController.reportDeliveryProblem.bind(bookingController)
+);
+
+/**
+ * POST /api/bookings/:id/no-show
+ * Reportar no-show del artista (solo el cliente de la reserva)
+ */
+router.post(
+  "/bookings/:id/no-show",
+  authenticateToken,
+  bookingController.reportNoShow.bind(bookingController)
+);
+
+/**
  * PATCH /api/bookings/:id/reschedule
  * Reprogramar reserva
  * Requiere autenticación (cliente o artista)
@@ -115,12 +186,13 @@ router.patch(
 
 /**
  * PATCH /api/bookings/:id/status
- * Cambiar estado de reserva
- * Requiere autenticación (artista)
+ * Cambiar estado — artista puede poner IN_PROGRESS / COMPLETED / NO_SHOW
+ * El service valida internamente que booking.artistId === userId
  */
 router.patch(
   "/bookings/:id/status",
   authenticateToken,
+  requireActiveSession,
   bookingController.changeStatus.bind(bookingController)
 );
 
@@ -229,25 +301,24 @@ router.put(
   bookingController.updateArtistConfig.bind(bookingController)
 );
 
-// ==================== ESTADÍSTICAS ====================
-
-router.get(
-  "/stats",
-  authenticateToken,
-  bookingController.getBookingStats.bind(bookingController)
-);
-
 /**
  * GET /api/bookings/users/:userId/stats
  * Obtener estadísticas de un usuario específico
  */
 router.get(
-  "/users/:userId/stats",
+  "/bookings/users/:userId/stats",
+  authenticateToken,
   bookingController.getUserStats.bind(bookingController)
 );
 
 router.post(
-  "/admin/batch-stats",
+  "/bookings/admin/batch-stats",
+  (req, res, next) => {
+    const secret = req.headers["x-internal-secret"];
+    const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
+    if (INTERNAL_SECRET && secret === INTERNAL_SECRET) return next();
+    return authenticateToken(req, res, (err) => { if (err) return next(err); return requireAdmin(req, res, next); });
+  },
   bookingController.getBatchStats.bind(bookingController)
 );
 
@@ -256,17 +327,18 @@ router.post(
  * Obtener estadísticas globales para el admin
  */
 router.get(
-  "/stats/admin",
+  "/bookings/stats/admin",
+  (req, res, next) => {
+    // Acepta internal secret O JWT admin
+    const secret = req.headers["x-internal-secret"];
+    const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
+    if (INTERNAL_SECRET && secret === INTERNAL_SECRET) return next();
+    return authenticateToken(req, res, (err) => {
+      if (err) return next(err);
+      return requireAdmin(req, res, next);
+    });
+  },
   bookingController.getAdminStats.bind(bookingController)
-);
-
-/**
- * GET /api/admin/bookings/:id
- * Obtener detalle de una reserva (llamada interna desde auth-service)
- */
-router.get(
-  "/admin/bookings/:id",
-  bookingController.adminGetBookingById.bind(bookingController)
 );
 
 /**
@@ -274,8 +346,29 @@ router.get(
  * Buscar en TODAS las reservas (admin)
  */
 router.get(
-  "/admin/search",
+  "/bookings/admin/search",
+  (req, res, next) => {
+    const secret = req.headers["x-internal-secret"];
+    const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
+    if (INTERNAL_SECRET && secret === INTERNAL_SECRET) return next();
+    return authenticateToken(req, res, (err) => { if (err) return next(err); return requireAdmin(req, res, next); });
+  },
   bookingController.adminSearchBookings.bind(bookingController)
+);
+
+/**
+ * GET /api/bookings/admin/:id
+ * Obtener detalle de una reserva (solo admin)
+ */
+router.get(
+  "/bookings/admin/:id",
+  (req, res, next) => {
+    const secret = req.headers["x-internal-secret"];
+    const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || "";
+    if (INTERNAL_SECRET && secret === INTERNAL_SECRET) return next();
+    return authenticateToken(req, res, (err) => { if (err) return next(err); return requireAdmin(req, res, next); });
+  },
+  bookingController.adminGetBookingById.bind(bookingController)
 );
 
 /**
@@ -287,6 +380,69 @@ router.get(
   "/bookings/:id/pdf",
   authenticateToken,
   bookingController.downloadBookingPDF.bind(bookingController)
+);
+
+// ==================== SOLICITUDES DE CAMBIO DE FECHA ====================
+
+/**
+ * POST /api/bookings/:id/reschedule-request
+ * Cliente solicita cambio de fecha
+ */
+router.post(
+  "/bookings/:id/reschedule-request",
+  authenticateToken,
+  createBookingLimiter,
+  bookingController.createRescheduleRequest.bind(bookingController)
+);
+
+/**
+ * POST /api/reschedule-requests/:requestId/respond
+ * Artista acepta o rechaza la solicitud
+ */
+router.post(
+  "/reschedule-requests/:requestId/respond",
+  authenticateToken,
+  updateLimiter,
+  bookingController.respondToReschedule.bind(bookingController)
+);
+
+/**
+ * GET /api/reschedule-requests/confirm?token=xxx
+ * Cliente confirma el cambio de fecha (público, viene del email)
+ */
+router.get(
+  "/reschedule-requests/confirm",
+  bookingController.confirmRescheduleByToken.bind(bookingController)
+);
+
+/**
+ * GET /api/bookings/:id/reschedule-requests
+ * Listar historial de solicitudes de cambio de fecha
+ */
+router.get(
+  "/bookings/:id/reschedule-requests",
+  authenticateToken,
+  bookingController.listRescheduleRequests.bind(bookingController)
+);
+
+// ==================== RUTAS INTERNAS (solo inter-servicio) ====================
+
+router.get(
+  "/bookings/internal/:id",
+  internalAuth,
+  bookingController.internalGetBooking.bind(bookingController)
+);
+
+router.post(
+  "/bookings/internal/:id/mark-payment",
+  internalAuth,
+  bookingController.internalMarkPayment.bind(bookingController)
+);
+
+router.post(
+  "/bookings/internal/:id/mark-card-authorized",
+  internalAuth,
+  bookingController.internalMarkCardAuthorized.bind(bookingController)
 );
 
 export default router;

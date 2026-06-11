@@ -1,12 +1,131 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useTranslation } from 'next-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemeToggle } from '@/contexts/ThemeContext';
+import { sdk } from '@piums/sdk';
+import { io, Socket } from 'socket.io-client';
+
+const CHAT_SOCKET_URL =
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'https://backend.piums.io')
+    : (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010');
+
+// ─── Notification Bell ───────────────────────────────────────────────────────
+
+function NotificationBell() {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    sdk.getNotifications({ status: 'PENDING', limit: 20 })
+      .then((data) => setNotifications(data.notifications ?? []))
+      .catch(() => { /* notifications non-critical */ });
+  }, []);
+
+  // Real-time: listen for new notifications via chat-service socket
+  useEffect(() => {
+    const socket = io(CHAT_SOCKET_URL, {
+      path: '/socket.io/',
+      transports: ['polling', 'websocket'],
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.5,
+      auth: (cb: (data: object) => void) => {
+        fetch('/api/chat/token', { credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => cb({ token: data?.token || '' }))
+          .catch(() => cb({ token: '' }));
+      },
+    });
+
+    socket.on('notification:new', (notif: any) => {
+      setNotifications((prev) => [notif, ...prev]);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const markAllRead = async () => {
+    const ids = notifications.map((n) => n.id);
+    if (!ids.length) return;
+    try {
+      await sdk.markNotificationsAsRead(ids);
+      setNotifications([]);
+    } catch { /* non-critical */ }
+    setIsOpen(false);
+  };
+
+  const unreadCount = notifications.length;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+        aria-label="Notificaciones"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-900">Notificaciones</h3>
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllRead}
+                className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+              >
+                Marcar todas como leídas
+              </button>
+            )}
+          </div>
+          {notifications.length === 0 ? (
+            <p className="text-sm text-gray-500 px-4 py-6 text-center">Sin notificaciones nuevas</p>
+          ) : (
+            <ul className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+              {notifications.slice(0, 10).map((n) => (
+                <li key={n.id} className="px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <p className="text-sm text-gray-800 font-medium">{n.title || n.type || 'Notificación'}</p>
+                  {n.message && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>}
+                  {n.createdAt && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {new Date(n.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface DashboardTab {
   id: string;
@@ -34,7 +153,6 @@ const tabs: DashboardTab[] = [
     label: 'Mensajes', 
     icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>, 
     href: '/chat',
-    badge: 3
   },
   { 
     id: 'schedule', 
@@ -49,10 +167,34 @@ const tabs: DashboardTab[] = [
     href: '/artist/dashboard/services'
   },
   {
+    id: 'disponibilidad',
+    label: 'Horarios',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+    href: '/artist/dashboard/disponibilidad'
+  },
+  {
     id: 'ausencias',
     label: 'Ausencias / Viajes',
     icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
     href: '/artist/dashboard/ausencias'
+  },
+  {
+    id: 'notifications',
+    label: 'Notificaciones',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+    href: '/artist/dashboard/notifications'
+  },
+  {
+    id: 'banda',
+    label: 'Mi Banda',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>,
+    href: '/artist/my-band'
+  },
+  {
+    id: 'auditions',
+    label: 'Audiciones',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>,
+    href: '/artist/auditions'
   },
   {
     id: 'tutorial',
@@ -74,42 +216,69 @@ const financeLinks = [
     label: 'Facturas',
     icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
     href: '/artist/dashboard/invoices'
+  },
+  {
+    id: 'coupons',
+    label: 'Cupones',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>,
+    href: '/artist/dashboard/coupons'
+  },
+  {
+    id: 'eventos',
+    label: 'Mis Eventos',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>,
+    href: '/artist/dashboard/eventos'
+  },
+  {
+    id: 'postulaciones',
+    label: 'Postulaciones',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+    href: '/artist/dashboard/postulaciones'
   }
 ];
 
 interface NavContentProps {
   pathname: string | null;
-  t: (key: string) => string;
   onNavigate: () => void;
   user: any;
   onLogout: () => void;
+  unreadMessages: number;
 }
 
-const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, t, onNavigate, user, onLogout }) => (
+const MUSICO_ONLY_TABS = new Set(['banda', 'auditions']);
+
+const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, onNavigate, user, onLogout, unreadMessages }) => {
+  const isMusico = !user?.category || user.category === 'MUSICO';
+  const visibleTabs = isMusico ? tabs : tabs.filter(t => !MUSICO_ONLY_TABS.has(t.id));
+
+  return (
   <>
     {/* Logo */}
     <div className="px-6 py-2 border-b border-gray-100 flex items-center justify-between">
       <Link href="/artist/dashboard" className="flex items-center gap-2" onClick={onNavigate}>
         <Image src="/logo.png" alt="PIUMS" width={64} height={64} className="h-16 w-auto" unoptimized priority />
       </Link>
-      {/* Close button — mobile only */}
-      <button
-        className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
-        onClick={onNavigate}
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      <div className="flex items-center gap-1">
+        <NotificationBell />
+        {/* Close button — mobile only */}
+        <button
+          className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+          onClick={onNavigate}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     {/* Main Menu */}
     <div className="flex-1 px-4 py-6 overflow-y-auto">
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-3">
-        {t('main')}
+        Menú Principal
       </p>
       <nav className="space-y-1">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const isActive = pathname === tab.href;
           return (
             <Link
@@ -126,11 +295,18 @@ const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, t, onNavigate,
                 <div className={isActive ? 'text-orange-600' : 'text-gray-400'}>{tab.icon}</div>
                 <span>{tab.label}</span>
               </div>
-              {tab.badge && (
-                <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                  {tab.badge}
-                </span>
-              )}
+              {tab.id === 'messages'
+                ? unreadMessages > 0 && (
+                    <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {unreadMessages > 99 ? '99+' : unreadMessages}
+                    </span>
+                  )
+                : tab.badge && (
+                    <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {tab.badge}
+                    </span>
+                  )
+              }
             </Link>
           );
         })}
@@ -139,7 +315,7 @@ const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, t, onNavigate,
       {/* Finance Section */}
       <div className="mt-8">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-3">
-          {t('finance')}
+          Finanzas
         </p>
         <nav className="space-y-1">
           {financeLinks.map((link) => {
@@ -232,20 +408,50 @@ const SidebarNavContent: React.FC<NavContentProps> = ({ pathname, t, onNavigate,
       </div>
     </div>
   </>
-);
+  );
+};
 
 export const DashboardSidebar: React.FC = () => {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const { t } = useTranslation('menu');
   const [isOpen, setIsOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const handleClose = () => setIsOpen(false);
+
+  useEffect(() => {
+    fetch('/api/chat/conversations', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        const convs = data?.conversations ?? data ?? [];
+        setUnreadMessages(convs.reduce((s: number, c: any) => s + (c.unreadCount ?? 0), 0));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const socket = io(CHAT_SOCKET_URL, {
+      path: '/socket.io/',
+      transports: ['polling', 'websocket'],
+      auth: (cb: (data: object) => void) => {
+        fetch('/api/chat/token', { credentials: 'include' })
+          .then(r => (r.ok ? r.json() : null))
+          .then(data => cb({ token: data?.token || '' }))
+          .catch(() => cb({ token: '' }));
+      },
+    });
+    socket.on('message:received', () => setUnreadMessages(prev => prev + 1));
+    return () => { socket.disconnect(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (pathname === '/chat') setUnreadMessages(0);
+  }, [pathname]);
 
   return (
     <>
       {/* ── Desktop sidebar ── */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-gray-200 min-h-screen flex-col">
-        <SidebarNavContent pathname={pathname} t={t} onNavigate={() => {}} user={user} onLogout={logout} />
+        <SidebarNavContent pathname={pathname} onNavigate={() => {}} user={user} onLogout={logout} unreadMessages={unreadMessages} />
       </aside>
 
       {/* ── Mobile: top bar with hamburger ── */}
@@ -253,15 +459,18 @@ export const DashboardSidebar: React.FC = () => {
         <Link href="/artist/dashboard" className="flex items-center gap-2">
           <Image src="/logo.png" alt="PIUMS" width={64} height={64} className="h-16 w-auto" unoptimized priority />
         </Link>
-        <button
-          onClick={() => setIsOpen(true)}
-          className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
-          aria-label="Abrir menú"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <button
+            onClick={() => setIsOpen(true)}
+            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            aria-label="Abrir menú"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* ── Mobile drawer ── */}
@@ -274,7 +483,7 @@ export const DashboardSidebar: React.FC = () => {
           />
           {/* Drawer panel */}
           <aside className="relative w-72 max-w-[85vw] bg-white flex flex-col h-full shadow-xl">
-            <SidebarNavContent pathname={pathname} t={t} onNavigate={handleClose} user={user} onLogout={logout} />
+            <SidebarNavContent pathname={pathname} onNavigate={handleClose} user={user} onLogout={logout} unreadMessages={unreadMessages} />
           </aside>
         </div>
       )}

@@ -4,7 +4,6 @@ import { AppError } from './errorHandler';
 
 interface JWTPayload {
   userId: string;
-  email: string;
   role?: string;
 }
 
@@ -35,6 +34,13 @@ export const optionalAuth = (req: Request, res: Response, next: NextFunction) =>
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Allow internal service-to-service calls via shared secret
+    const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+    const providedSecret = req.headers['x-internal-secret'];
+    if (internalSecret && providedSecret === internalSecret) {
+      return next();
+    }
+
     const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {

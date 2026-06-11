@@ -1,0 +1,26 @@
+# Patch estratégico a nivel de POD para TODOS los Deployments.
+# Se aplica vía kustomize con target { kind: Deployment } (sin name).
+#
+# Seguro: todas las imágenes corren USER node (UID 1000 en node:alpine);
+# moderation-service se corrigió en su Dockerfile durante la auditoría.
+#
+# El endurecimiento por-CONTENEDOR (allowPrivilegeEscalation:false,
+# capabilities.drop:[ALL], readOnlyRootFilesystem:true) NO se incluye aquí
+# porque readOnlyRootFilesystem requiere validar las escrituras de cada
+# servicio (/tmp, prisma) — añadirlo por-servicio tras probar en staging.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hardening-securitycontext  # ignorado: el target por kind aplica a todos
+spec:
+  template:
+    spec:
+      serviceAccountName: piums-app
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
+import { notificationsClient } from '../clients/notifications.client';
 
 export class PasswordService {
   /**
@@ -82,10 +83,14 @@ export class PasswordService {
 
       logger.info('Password reset token created', 'PASSWORD_SERVICE', { userId: user.id });
 
+      // Send email inside the service — token never leaves this boundary
+      notificationsClient.sendPasswordResetEmail(user.email, user.nombre, token).catch((err: any) => {
+        logger.error('Error sending password reset email', 'PASSWORD_SERVICE', { userId: user.id, error: err.message });
+      });
+
       return {
         success: true,
         emailSent: true,
-        token, // Este token se enviará por email
         user: {
           id: user.id,
           email: user.email,
@@ -286,6 +291,16 @@ export class PasswordService {
           passwordHash,
           lastPasswordChange: new Date(),
         },
+      });
+
+      // Revoke all existing sessions and refresh tokens (force re-login on other devices)
+      await prisma.session.updateMany({
+        where: { userId: user.id, status: 'ACTIVE' },
+        data: { status: 'REVOKED' },
+      });
+      await prisma.refreshToken.updateMany({
+        where: { userId: user.id, isRevoked: false },
+        data: { isRevoked: true },
       });
 
       // Log de auditoría

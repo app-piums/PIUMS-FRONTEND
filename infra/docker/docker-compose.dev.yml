@@ -13,13 +13,13 @@ services:
       POSTGRES_PASSWORD: piums_dev_password
       POSTGRES_DB: piums_dev
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - piums-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U piums"]
+      test: ["CMD-SHELL", "pg_isready -U piums -d piums_dev"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -45,8 +45,8 @@ services:
   
   gateway:
     build:
-      context: ../../apps/gateway
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: apps/gateway/Dockerfile
     container_name: piums-gateway
     ports:
       - "3005:3000"
@@ -54,7 +54,7 @@ services:
       NODE_ENV: development
       PORT: 3000
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,http://192.168.50.131:3005
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,http://192.168.50.131:3005,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
       AUTH_SERVICE_URL: http://auth-service:4001
       USERS_SERVICE_URL: http://users-service:4002
       ARTISTS_SERVICE_URL: http://artists-service:4003
@@ -65,6 +65,7 @@ services:
       BOOKING_SERVICE_URL: http://booking-service:4008
       SEARCH_SERVICE_URL: http://search-service:4009
       CHAT_SERVICE_URL: http://chat-service:4010
+      MODERATION_SERVICE_URL: http://moderation-service:4011
     depends_on:
       - auth-service
       - users-service
@@ -75,6 +76,7 @@ services:
       - reviews-service
       - notifications-service
       - search-service
+      - moderation-service
     networks:
       - piums-network
     restart: unless-stopped
@@ -103,11 +105,18 @@ services:
       REVIEWS_SERVICE_URL: http://reviews-service:4006
       USERS_SERVICE_URL: http://users-service:4002
       ARTISTS_SERVICE_URL: http://artists-service:4003
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
-      FIREBASE_API_KEY: REDACTED_FIREBASE_API_KEY
-      TIKTOK_CLIENT_KEY: REDACTED_TIKTOK_CLIENT_KEY
-      TIKTOK_CLIENT_SECRET: REDACTED_TIKTOK_CLIENT_SECRET
-      TIKTOK_CALLBACK_URL: http://localhost:4001/auth/tiktok/callback
+      PAYMENTS_SERVICE_URL: http://payments-service:4005
+      INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
+      CLIENT_APP_URL: https://client.piums.io
+      ARTIST_APP_URL: https://artist.piums.io
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
+      FIREBASE_API_KEY: ${FIREBASE_API_KEY:-}
+      TIKTOK_CLIENT_KEY: ${TIKTOK_CLIENT_KEY:-}
+      TIKTOK_CLIENT_SECRET: ${TIKTOK_CLIENT_SECRET:-}
+      TIKTOK_CALLBACK_URL: https://backend.piums.io/api/auth/tiktok/callback
+      GOOGLE_CALLBACK_URL: https://backend.piums.io/api/auth/google/callback
+      FACEBOOK_CALLBACK_URL: https://backend.piums.io/api/auth/facebook/callback
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,10 +137,14 @@ services:
       NODE_ENV: development
       PORT: 4002
       DATABASE_URL: postgresql://piums:piums_dev_password@postgres:5432/piums_users
-      CLOUDINARY_CLOUD_NAME: dumqooqjv
-      CLOUDINARY_API_KEY: REDACTED_CLOUDINARY_API_KEY
-      CLOUDINARY_API_SECRET: REDACTED_CLOUDINARY_API_SECRET
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
+      INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
+      AUTH_SERVICE_URL: http://auth-service:4001
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      MODERATION_SERVICE_URL: http://moderation-service:4011
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,9 +165,15 @@ services:
       DATABASE_URL: postgresql://piums:piums_dev_password@postgres:5432/piums_artists
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
       INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
+      CHAT_SERVICE_URL: http://chat-service:4010
       BOOKING_SERVICE_URL: http://booking-service:4008
       PAYMENTS_SERVICE_URL: http://payments-service:4005
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      SEARCH_SERVICE_URL: http://search-service:4009
+      MODERATION_SERVICE_URL: http://moderation-service:4011
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -174,7 +193,7 @@ services:
       PORT: 4004
       DATABASE_URL: postgresql://piums:piums_dev_password@postgres:5432/piums_catalog
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,7 +215,15 @@ services:
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_changeme}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_changeme}
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      TILOPAY_API_KEY: ${TILOPAY_API_KEY:-}
+      TILOPAY_API_SECRET: ${TILOPAY_API_SECRET:-}
+      TILOPAY_API_USER: ${TILOPAY_API_USER:-}
+      TILOPAY_API_URL: https://app.tilopay.com/api/v1
+      CLIENT_APP_URL: https://client.piums.io
+      INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
+      BOOKING_SERVICE_URL: http://booking-service:4008
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
         condition: service_healthy
@@ -220,7 +247,8 @@ services:
       BOOKING_SERVICE_URL: http://booking-service:4008
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
       ARTISTS_SERVICE_URL: http://artists-service:4003
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      MODERATION_SERVICE_URL: http://moderation-service:4011
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
         condition: service_healthy
@@ -233,6 +261,7 @@ services:
       context: ../../services/notifications-service
       dockerfile: Dockerfile
     container_name: piums-notifications-service
+    command: sh -c "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"
     ports:
       - "4007:4007"
     environment:
@@ -241,18 +270,26 @@ services:
       DATABASE_URL: postgresql://piums:piums_dev_password@postgres:5432/piums_notifications
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
       REDIS_URL: redis://redis:6379
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
-      FRONTEND_URL: http://localhost:3000
-      # Email config — set ENABLE_EMAIL=true and fill credentials to activate transactional emails
-      ENABLE_EMAIL: "false"
-      EMAIL_PROVIDER: nodemailer  # or sendgrid
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
+      FRONTEND_URL: https://client.piums.io
+      # Email config — Resend (set RESEND_API_KEY to activate)
+      ENABLE_EMAIL: "true"
+      ENABLE_PUSH: "true"
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: noreply@piums.io
+      EMAIL_FROM_NAME: Piums
+      INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
+      CHAT_SERVICE_URL: http://chat-service:4010
+      CLIENT_APP_URL: https://client.piums.io
+      ARTIST_APP_URL: https://artist.piums.io
+      # Fallback providers (used only if RESEND_API_KEY is empty)
+      EMAIL_PROVIDER: nodemailer
       EMAIL_HOST: ""
       EMAIL_PORT: "587"
       EMAIL_SECURE: "false"
       EMAIL_USER: ""
       EMAIL_PASSWORD: ""
-      EMAIL_FROM: noreply@piums.com
-      # SENDGRID_API_KEY: ""   # Uncomment and set when using SendGrid
     depends_on:
       postgres:
         condition: service_healthy
@@ -280,8 +317,12 @@ services:
       USERS_SERVICE_URL: http://users-service:4002
       ARTISTS_SERVICE_URL: http://artists-service:4003
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
+      SEARCH_SERVICE_URL: http://search-service:4009
       INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      CLIENT_APP_URL: https://client.piums.io
+      ARTIST_APP_URL: https://artist.piums.io
+      MODERATION_SERVICE_URL: http://moderation-service:4011
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
         condition: service_healthy
@@ -294,6 +335,7 @@ services:
       context: ../../services/search-service
       dockerfile: Dockerfile
     container_name: piums-search-service
+    command: sh -c "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"
     ports:
       - "4009:4009"
     environment:
@@ -306,7 +348,7 @@ services:
       REVIEWS_SERVICE_URL: http://reviews-service:4006
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
       INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,http://192.168.50.131:3003,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
         condition: service_healthy
@@ -321,15 +363,51 @@ services:
     container_name: piums-chat-service
     ports:
       - "4010:4010"
+    command: sh -c "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"
     environment:
       NODE_ENV: development
       PORT: 4010
       DATABASE_URL: postgresql://piums:piums_dev_password@postgres:5432/piums_chat
       JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
+      USERS_SERVICE_URL: http://users-service:4002
       ARTISTS_SERVICE_URL: http://artists-service:4003
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002
+      MODERATION_SERVICE_URL: http://moderation-service:4011
+      INTERNAL_SERVICE_SECRET: dev_internal_secret_piums
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
     depends_on:
       postgres:
+        condition: service_healthy
+      users-service:
+        condition: service_started
+      artists-service:
+        condition: service_started
+      moderation-service:
+        condition: service_started
+    networks:
+      - piums-network
+    restart: unless-stopped
+
+  moderation-service:
+    build:
+      context: ../../services/moderation-service
+      dockerfile: Dockerfile
+    container_name: piums-moderation-service
+    ports:
+      - "4011:4011"
+    command: sh -c "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"
+    environment:
+      NODE_ENV: development
+      PORT: 4011
+      DATABASE_URL: postgresql://piums:piums_dev_password@postgres:5432/piums_moderation
+      JWT_SECRET: dev_jwt_secret_CHANGE_IN_PRODUCTION
+      REDIS_URL: redis://redis:6379
+      BLACKLIST_CACHE_TTL_SECONDS: 300
+      MAX_STRIKES_BEFORE_RESTRICTION: 3
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://192.168.50.131:3000,http://192.168.50.131:3001,http://192.168.50.131:3002,https://client.piums.io,https://artist.piums.io,https://admin.piums.io,https://backend.piums.io
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - piums-network
@@ -343,21 +421,26 @@ services:
     build:
       context: ../../
       dockerfile: apps/web-client/web/Dockerfile
+      args:
+        GATEWAY_INTERNAL_URL: http://host.docker.internal:80
+        NEXT_PUBLIC_FIREBASE_VAPID_KEY: BC9q3ezyHhjl0G7a7AJU8Az_CH4-tQc4-ENArfGrO5gEer-nSF7RjJYmmCR213XvPnlC9R6gqGnLf3VmkfVjJjU
     container_name: piums-web-client
     ports:
       - "3000:3000"
     environment:
       PORT: 3000
       NODE_ENV: development
-      GATEWAY_INTERNAL_URL: http://gateway:3000
-      GATEWAY_URL: http://gateway:3000/api
-      AUTH_SERVICE_URL: http://auth-service:4001
-      CHAT_SERVICE_URL: http://chat-service:4010
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
-      NEXT_PUBLIC_CLIENT_URL: http://localhost:3000
-      NEXT_PUBLIC_ARTIST_URL: http://localhost:3001
-      NEXT_PUBLIC_ADMIN_URL: http://localhost:3002
-      NEXT_PUBLIC_CHAT_SERVICE_URL: http://localhost:4010
+      GATEWAY_INTERNAL_URL: http://host.docker.internal:80
+      GATEWAY_URL: http://host.docker.internal:80/api
+      AUTH_SERVICE_URL: http://host.docker.internal:80/api
+      BOOKING_SERVICE_URL: http://host.docker.internal:80
+      CHAT_SERVICE_URL: http://host.docker.internal:80
+      NEXT_PUBLIC_APP_URL: https://client.piums.io
+      NEXT_PUBLIC_CLIENT_URL: https://client.piums.io
+      NEXT_PUBLIC_ARTIST_URL: https://artist.piums.io
+      NEXT_PUBLIC_ADMIN_URL: https://admin.piums.io
+      NEXT_PUBLIC_API_URL: /api
+      NEXT_PUBLIC_CHAT_SERVICE_URL: https://backend.piums.io
     depends_on:
       - gateway
     networks:
@@ -368,22 +451,29 @@ services:
     build:
       context: ../../
       dockerfile: apps/web-artist/web/Dockerfile
+      args:
+        GATEWAY_INTERNAL_URL: http://host.docker.internal:80
+        NEXT_PUBLIC_FIREBASE_VAPID_KEY: BC9q3ezyHhjl0G7a7AJU8Az_CH4-tQc4-ENArfGrO5gEer-nSF7RjJYmmCR213XvPnlC9R6gqGnLf3VmkfVjJjU
     container_name: piums-web-artist
     ports:
       - "3001:3001"
     environment:
       PORT: 3001
       NODE_ENV: development
-      GATEWAY_INTERNAL_URL: http://gateway:3000
-      GATEWAY_URL: http://gateway:3000/api
-      AUTH_SERVICE_URL: http://auth-service:4001
-      ARTISTS_SERVICE_URL: http://artists-service:4003
-      CHAT_SERVICE_URL: http://chat-service:4010
-      NEXT_PUBLIC_APP_URL: http://localhost:3001
-      NEXT_PUBLIC_CLIENT_URL: http://localhost:3000
-      NEXT_PUBLIC_ARTIST_URL: http://localhost:3001
-      NEXT_PUBLIC_ADMIN_URL: http://localhost:3002
-      NEXT_PUBLIC_CHAT_SERVICE_URL: http://localhost:4010
+      GATEWAY_INTERNAL_URL: http://host.docker.internal:80
+      GATEWAY_URL: http://host.docker.internal:80/api
+      AUTH_SERVICE_URL: http://host.docker.internal:80/api
+      ARTISTS_SERVICE_URL: http://host.docker.internal:80/api
+      USERS_SERVICE_URL: http://host.docker.internal:80
+      BOOKING_SERVICE_URL: http://host.docker.internal:80
+      CHAT_SERVICE_URL: http://host.docker.internal:80
+      CATALOG_API_URL: http://host.docker.internal:80/api/catalog/services
+      NEXT_PUBLIC_APP_URL: https://artist.piums.io
+      NEXT_PUBLIC_CLIENT_URL: https://client.piums.io
+      NEXT_PUBLIC_ARTIST_URL: https://artist.piums.io
+      NEXT_PUBLIC_ADMIN_URL: https://admin.piums.io
+      NEXT_PUBLIC_API_URL: /api
+      NEXT_PUBLIC_CHAT_SERVICE_URL: https://backend.piums.io
     depends_on:
       - gateway
     networks:
@@ -394,6 +484,8 @@ services:
     build:
       context: ../../
       dockerfile: apps/web-admin/web/Dockerfile
+      args:
+        GATEWAY_INTERNAL_URL: http://gateway:3000
     container_name: piums-web-admin
     ports:
       - "3002:3003"
@@ -401,9 +493,9 @@ services:
       NODE_ENV: development
       GATEWAY_INTERNAL_URL: http://gateway:3000
       GATEWAY_URL: http://gateway:3000/api
-      AUTH_SERVICE_URL: http://auth-service:4001
-      NEXT_PUBLIC_APP_URL: http://localhost:3002
-      NEXT_PUBLIC_API_URL: http://localhost:3005/api
+      NEXT_PUBLIC_APP_URL: https://admin.piums.io
+      NEXT_PUBLIC_API_URL: https://backend.piums.io/api
+      NEXT_PUBLIC_CHAT_SERVICE_URL: https://backend.piums.io
     depends_on:
       - gateway
     networks:

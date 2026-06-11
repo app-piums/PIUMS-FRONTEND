@@ -5,8 +5,28 @@ import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { bookingServiceClient } from "../clients/booking.client";
 import { paymentsServiceClient } from "../clients/payments.client";
+import { usersClient } from "../clients/users.client";
+import { availabilitySchema } from "../schemas/artists.schema";
 
 const artistsService = new ArtistsService();
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4001';
+const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
+
+async function syncAvatarToAuthService(authId: string, avatarUrl: string) {
+  try {
+    await fetch(`${AUTH_SERVICE_URL}/internal/users/${authId}/avatar`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-secret': INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ avatarUrl }),
+    });
+  } catch (err: any) {
+    logger.warn('Could not sync avatar to auth-service', 'ARTIST_DASHBOARD', { authId, error: err.message });
+  }
+}
 
 /**
  * GET /api/artists/me - Obtener mi perfil de artista (simplificado para dashboard)
@@ -47,15 +67,23 @@ export const updateMyProfile = async (
 
     // Allowlist: only permit safe fields to prevent mass-assignment
     const ALLOWED_FIELDS = [
-      'bio', 'displayName', 'nombre', 'phone', 'location', 'cityId',
-      'category', 'socialLinks', 'imageUrl', 'basePrice', 'experienceYears',
-      'availability', 'languages', 'tags', 'portfolioItems',
+      'bio', 'displayName', 'nombre', 'telefono', 'location', 'cityId',
+      'category', 'specialties', 'ciudad', 'city',
+      'socialLinks', 'imageUrl', 'basePrice', 'experienceYears', 'yearsExperience',
+      'availability', 'languages', 'tags', 'portfolioItems', 'avatar', 'coverPhoto',
+      'instagram', 'facebook', 'youtube', 'tiktok', 'website',
+      'baseLocationLat', 'baseLocationLng', 'baseLocationLabel',
     ];
     const safeBody = Object.fromEntries(
       Object.entries(req.body).filter(([k]) => ALLOWED_FIELDS.includes(k))
     );
 
     const updatedArtist = await artistsService.updateArtist(artist.id, safeBody);
+
+    // If avatar was updated, sync to auth-service so web reads the latest
+    if (safeBody.avatar && typeof safeBody.avatar === 'string') {
+      syncAvatarToAuthService(authId, safeBody.avatar);
+    }
 
     logger.info("Perfil actualizado desde dashboard", "ARTIST_DASHBOARD", { artistId: artist.id });
     res.json({ artist: updatedArtist, message: "Perfil actualizado exitosamente" });
@@ -83,7 +111,7 @@ export const getMyBookings = async (
     // Query params para filtros
     const status = req.query.status as string | undefined;
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 50;
 
     // Llamar al booking-service para obtener las reservas del artista
     const authToken = req.headers.authorization?.substring(7);
@@ -92,8 +120,28 @@ export const getMyBookings = async (
       status,
       page,
       limit,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
       authToken,
     });
+
+    // Enrich bookings with client name/email from users-service in parallel
+    const enrichedBookings = await Promise.all(
+      bookingsData.bookings.map(async (booking) => {
+        const user = await usersClient.getUser(booking.clientId, authToken);
+        if (!user) return booking;
+        const parts = [user.firstName, user.lastName].filter(Boolean);
+        const clientName = parts.length > 0
+          ? parts.join(' ')
+          : user.fullName || user.nombre || undefined;
+        return {
+          ...booking,
+          clientName: clientName || undefined,
+          clientEmail: user.email || undefined,
+          clientAvatar: user.avatar || undefined,
+        };
+      })
+    );
 
     logger.info("Artist bookings retrieved", "ARTIST_DASHBOARD", {
       artistId: artist.id,
@@ -101,7 +149,7 @@ export const getMyBookings = async (
     });
 
     res.json({
-      bookings: bookingsData.bookings,
+      bookings: enrichedBookings,
       total: bookingsData.total,
       page: bookingsData.page,
       totalPages: bookingsData.totalPages,
@@ -203,7 +251,8 @@ export const completeBooking = async (
     const artist = await artistsService.getArtistByAuthId(authId);
     const bookingId = req.params.id as string;
     const authToken = req.headers.authorization?.substring(7);
-    const success = await bookingServiceClient.completeBooking(bookingId, artist.id, authToken);
+    const productDeliveryUrl = typeof req.body?.productDeliveryUrl === 'string' ? req.body.productDeliveryUrl : undefined;
+    const success = await bookingServiceClient.completeBooking(bookingId, artist.id, authToken, productDeliveryUrl);
 
     if (!success) {
       throw new AppError(500, "Error al completar la reserva");
@@ -269,9 +318,10 @@ export const getMyStats = async (
       throw new AppError(401, "No autenticado");
     }
     // Obtener datos de booking-service y payments-service en paralelo
+    const authToken = req.headers.authorization?.substring(7);
     const artist = await artistsService.getArtistByAuthId(authId);
     const [bookingStats, paymentStats] = await Promise.all([
-      bookingServiceClient.getArtistStats(artist.id),
+      bookingServiceClient.getArtistStats(artist.id, authToken),
       paymentsServiceClient.getArtistPaymentStats(artist.id),
     ]);
 
@@ -303,6 +353,70 @@ export const getMyStats = async (
     });
 
     res.json({ stats });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/artists/dashboard/me/availability - Obtener disponibilidad semanal del artista autenticado
+ */
+export const getMyAvailability = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authId = req.user?.id;
+    if (!authId) throw new AppError(401, "No autenticado");
+    const artist = await artistsService.getArtistByAuthId(authId);
+    const availability = await artistsService.getAvailability(artist.id);
+    res.json({ availability });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/artists/dashboard/me/availability - Guardar disponibilidad semanal
+ * Acepta un array de { dayOfWeek, startTime, endTime }
+ * dayOfWeek puede venir como "Lunes", "lunes" o "LUNES" — se normaliza aquí.
+ */
+const DAY_MAP: Record<string, string> = {
+  lunes: 'LUNES', martes: 'MARTES', miercoles: 'MIERCOLES', miércoles: 'MIERCOLES',
+  jueves: 'JUEVES', viernes: 'VIERNES', sabado: 'SABADO', sábado: 'SABADO',
+  domingo: 'DOMINGO',
+};
+
+export const setMyAvailability = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authId = req.user?.id;
+    if (!authId) throw new AppError(401, "No autenticado");
+    const artist = await artistsService.getArtistByAuthId(authId);
+
+    const rawItems: any[] = req.body.availability ?? req.body;
+    if (!Array.isArray(rawItems)) {
+      throw new AppError(400, "Se esperaba un array de disponibilidad");
+    }
+
+    const normalized = rawItems.map((item: any) => {
+      const rawDay: string = String(item.dayOfWeek ?? '');
+      const dayOfWeek = DAY_MAP[rawDay.toLowerCase()] ?? rawDay.toUpperCase();
+      return availabilitySchema.parse({ dayOfWeek, startTime: item.startTime, endTime: item.endTime });
+    });
+
+    const availability = await artistsService.setAvailability(artist.id, normalized);
+
+    logger.info("Disponibilidad actualizada desde dashboard", "ARTIST_DASHBOARD", {
+      artistId: artist.id,
+      days: normalized.map(d => d.dayOfWeek),
+    });
+
+    res.json({ availability, message: "Disponibilidad configurada" });
   } catch (error) {
     next(error);
   }

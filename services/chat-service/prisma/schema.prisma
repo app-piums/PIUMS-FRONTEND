@@ -7,41 +7,131 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ConversationType {
+  DIRECT
+  BOOKING_RELATED
+  SUPPORT
+}
+
 enum ConversationStatus {
-  PENDING
   ACTIVE
   ARCHIVED
+  BLOCKED
+  CLOSED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  BOOKING_REQUEST
+  BOOKING_UPDATE
+  SYSTEM
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
 model Conversation {
-  id        String    @id @default(uuid())
-  userId    String
-  artistId  String
-  bookingId String?   @unique
-  status    ConversationStatus @default(PENDING)
-  lastMessageAt DateTime @default(now())
-  messages  Message[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id             String             @id @default(uuid())
+  participant1Id String
+  participant2Id String
+  type           ConversationType   @default(DIRECT)
+  bookingId      String?
+  status         ConversationStatus @default(ACTIVE)
+  lastMessageAt  DateTime?
+  lastMessagePreview String?
+  unreadCountP1  Int       @default(0)
+  unreadCountP2  Int       @default(0)
+  deletedAt      DateTime?
+  messages       Message[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  @@index([userId])
-  @@index([artistId])
+  @@unique([participant1Id, participant2Id])
+  @@index([participant1Id])
+  @@index([participant2Id])
+  @@index([bookingId])
   @@map("conversations")
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String        @id @default(uuid())
   conversationId String
   senderId       String
-  senderType     String       @default("user") // user, artist
+  type           MessageType   @default(TEXT)
   content        String
-  type           String       @default("text") // text, image, file
-  read           Boolean      @default(false)
+  attachments    Json?
+  status         MessageStatus @default(SENT)
   readAt         DateTime?
-  createdAt      DateTime     @default(now())
+  deliveredAt    DateTime?
+  replyToId      String?
+  deletedAt      DateTime?
+  isShadowBanned Boolean       @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
   @@index([senderId])
+  @@index([status])
   @@map("messages")
+}
+
+// ============================================================================
+// Chat grupal entre artistas (Flujo A: event multi-artista / Flujo B: collaborators)
+// ============================================================================
+
+model GroupConversation {
+  id                 String             @id @default(uuid())
+  // Flujo A: ligado al eventId del Event (cliente con múltiples artistas)
+  eventId            String?            @unique
+  // Flujo B: ligado al bookingId de la reserva (lead artist + collaborators)
+  bookingId          String?            @unique
+  name               String?
+  createdBy          String             // lead artist ID
+  status             ConversationStatus @default(ACTIVE)
+  participants       GroupParticipant[]
+  messages           GroupMessage[]
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@map("group_conversations")
+}
+
+model GroupParticipant {
+  id          String            @id @default(uuid())
+  groupId     String
+  group       GroupConversation @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String
+  unreadCount Int               @default(0)
+  joinedAt    DateTime          @default(now())
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_participants")
+}
+
+model GroupMessage {
+  id        String            @id @default(uuid())
+  groupId   String
+  group     GroupConversation @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderId  String
+  content   String
+  type      MessageType       @default(TEXT)
+  status    MessageStatus     @default(SENT)
+  deletedAt DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([groupId])
+  @@index([senderId])
+  @@map("group_messages")
 }

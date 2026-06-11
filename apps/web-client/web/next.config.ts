@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
@@ -16,16 +17,34 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'plus.unsplash.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
     ],
   },
-  async rewrites() {
+  async headers() {
     return [
       {
-        source: '/api/:path*',
-        destination: `${process.env.GATEWAY_INTERNAL_URL || 'http://gateway:3000'}/api/:path*`,
-
+        source: '/(.*)',
+        headers: [
+          // Allow OAuth popups (Google sign-in) to communicate with the opener window
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+        ],
       },
     ];
+  },
+  async rewrites() {
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: [
+        {
+          source: '/api/:path*',
+          destination: `${process.env.GATEWAY_INTERNAL_URL || 'http://gateway:3000'}/api/:path*`,
+        },
+      ],
+    };
   },
 };
 

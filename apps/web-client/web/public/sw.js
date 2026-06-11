@@ -36,13 +36,17 @@ self.addEventListener('install', (event) => {
   
   event.waitUntil(
     caches.open(STATIC_CACHE)
-      .then((cache) => {
+      .then(async (cache) => {
         console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
+        await Promise.allSettled(
+          STATIC_ASSETS.map(url =>
+            cache.add(url).catch(e => console.warn('[SW] Could not cache:', url, e))
+          )
+        );
       })
       .then(() => {
         console.log('[SW] Service worker installed');
-        return self.skipWaiting(); // Activate immediately
+        return self.skipWaiting();
       })
       .catch((error) => {
         console.error('[SW] Installation failed:', error);
@@ -166,6 +170,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         console.log('[SW] Failed to fetch:', request.url);
+        return caches.match('/offline').then(r => r || new Response('Offline', { status: 503 }));
       })
   );
 });
@@ -188,26 +193,29 @@ async function syncBookings() {
 
 // Push notifications
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push notification received:', event);
-  
-  const data = event.data?.json() || {};
-  const title = data.title || 'Piums';
+  let payload = {};
+  try {
+    payload = event.data?.json() ?? {};
+  } catch {
+    payload = {};
+  }
+
+  // FCM sends {notification:{title,body}, data:{...}}; direct sends {title,body}
+  const notif = payload.notification ?? payload;
+  const extra = payload.data ?? {};
+  const title = notif.title ?? extra.title ?? 'Piums';
+  const body = notif.body ?? extra.body ?? 'Tienes una nueva notificación';
+
   const options = {
-    body: data.body || 'Tienes una nueva notificación',
+    body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-72x72.png',
-    tag: data.tag || 'default',
-    data: data.url || '/',
+    tag: extra.tag ?? 'piums-push',
+    data: extra.url ?? '/',
     vibrate: [200, 100, 200],
     actions: [
-      {
-        action: 'open',
-        title: 'Ver',
-      },
-      {
-        action: 'close',
-        title: 'Cerrar',
-      },
+      { action: 'open', title: 'Ver' },
+      { action: 'close', title: 'Cerrar' },
     ],
   };
 

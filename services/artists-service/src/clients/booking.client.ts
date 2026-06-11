@@ -9,6 +9,8 @@ interface BookingFilters {
   limit?: number;
   startDate?: string;
   endDate?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
   authToken?: string;
 }
 
@@ -60,6 +62,8 @@ export class BookingServiceClient {
         ...(filters.limit && { limit: filters.limit.toString() }),
         ...(filters.startDate && { startDate: filters.startDate }),
         ...(filters.endDate && { endDate: filters.endDate }),
+        ...(filters.sortBy && { sortBy: filters.sortBy }),
+        ...(filters.sortOrder && { sortOrder: filters.sortOrder }),
       });
 
       const headers: Record<string, string> = {
@@ -72,6 +76,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings?${params.toString()}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "GET",
           headers,
         }
@@ -105,15 +110,21 @@ export class BookingServiceClient {
   /**
    * Obtener estadísticas de bookings del artista
    */
-  async getArtistStats(artistId: string): Promise<BookingStatsResponse> {
+  async getArtistStats(artistId: string, authToken?: string): Promise<BookingStatsResponse> {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(
-        `${BOOKING_SERVICE_URL}/api/stats?artistId=${artistId}`,
+        `${BOOKING_SERVICE_URL}/api/bookings/stats?artistId=${artistId}`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
         }
       );
 
@@ -133,7 +144,14 @@ export class BookingServiceClient {
       }
 
       const data = await response.json() as any;
-      return data as BookingStatsResponse;
+      return {
+        total: data.total ?? 0,
+        thisMonth: data.thisMonth ?? 0,
+        pending: data.pending ?? 0,
+        confirmed: data.confirmed ?? 0,
+        completed: data.completed ?? 0,
+        upcoming: data.upcoming ?? [],
+      };
     } catch (error: any) {
       logger.error("Error in getArtistStats", "BOOKING_CLIENT", {
         error: error.message,
@@ -164,6 +182,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/confirm`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers,
           body: JSON.stringify({ artistId }),
@@ -190,7 +209,7 @@ export class BookingServiceClient {
   /**
    * Completar booking (CONFIRMED → COMPLETED)
    */
-  async completeBooking(bookingId: string, artistId: string, authToken?: string): Promise<boolean> {
+  async completeBooking(bookingId: string, artistId: string, authToken?: string, productDeliveryUrl?: string): Promise<boolean> {
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -202,9 +221,10 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/status`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "PATCH",
           headers,
-          body: JSON.stringify({ status: "COMPLETED", artistId }),
+          body: JSON.stringify({ status: "COMPLETED", artistId, productDeliveryUrl }),
         }
       );
 
@@ -245,6 +265,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/reject`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers,
           body: JSON.stringify({ artistId, reason }),
@@ -288,6 +309,7 @@ export class BookingServiceClient {
       const response = await fetch(
         `${BOOKING_SERVICE_URL}/api/bookings/${bookingId}/cancel`,
         {
+          signal: AbortSignal.timeout(10_000),
           method: "POST",
           headers,
           body: JSON.stringify({ artistId, reason }),

@@ -3,12 +3,14 @@ import express from "express";
 import cors from "cors";
 import artistsRoutes from "./routes/artists.routes";
 import artistDashboardRoutes from "./routes/artist-dashboard.routes";
+import bandsRoutes from "./routes/bands.routes";
 import healthRoutes from "./routes/health.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { apiLimiter } from "./middleware/rateLimiter";
 import { logger } from "./utils/logger";
 
 const app = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 
 // Middlewares globales
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:3000"];
@@ -17,21 +19,34 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+// Health check first — exempt from rate limiting (kube probes would exhaust the limit)
+app.use("/health", healthRoutes);
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use(apiLimiter as any);
 
 // Rutas
-app.use("/health", healthRoutes);
 app.use("/artists/dashboard", artistDashboardRoutes);
 app.use("/artists", artistsRoutes);
+app.use("/bands", bandsRoutes);
 
 // Middleware de error handling (debe ir al final)
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4003;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Artists Service running on http://localhost:${PORT}`, "SERVER");
   logger.info(`Health check: http://localhost:${PORT}/health`, "SERVER");
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`, "SERVER");
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  server.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
 });

@@ -10,16 +10,23 @@ import { PageHelpButton } from '@/components/PageHelpButton';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ThemeToggle } from '@/contexts/ThemeContext';
 import { sdk, Artist, Booking } from '@piums/sdk';
+import { formatArtistCategory } from '@/lib/artistCategory';
 
-// Colors for artist avatar placeholders
-const COLORS = [
-  'from-rose-400 to-pink-600',
-  'from-violet-400 to-purple-600',
-  'from-amber-400 to-orange-600',
-  'from-teal-400 to-cyan-600',
-  'from-blue-400 to-indigo-600',
-  'from-green-400 to-emerald-600',
-];
+// Gradientes por especialidad — igual que iOS ArtistCardView
+function getSpecialtyGradient(specialties?: string[]): string {
+  const spec = (specialties?.[0] ?? '').toLowerCase();
+  if (spec.includes('músic') || spec.includes('music')) return 'from-[#FF6A00] to-[#F59E0B]';
+  if (spec.includes('dj'))                               return 'from-[#FF6A00] to-[#E91E8C]';
+  if (spec.includes('fotograf'))                         return 'from-[#00AEEF] to-[#1E3A8A]';
+  if (spec.includes('video'))                            return 'from-[#4F46E5] to-[#E91E8C]';
+  if (spec.includes('diseñ') || spec.includes('disen'))  return 'from-[#00AEEF] to-[#10B981]';
+  if (spec.includes('bail'))                             return 'from-[#FF6A00] to-[#EF4444]';
+  if (spec.includes('maquillaj'))                        return 'from-[#F472B6] to-[#7C2D12]';
+  if (spec.includes('tatua'))                            return 'from-[#1E40AF] to-[#7C3AED]';
+  if (spec.includes('pintur') || spec.includes('pintor'))return 'from-[#06B6D4] to-[#10B981]';
+  if (spec.includes('mag'))                              return 'from-[#7C3AED] to-[#4F46E5]';
+  return 'from-[#FF6A00] to-[#00AEEF]';
+}
 
 function MiniCalendar({ bookings }: { bookings: Booking[] }) {
   const now = new Date();
@@ -121,10 +128,10 @@ function MiniCalendar({ bookings }: { bookings: Booking[] }) {
                   isPast
                     ? 'text-gray-300 cursor-not-allowed'
                     : isToday
-                    ? 'bg-[#FF6A00] text-white cursor-pointer'
+                    ? 'bg-[#FF6B35] text-white cursor-pointer'
                     : event
                     ? 'bg-orange-100 text-orange-700 cursor-pointer hover:bg-orange-200'
-                    : 'text-gray-700 hover:bg-orange-50 hover:text-[#FF6A00] cursor-pointer',
+                    : 'text-gray-700 hover:bg-orange-50 hover:text-[#FF6B35] cursor-pointer',
                 ].join(' ')}
               >
                 {day}
@@ -153,7 +160,7 @@ function MiniCalendar({ bookings }: { bookings: Booking[] }) {
         )}
       </div>
 
-      <Link href="/artists" className="mt-5 w-full py-2.5 rounded-xl bg-[#FF6A00] text-white text-sm font-semibold hover:bg-[#e05e00] transition-colors flex items-center justify-center">
+      <Link href="/artists" className="mt-5 w-full py-2.5 rounded-xl bg-[#FF6B35] text-white text-sm font-semibold hover:bg-[#e05e00] transition-colors flex items-center justify-center">
         + Agendar proyecto
       </Link>
     </div>
@@ -177,7 +184,7 @@ export default function DashboardPage() {
       setLoadingData(true);
       const [artistsRes, bookingsRes] = await Promise.allSettled([
         sdk.getArtists({ limit: 8 } as any),
-        sdk.listBookings({ limit: 20 }),
+        sdk.listBookings({ limit: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
       ]);
 
       if (artistsRes.status === 'fulfilled') {
@@ -216,7 +223,7 @@ export default function DashboardPage() {
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="hidden lg:flex bg-white border-b border-gray-100 px-8 py-4 items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">¡Hola, {displayName}! 👋</h1>
+            <h1 className="text-xl font-bold text-gray-900">Hola, {displayName}</h1>
             <p className="text-sm text-gray-400">Descubre el mejor talento creativo cerca de ti</p>
           </div>
           <div className="flex items-center gap-4">
@@ -227,7 +234,7 @@ export default function DashboardPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar artistas, estilos..."
-                className="pl-9 pr-4 py-2 w-72 text-sm border border-gray-200 rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/30 focus:border-[#FF6A00]"
+                className="pl-9 pr-4 py-2 w-72 text-sm border border-gray-200 rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]"
               />
             </form>
             <ThemeToggle />
@@ -237,7 +244,7 @@ export default function DashboardPage() {
 
         <div className="flex-1 overflow-y-auto p-4 pt-20 lg:p-8 lg:pt-8">
           <div className="lg:hidden mb-5">
-            <h1 className="text-xl font-bold text-gray-900">¡Hola, {displayName}! 👋</h1>
+            <h1 className="text-xl font-bold text-gray-900">Hola, {displayName}</h1>
             <p className="text-sm text-gray-400 mt-0.5">Descubre el mejor talento creativo cerca de ti</p>
           </div>
           <form onSubmit={(e) => { e.preventDefault(); router.push(`/artists?q=${search}`); }} className="relative lg:hidden mb-5">
@@ -247,7 +254,7 @@ export default function DashboardPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Buscar artistas, estilos..."
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/30 focus:border-[#FF6A00]"
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]"
             />
           </form>
 
@@ -256,7 +263,7 @@ export default function DashboardPage() {
             <div id="dashboard-calendar" className="flex-1 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-semibold text-gray-900">Reservas del Mes</h2>
-                <Link href="/bookings" className="text-sm text-[#FF6A00] font-medium hover:underline">
+                <Link href="/bookings" className="text-sm text-[#FF6B35] font-medium hover:underline">
                   Ver todas →
                 </Link>
               </div>
@@ -277,7 +284,7 @@ export default function DashboardPage() {
               >
                 <div className="flex items-center gap-2 mb-3">
                   <h2 className="font-semibold text-gray-900">Buscar por Fecha</h2>
-                  <svg className="h-4 w-4 text-gray-400 group-hover:text-[#FF6A00] transition-colors ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-4 w-4 text-gray-400 group-hover:text-[#FF6B35] transition-colors ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </div>
@@ -285,7 +292,7 @@ export default function DashboardPage() {
                   <div className="absolute inset-0 opacity-10"
                     style={{ backgroundImage: 'repeating-linear-gradient(0deg,#f97316 0,#f97316 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,#f97316 0,#f97316 1px,transparent 1px,transparent 40px)' }}
                   />
-                  <div className="relative z-10 bg-[#FF6A00] text-white h-10 w-10 rounded-xl flex items-center justify-center shadow-lg">
+                  <div className="relative z-10 bg-[#FF6B35] text-white h-10 w-10 rounded-xl flex items-center justify-center shadow-lg">
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
@@ -319,7 +326,7 @@ export default function DashboardPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <Link href={nextBooking ? `/bookings/${nextBooking.id}` : "/bookings"} className="mt-3 block text-center text-sm font-medium text-[#FF6A00] hover:underline">
+                <Link href={nextBooking ? `/bookings/${nextBooking.id}` : "/bookings"} className="mt-3 block text-center text-sm font-medium text-[#FF6B35] hover:underline">
                   {nextBooking ? 'Ver detalles →' : 'Ver todas →'}
                 </Link>
               </div>
@@ -330,7 +337,7 @@ export default function DashboardPage() {
           <div id="dashboard-recommended" className="mt-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-gray-900">Recomendados para Ti</h2>
-              <Link href="/artists" className="text-sm text-[#FF6A00] font-medium hover:underline">Ver todos →</Link>
+              <Link href="/artists" className="text-sm text-[#FF6B35] font-medium hover:underline">Ver todos →</Link>
             </div>
             {loadingData ? (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
@@ -341,40 +348,117 @@ export default function DashboardPage() {
             ) : recommendedArtists.length === 0 ? (
               <div className="bg-white rounded-2xl p-8 text-center text-gray-400 border border-gray-100">
                 <p className="text-sm">No hay artistas disponibles aún.</p>
-                <Link href="/artists" className="text-[#FF6A00] text-sm font-medium mt-2 inline-block">Explorar →</Link>
+                <Link href="/artists" className="text-[#FF6B35] text-sm font-medium mt-2 inline-block">Explorar →</Link>
               </div>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-                {recommendedArtists.map((artist, idx) => (
-                  <Link
-                    key={artist.id}
-                    href={`/artists/${artist.id}`}
-                    className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all"
-                  >
-                    <div className={`h-24 sm:h-32 bg-gradient-to-br ${COLORS[idx % COLORS.length]} relative flex items-center justify-center`}>
-                      {artist.coverPhoto ? (
-                        <img src={artist.coverPhoto} alt={artist.nombre} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-white text-4xl font-bold opacity-50">{artist.nombre?.charAt(0) ?? '?'}</span>
-                      )}
-                      {artist.rating && (
-                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full px-2 py-0.5 flex items-center gap-1">
-                          <svg className="h-3 w-3 text-amber-400 fill-amber-400" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                          <span className="text-xs font-semibold text-gray-800">{artist.rating.toFixed(1)}</span>
+                {recommendedArtists.map((artist) => {
+                  const gradient = getSpecialtyGradient((artist as any).specialties);
+                  const initials = (artist.nombre ?? artist.artistName ?? '?')
+                    .split(' ').slice(0, 2).map((w: string) => w[0] ?? '').join('').toUpperCase();
+                  const rating = (artist as any).averageRating ?? artist.rating;
+                  const reviewCount = (artist as any).totalReviews ?? 0;
+                  const city = (artist as any).city ?? (artist as any).ciudad;
+                  const specialty = (artist as any).specialties?.[0] ?? formatArtistCategory(artist.category ?? (artist as any).categoria, (artist as any).specialties);
+                  const price = (artist as any).mainServicePrice ?? artist.precioDesde;
+                  const serviceName = (artist as any).mainServiceName;
+                  const isVerified = (artist as any).isVerified ?? (artist as any).verified;
+                  const avatarUrl = (artist as any).avatar ?? (artist as any).avatarUrl ?? (artist as any).profilePhoto;
+                  const coverUrl = (artist as any).coverPhoto ?? (artist as any).coverUrl;
+
+                  return (
+                    <Link
+                      key={artist.id}
+                      href={`/artists/${artist.id}`}
+                      className="relative bg-white rounded-2xl overflow-visible shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all"
+                    >
+                      {/* Cover */}
+                      <div className={`h-32 rounded-t-2xl bg-gradient-to-br ${gradient} relative overflow-hidden`}>
+                        {coverUrl ? (
+                          <img src={coverUrl} alt={artist.nombre} className="w-full h-full object-cover" />
+                        ) : (
+                          <>
+                            {/* Dot texture */}
+                            <div className="absolute inset-0 opacity-20"
+                              style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
+                            {/* Large initial watermark */}
+                            <span className="absolute bottom-0 right-1 text-white font-black leading-none select-none"
+                              style={{ fontSize: 80, opacity: 0.12, transform: 'translateY(20px)' }}>
+                              {initials[0]}
+                            </span>
+                          </>
+                        )}
+
+                        {/* Verified badge — top left */}
+                        {isVerified && (
+                          <div className="absolute top-2 left-2 bg-green-500/90 text-white rounded-full p-1">
+                            <svg className="h-3 w-3 fill-white" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                            </svg>
+                          </div>
+                        )}
+
+                        {/* Availability badge — top right */}
+                        <div className={`absolute top-2 right-2 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ${(artist as any).isAvailable ? 'bg-green-500' : 'bg-gray-500'}`}>
+                          {(artist as any).isAvailable ? 'Disponible' : 'Ocupado'}
                         </div>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{artist.nombre}</p>
-                      <p className="text-xs text-gray-400 truncate">{artist.category ?? artist.categoria ?? '—'}</p>
-                      {artist.precioDesde && (
-                        <p className="text-sm font-bold text-[#FF6A00] mt-1">desde ${artist.precioDesde}</p>
-                      )}
-                    </div>
-                  </Link>
-                ))}
+                      </div>
+
+                      {/* Avatar straddling cover/info seam */}
+                      <div className={`absolute left-3 bg-gradient-to-br ${gradient} rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center`}
+                        style={{ width: 44, height: 44, top: 132 - 22 }}>
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={initials} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white text-sm font-bold">{initials}</span>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div className="px-3 pb-3 pt-7">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{artist.nombre ?? artist.artistName}</p>
+                        {specialty && <p className="text-xs text-gray-400 truncate mt-0.5">{specialty}</p>}
+
+                        {/* Rating + city */}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {rating && rating > 0 ? (
+                            <div className="flex items-center gap-1">
+                              <svg className="h-3 w-3 text-amber-400 fill-amber-400" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                              <span className="text-xs font-semibold text-gray-800">{Number(rating).toFixed(1)}</span>
+                              {reviewCount > 0 && <span className="text-[10px] text-gray-400">({reviewCount})</span>}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-gray-400">Sin reseñas</span>
+                          )}
+                          {city && (
+                            <div className="flex items-center gap-0.5">
+                              <svg className="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              <span className="text-[10px] text-gray-400 truncate max-w-[60px]">{city}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Price */}
+                        {price && price > 0 && (
+                          <div className="mt-2 flex items-center justify-between bg-orange-50 rounded-lg px-2.5 py-1.5">
+                            <span className="text-[10px] text-gray-500 truncate">{serviceName ?? 'Desde'}</span>
+                            <span className="text-xs font-bold text-[#FF6B35] ml-1 shrink-0">${(price / 100).toFixed(0)}</span>
+                          </div>
+                        )}
+
+                        {/* CTA button */}
+                        <div className="mt-2 w-full bg-[#FF6B35] text-white text-xs font-bold text-center py-2 rounded-lg">
+                          Ver Perfil
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>

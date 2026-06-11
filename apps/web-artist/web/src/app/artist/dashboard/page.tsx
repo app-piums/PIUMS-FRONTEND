@@ -25,6 +25,7 @@ export default function ArtistDashboardPage() {
   const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [artistProfile, setArtistProfile] = useState<any>(null);
+  const [artistServices, setArtistServices] = useState<any[]>([]);
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -42,6 +43,15 @@ export default function ArtistDashboardPage() {
         const profile = profileData.value as any;
         artistCountryRef.current = profile?.country ?? null;
         setArtistProfile(profile);
+        if (profile?.id) {
+          try {
+            const services = await sdk.getArtistServices(profile.id);
+            setArtistServices(services || []);
+          } catch (err) {
+            console.error('Error loading artist services:', err);
+            setArtistServices([]);
+          }
+        }
       }
       if (bookingsData.status === 'fulfilled') {
         const now = new Date();
@@ -119,12 +129,19 @@ export default function ArtistDashboardPage() {
       <div className="min-h-screen bg-gray-50 flex">
         <DashboardSidebar />
         <main className="flex-1 p-4 pt-20 sm:p-8 lg:pt-8">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-bold text-red-800 mb-2">Error</h2>
-            <p className="text-red-600 mb-4">{error}</p>
+          <div className="max-w-md mx-auto mt-16 bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
+            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">No se pudo cargar el dashboard</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Tuvimos un problema al conectar con el servidor. Esto es temporal — intenta de nuevo en unos segundos.
+            </p>
             <button
               onClick={loadDashboardData}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-xl transition-colors"
             >
               Reintentar
             </button>
@@ -166,7 +183,7 @@ export default function ArtistDashboardPage() {
                 <input
                   type="text"
                   placeholder="Buscar..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm text-gray-900"
                 />
                 <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -182,6 +199,61 @@ export default function ArtistDashboardPage() {
               </button>
             </div>
           </div>
+
+          {/* Shadow ban alert */}
+          {!isLoading && artistProfile?.shadowBannedAt && (
+            <div className="mb-6 flex items-start gap-4 rounded-2xl border border-red-200 bg-red-50 p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-red-900">Tu cuenta está restringida temporalmente</p>
+                <p className="mt-1 text-sm text-red-700">
+                  Tu perfil no aparece en las búsquedas de clientes. Esto ocurrió porque se reportó un no-show en una de tus reservas.
+                  Si crees que es un error, responde la queja activa o contacta al soporte.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button
+                    onClick={() => router.push('/artist/dashboard/quejas')}
+                    className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
+                  >
+                    Ver mis quejas
+                  </button>
+                  <a
+                    href="mailto:soporte@piums.io"
+                    className="rounded-lg border border-red-300 px-4 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors"
+                  >
+                    Contactar soporte
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No-services alert */}
+          {!isLoading && artistProfile && artistServices.length === 0 && (
+            <div className="mb-6 flex items-start gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                <svg className="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-amber-900">No apareces en las búsquedas de clientes</p>
+                <p className="mt-0.5 text-sm text-amber-700">
+                  Para que los clientes puedan encontrarte y contratarte, necesitas tener al menos un servicio publicado.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push('/artist/dashboard/services?create=1')}
+                className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
+              >
+                Crear servicio
+              </button>
+            </div>
+          )}
 
           {/* Stats Cards */}
           {stats && (
@@ -279,11 +351,11 @@ export default function ArtistDashboardPage() {
               <h3 className="text-lg font-bold mb-4">Fortaleza del Perfil</h3>
               {(() => {
                 const checks = [
-                  { label: 'Foto de perfil agregada', done: !!(artistProfile?.imageUrl || artistProfile?.profilePicture) },
-                  { label: 'Descripción de perfil', done: !!(artistProfile?.bio && artistProfile.bio.length > 10) },
-                  { label: 'Servicios publicados', done: !!(stats && stats.bookings.total > 0) },
-                  { label: 'Redes sociales vinculadas', done: !!(artistProfile?.socialLinks && Object.values(artistProfile.socialLinks).some((v: any) => !!v)) },
-                  { label: 'Primera reseña obtenida', done: !!(stats && (stats.rating?.totalReviews ?? 0) > 0) },
+                  { label: 'Foto de perfil agregada', done: !!(artistProfile?.avatar), href: '/artist/dashboard/settings?tab=personal' },
+                  { label: 'Descripción de perfil', done: !!(artistProfile?.bio && artistProfile.bio.length > 10), href: '/artist/dashboard/settings?tab=personal' },
+                  { label: 'Servicios publicados', done: artistServices.length > 0, href: '/artist/dashboard/services' },
+                  { label: 'Redes sociales vinculadas', done: !!(artistProfile?.instagram || artistProfile?.facebook || artistProfile?.youtube || artistProfile?.tiktok || artistProfile?.website), href: '/artist/dashboard/settings?tab=social' },
+                  { label: 'Primera reseña obtenida', done: !!(stats && (stats.rating?.totalReviews ?? 0) > 0), href: '/artist/dashboard/reviews' },
                 ];
                 const pct = artistProfile
                   ? Math.round((checks.filter(c => c.done).length / checks.length) * 100)
@@ -303,8 +375,12 @@ export default function ArtistDashboardPage() {
                       </div>
                     </div>
                     <div className="space-y-3">
-                      {checks.map(({ label, done }) => (
-                        <div key={label} className="flex items-center gap-3">
+                      {checks.map(({ label, done, href }) => (
+                        <div
+                          key={label}
+                          onClick={() => !done && router.push(href)}
+                          className={`flex items-center gap-3 rounded-lg px-1 -mx-1 transition-colors ${!done ? 'cursor-pointer hover:bg-white/10' : ''}`}
+                        >
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${done ? 'bg-green-500' : 'bg-gray-600'}`}>
                             {done ? (
                               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -316,7 +392,12 @@ export default function ArtistDashboardPage() {
                               </svg>
                             )}
                           </div>
-                          <span className={`text-sm ${done ? 'text-gray-300' : 'text-gray-400'}`}>{label}</span>
+                          <span className={`text-sm flex-1 ${done ? 'text-gray-300' : 'text-gray-200'}`}>{label}</span>
+                          {!done && (
+                            <svg className="w-4 h-4 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -326,66 +407,6 @@ export default function ArtistDashboardPage() {
             </div>
           </div>
 
-          {/* Revenue Overview Chart */}
-          <div id="artist-dashboard-revenue" className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Resumen de Ingresos</h3>
-              <select className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
-                <option>Últimos 6 meses</option>
-                <option>Últimos 12 meses</option>
-                <option>Este año</option>
-              </select>
-            </div>
-            
-            <div className="relative h-64">
-              <svg className="w-full h-full" viewBox="0 0 800 250">
-                <defs>
-                  <linearGradient id="revenueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#fb923c" stopOpacity="0.3"/>
-                    <stop offset="100%" stopColor="#fb923c" stopOpacity="0.05"/>
-                  </linearGradient>
-                </defs>
-                
-                {/* Y-axis labels */}
-                <text x="10" y="20" className="text-xs fill-gray-500">Q15k</text>
-                <text x="10" y="80" className="text-xs fill-gray-500">Q10k</text>
-                <text x="10" y="140" className="text-xs fill-gray-500">Q5k</text>
-                <text x="18" y="200" className="text-xs fill-gray-500">Q0</text>
-                
-                {/* Chart area */}
-                <path
-                  d="M 80 180 L 180 140 L 280 160 L 380 100 L 480 120 L 580 60 L 680 80"
-                  fill="none"
-                  stroke="#fb923c"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-                
-                <path
-                  d="M 80 180 L 180 140 L 280 160 L 380 100 L 480 120 L 580 60 L 680 80 L 680 200 L 80 200 Z"
-                  fill="url(#revenueGradient)"
-                />
-                
-                {/* Data points */}
-                <circle cx="80" cy="180" r="5" fill="#fb923c" />
-                <circle cx="180" cy="140" r="5" fill="#fb923c" />
-                <circle cx="280" cy="160" r="5" fill="#fb923c" />
-                <circle cx="380" cy="100" r="5" fill="#fb923c" />
-                <circle cx="480" cy="120" r="5" fill="#fb923c" />
-                <circle cx="580" cy="60" r="5" fill="#fb923c" />
-                <circle cx="680" cy="80" r="5" fill="#fb923c" />
-                
-                {/* X-axis labels */}
-                <text x="65" y="230" className="text-xs fill-gray-500">JAN</text>
-                <text x="165" y="230" className="text-xs fill-gray-500">FEB</text>
-                <text x="265" y="230" className="text-xs fill-gray-500">MAR</text>
-                <text x="365" y="230" className="text-xs fill-gray-500">APR</text>
-                <text x="465" y="230" className="text-xs fill-gray-500">MAY</text>
-                <text x="565" y="230" className="text-xs fill-gray-500">JUN</text>
-                <text x="665" y="230" className="text-xs fill-gray-500">JUL</text>
-              </svg>
-            </div>
-          </div>
 
           {/* Upcoming Gigs Calendar */}
           <div id="artist-dashboard-gigs" className="bg-white rounded-2xl border border-gray-200 p-6">

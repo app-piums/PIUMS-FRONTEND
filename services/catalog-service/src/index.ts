@@ -10,6 +10,9 @@ import pricingRoutes from "./routes/pricing.routes";
 import mediaRoutes from "./routes/media.routes";
 import categoryRoutes from "./routes/category.routes";
 import locationRoutes from "./routes/location.routes";
+import dayOfferRoutes from "./routes/day-offer.routes";
+import postingRoutes from "./routes/posting.routes";
+import { PrismaClient } from "@prisma/client";
 
 // Cargar variables de entorno
 dotenv.config();
@@ -41,6 +44,12 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Trust the first proxy (K8s ingress) so express-rate-limit can read X-Forwarded-For correctly
+app.set('trust proxy', 1);
+
+// Health check first — exempt from rate limiting (kube probes would exhaust the limit)
+app.use("/health", healthRoutes);
+
 // Rate limiting general
 app.use(apiLimiter);
 
@@ -54,13 +63,13 @@ app.use((req, res, next) => {
 });
 
 // ==================== RUTAS ====================
-
-app.use("/health", healthRoutes);
 app.use("/api", catalogRoutes);
 app.use("/api/pricing", pricingRoutes);
 app.use("/api", mediaRoutes);
 app.use("/api", categoryRoutes);
 app.use("/api", locationRoutes);
+app.use("/api", dayOfferRoutes);
+app.use("/api", postingRoutes);
 
 // Ruta 404
 app.use((req, res) => {
@@ -73,11 +82,34 @@ app.use(errorHandler);
 
 // ==================== SERVIDOR ====================
 
-app.listen(PORT, () => {
-  logger.info(`🚀 Catalog Service running on port ${PORT}`, "SERVER", {
+// Auto-expire OPEN postings older than 30 days
+const prismaForCron = new PrismaClient();
+const runPostingExpiration = async () => {
+  try {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const { count } = await prismaForCron.artistPosting.updateMany({
+      where: { status: 'OPEN', createdAt: { lt: cutoff } },
+      data: { status: 'CLOSED', closedAt: new Date() },
+    });
+    if (count > 0) logger.info(`Auto-expired ${count} postings`, 'POSTING_CRON');
+  } catch (err: any) {
+    logger.error('Error in posting expiration cron', 'POSTING_CRON', { error: err.message });
+  }
+};
+// Run at startup and every 6 hours
+runPostingExpiration();
+setInterval(runPostingExpiration, 6 * 60 * 60 * 1000);
+
+const server = app.listen(PORT, () => {
+  logger.info(`Catalog Service running on port ${PORT}`, "SERVER", {
     port: PORT,
     nodeEnv: process.env.NODE_ENV || "development",
   });
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
+  server.close(() => process.exit(0));
 });
 
 // Manejo de errores no capturados

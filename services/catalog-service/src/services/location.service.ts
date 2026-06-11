@@ -202,7 +202,7 @@ export class LocationService {
 
     // Filtrar por distancia
     const nearbyCities = allCities
-      .map((city) => ({
+      .map((city: any) => ({
         ...city,
         distance: this.calculateDistance(
           referenceCity.latitude,
@@ -211,8 +211,8 @@ export class LocationService {
           city.longitude
         ),
       }))
-      .filter((city) => city.distance <= radiusKm && city.id !== referenceCity.id)
-      .sort((a, b) => a.distance - b.distance);
+      .filter((city: any) => city.distance <= radiusKm && city.id !== referenceCity.id)
+      .sort((a: any, b: any) => a.distance - b.distance);
 
     return nearbyCities;
   }

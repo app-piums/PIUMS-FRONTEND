@@ -3,13 +3,38 @@ kind: Kustomization
 
 namespace: piums
 
-bases:
+resources:
   - ../../base
+  # Hardening: ServiceAccount mínima + Role/RoleBinding (least-privilege).
+  # La NetworkPolicy NO se incluye: es opt-in, requiere validar en staging
+  # (ver infra/k8s/hardening/README.md).
+  - ../../hardening
 
 commonLabels:
   environment: production
 
 patches:
+  # Hardening: securityContext no-root + SA piums-app en TODOS los Deployments.
+  # Inline (no path externo) por el confinamiento de root de kustomize.
+  - target:
+      kind: Deployment
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: hardening-securitycontext
+      spec:
+        template:
+          spec:
+            serviceAccountName: piums-app
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              fsGroup: 1000
+              seccompProfile:
+                type: RuntimeDefault
   # Gateway: more replicas + higher resources
   - patch: |-
       apiVersion: apps/v1
@@ -77,12 +102,6 @@ patches:
       kind: Deployment
       name: chat-service
 
-configMapGenerator:
-  - name: piums-config
-    behavior: merge
-    literals:
-      - NODE_ENV=production
-
 images:
   - name: ghcr.io/app-piums/piums-platform/gateway
     newTag: latest
@@ -105,4 +124,6 @@ images:
   - name: ghcr.io/app-piums/piums-platform/search-service
     newTag: latest
   - name: ghcr.io/app-piums/piums-platform/chat-service
+    newTag: latest
+  - name: ghcr.io/app-piums/piums-platform/moderation-service
     newTag: latest

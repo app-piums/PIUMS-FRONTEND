@@ -2,9 +2,142 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { ThemeToggle } from "@/contexts/ThemeContext";
+import { io, Socket } from "socket.io-client";
+
+const CHAT_SOCKET_URL =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || "https://backend.piums.io"
+    : process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || "http://localhost:4010";
+
+type AdminAlert = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  actionUrl?: string;
+  at: string;
+};
+
+function NotificationBell() {
+  const [alerts, setAlerts] = useState<AdminAlert[]>([]);
+  const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Connect to chat-service socket using the admin JWT stored in sessionStorage
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("admin_token") : null;
+    if (!token) return;
+
+    const socket: Socket = io(CHAT_SOCKET_URL, {
+      path: "/socket.io/",
+      transports: ["polling", "websocket"],
+      auth: { token },
+      reconnectionAttempts: 3,
+    });
+
+    socket.on("admin:alert", (data: Omit<AdminAlert, "id" | "at">) => {
+      const alert: AdminAlert = {
+        ...data,
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+      };
+      setAlerts((prev) => [alert, ...prev].slice(0, 20));
+      setUnread((n) => n + 1);
+    });
+
+    return () => { socket.disconnect(); };
+  }, []);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const toggle = () => {
+    setOpen((v) => !v);
+    if (!open) setUnread(0);
+  };
+
+  const formatTime = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return "Justo ahora";
+    if (min < 60) return `Hace ${min} min`;
+    return `Hace ${Math.floor(min / 60)} h`;
+  };
+
+  const typeIcon = (type: string) => {
+    if (type === "dispute_opened") return "⚠️";
+    if (type === "artist_pending") return "🎨";
+    return "🔔";
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        onClick={toggle}
+        className="relative rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-50 transition-colors"
+        aria-label="Alertas"
+      >
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unread > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FF6A00] px-0.5 text-[10px] font-bold text-white">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900 z-50">
+          <div className="border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+            <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Alertas en tiempo real</p>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800">
+            {alerts.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-zinc-400">Sin alertas nuevas</p>
+            ) : (
+              alerts.map((a) => {
+                const content = (
+                  <div className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
+                    <div className="flex items-start gap-2">
+                      <span className="mt-0.5 text-base">{typeIcon(a.type)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 truncate">{a.title}</p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{a.message}</p>
+                        <p className="text-[10px] text-zinc-400 mt-1">{formatTime(a.at)}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+
+                return a.actionUrl ? (
+                  <Link key={a.id} href={a.actionUrl} onClick={() => setOpen(false)} className="block">
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={a.id}>{content}</div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface AdminSidebarProps {
   isOpen?: boolean;
@@ -54,6 +187,42 @@ const NAV = [
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/payouts",
+    label: "Pagos",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/credits",
+    label: "Créditos",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/coupons",
+    label: "Cupones",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/verificaciones",
+    label: "Verificaciones",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
       </svg>
     ),
   },
@@ -120,7 +289,10 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
             </p>
             <p className="truncate text-xs text-zinc-400">{user?.email}</p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <ThemeToggle />
+          </div>
         </div>
         <button
           onClick={logout}

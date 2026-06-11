@@ -1,13 +1,52 @@
 import { Router } from 'express';
 import { notificationController } from '../controller/notification.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, authenticateOrInternal } from '../middleware/auth.middleware';
+import { pushProvider } from '../providers/push.provider';
 import {
   sendRateLimiter,
   batchSendRateLimiter,
   preferencesRateLimiter,
 } from '../middleware/rateLimiter';
+import {
+  sendDeliveryConfirmedArtistEmail,
+  sendBookingReminder7dEmail,
+  sendBookingReminder3dEmail,
+  sendBookingReminderSameDayEmail,
+  sendArtistReminderEmail,
+} from '../services/booking-emails.service';
+import { sendBandInvitationEmail } from '../services/band-emails.service';
 
 const router: Router = Router();
+
+// ============================================================================
+// Push Token Registration — llamado por las apps iOS al iniciar sesión
+// POST /api/notifications/push-token  { token, platform }
+// ============================================================================
+router.post('/push-token', authenticate, async (req: any, res) => {
+  const { token, platform } = req.body;
+  if (!token) return res.status(400).json({ error: 'token es requerido' });
+
+  const authUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:4001';
+  const rawToken = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
+
+  try {
+    const r = await fetch(`${authUrl}/auth/fcm-token`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${rawToken}`,
+      },
+      body: JSON.stringify({ fcmToken: token }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      return res.status(r.status).json(err);
+    }
+    return res.json({ ok: true, platform });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
 
 // ============================================================================
 // Send Notifications
@@ -15,11 +54,17 @@ const router: Router = Router();
 
 /**
  * POST /api/notifications/send-template-email
- * Send email from template (internal use, no auth required)
- * Used by other microservices like auth-service
+ * Send email from template (internal use only — requires x-internal-secret header)
  */
 router.post(
   '/send-template-email',
+  (req, res, next) => {
+    const secret = process.env.INTERNAL_SERVICE_SECRET;
+    if (!secret || req.headers['x-internal-secret'] !== secret) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    return next();
+  },
   notificationController.sendTemplateEmail.bind(notificationController)
 );
 
@@ -30,7 +75,7 @@ router.post(
  */
 router.post(
   '/send',
-  authenticate,
+  authenticateOrInternal,
   sendRateLimiter,
   notificationController.sendNotification.bind(notificationController)
 );
@@ -42,7 +87,7 @@ router.post(
  */
 router.post(
   '/batch',
-  authenticate,
+  authenticateOrInternal,
   batchSendRateLimiter,
   notificationController.batchSend.bind(notificationController)
 );
@@ -60,19 +105,8 @@ router.post(
 );
 
 // ============================================================================
-// Notification Queries
+// Notification Queries — rutas específicas ANTES de /:id para evitar shadowing
 // ============================================================================
-
-/**
- * GET /api/notifications/:id
- * Get notification by ID
- * Auth: Required
- */
-router.get(
-  '/:id',
-  authenticate,
-  notificationController.getNotificationById.bind(notificationController)
-);
 
 /**
  * GET /api/notifications
@@ -96,17 +130,6 @@ router.post(
   notificationController.markAsRead.bind(notificationController)
 );
 
-/**
- * DELETE /api/notifications/:id
- * Delete notification
- * Auth: Required
- */
-router.delete(
-  '/:id',
-  authenticate,
-  notificationController.deleteNotification.bind(notificationController)
-);
-
 // ============================================================================
 // Templates
 // ============================================================================
@@ -123,17 +146,6 @@ router.post(
 );
 
 /**
- * GET /api/notifications/templates/:key
- * Get template by key
- * Auth: Required
- */
-router.get(
-  '/templates/:key',
-  authenticate,
-  notificationController.getTemplateByKey.bind(notificationController)
-);
-
-/**
  * GET /api/notifications/templates
  * List all templates
  * Auth: Required
@@ -142,6 +154,17 @@ router.get(
   '/templates',
   authenticate,
   notificationController.listTemplates.bind(notificationController)
+);
+
+/**
+ * GET /api/notifications/templates/:key
+ * Get template by key
+ * Auth: Required
+ */
+router.get(
+  '/templates/:key',
+  authenticate,
+  notificationController.getTemplateByKey.bind(notificationController)
 );
 
 /**
@@ -207,5 +230,166 @@ router.get(
   authenticate,
   notificationController.getStats.bind(notificationController)
 );
+
+// ============================================================================
+// Dynamic :id routes — SIEMPRE al final para no capturar rutas específicas
+// ============================================================================
+
+/**
+ * GET /api/notifications/:id
+ * Get notification by ID
+ * Auth: Required
+ */
+router.get(
+  '/:id',
+  authenticate,
+  notificationController.getNotificationById.bind(notificationController)
+);
+
+/**
+ * DELETE /api/notifications/:id
+ * Delete notification
+ * Auth: Required
+ */
+router.delete(
+  '/:id',
+  authenticate,
+  notificationController.deleteNotification.bind(notificationController)
+);
+
+/**
+ * POST /api/notifications/internal/push
+ * Envía push directamente con fcmToken — solo inter-servicios (x-internal-secret)
+ */
+// Middleware reutilizable para rutas internas
+const internalOnly = (req: any, res: any, next: any) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
+
+// Helper: extrae BookingEmailData del body, valida campos mínimos
+const extractBookingEmailData = (body: any) => ({
+  bookingId: body.bookingId || '',
+  bookingCode: body.bookingCode || '',
+  clientId: body.clientId || '',
+  clientName: body.clientName || '',
+  clientEmail: body.clientEmail || '',
+  artistId: body.artistId || '',
+  artistName: body.artistName || '',
+  artistEmail: body.artistEmail || '',
+  artistCategory: body.artistCategory || '',
+  artistImage: body.artistImage || '',
+  serviceName: body.serviceName || '',
+  scheduledDate: body.scheduledDate || '',
+  durationMinutes: body.durationMinutes || 60,
+  location: body.location || '',
+  servicePrice: body.servicePrice || 0,
+  totalPrice: body.totalPrice || 0,
+  currency: body.currency || 'GTQ',
+  depositRequired: body.depositRequired || false,
+});
+
+/**
+ * POST /api/notifications/booking/reminder-7d — recordatorio 7 dias al cliente
+ */
+router.post('/booking/reminder-7d', internalOnly, async (req, res) => {
+  try {
+    await sendBookingReminder7dEmail(extractBookingEmailData(req.body));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/reminder-3d — recordatorio 3 dias al cliente
+ */
+router.post('/booking/reminder-3d', internalOnly, async (req, res) => {
+  try {
+    await sendBookingReminder3dEmail(extractBookingEmailData(req.body));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/reminder-same-day — recordatorio el mismo dia al cliente
+ */
+router.post('/booking/reminder-same-day', internalOnly, async (req, res) => {
+  try {
+    await sendBookingReminderSameDayEmail(extractBookingEmailData(req.body));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/artist-reminder — recordatorio al artista (any interval)
+ */
+router.post('/booking/artist-reminder', internalOnly, async (req, res) => {
+  const { daysLabel, ...rest } = req.body;
+  try {
+    await sendArtistReminderEmail(extractBookingEmailData(rest), daysLabel || '');
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/booking/delivery-confirmed-artist
+ * Envia email al artista cuando el cliente confirma la entrega — solo inter-servicios
+ */
+router.post('/booking/delivery-confirmed-artist', async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { artistEmail, artistName, clientName, serviceName, bookingCode, dashboardUrl } = req.body;
+  if (!artistEmail || !bookingCode) {
+    return res.status(400).json({ error: 'artistEmail y bookingCode son requeridos' });
+  }
+  try {
+    await sendDeliveryConfirmedArtistEmail({ artistEmail, artistName, clientName, serviceName, bookingCode, dashboardUrl });
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/notifications/band/invitation
+ * Envía email de invitación a banda — solo inter-servicios (x-internal-secret)
+ */
+router.post('/band/invitation', internalOnly, async (req, res) => {
+  const { invitedArtistEmail, invitedArtistName, bandName, inviterName, role, inviteMessage } = req.body;
+  if (!invitedArtistEmail || !bandName) {
+    return res.status(400).json({ error: 'invitedArtistEmail y bandName son requeridos' });
+  }
+  try {
+    await sendBandInvitationEmail({ invitedArtistEmail, invitedArtistName, bandName, inviterName, role, inviteMessage });
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/internal/push', async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { fcmToken, title, body, data } = req.body;
+  if (!fcmToken || !title || !body) {
+    return res.status(400).json({ error: 'fcmToken, title y body son requeridos' });
+  }
+  const result = await pushProvider.sendPush({ fcmToken, title, body, data });
+  return res.json(result);
+});
 
 export default router;

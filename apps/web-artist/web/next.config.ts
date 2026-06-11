@@ -5,20 +5,35 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   output: 'standalone',
   images: {
+    unoptimized: true,
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
     ],
   },
-  async rewrites() {
+  async headers() {
     return [
       {
-        // Proxy everything under /api/ to the gateway EXCEPT Next.js own API routes
-        source: '/api/:path*',
-        destination: `${process.env.GATEWAY_INTERNAL_URL || 'http://gateway:3000'}/api/:path*`,
-        // Next.js API routes take priority over rewrites, so /api/auth/login,
-        // /api/auth/firebase-google, /api/artist/*, etc. are served by Next.js directly.
+        source: '/(.*)',
+        headers: [
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+        ],
       },
     ];
+  },
+  async rewrites() {
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      // fallback: only proxy to gateway if no Next.js route (static or dynamic) matched.
+      // This ensures dynamic API routes like /api/catalog/services/[id] are handled by
+      // Next.js before falling through to the K8s gateway.
+      fallback: [
+        {
+          source: '/api/:path*',
+          destination: `${process.env.GATEWAY_INTERNAL_URL || 'http://gateway:3000'}/api/:path*`,
+        },
+      ],
+    };
   },
 };
 

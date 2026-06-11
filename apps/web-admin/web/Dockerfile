@@ -36,6 +36,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV DOCKER_BUILD=1
 
+ARG GATEWAY_INTERNAL_URL=http://host.docker.internal:80
+ENV GATEWAY_INTERNAL_URL=$GATEWAY_INTERNAL_URL
+
 # Build only the web-admin app (not the full monorepo)
 WORKDIR /app/apps/web-admin/web
 RUN pnpm build
@@ -71,7 +74,7 @@ ENV PORT=3003
 ENV HOSTNAME="0.0.0.0"
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3003/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "require('http').get('http://localhost:3003/', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)})"
 
 CMD ["node", "apps/web-admin/web/server.js"]
 

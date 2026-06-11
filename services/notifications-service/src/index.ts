@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { apiRateLimiter } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
@@ -12,15 +13,22 @@ import bookingRoutes from './routes/booking.routes';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 const PORT = process.env.PORT || 4006;
 
 // ============================================================================
 // Middleware
 // ============================================================================
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+
+app.use(helmet());
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+
+// Health check first — exempt from rate limiting (kube probes would exhaust the limit)
+app.use(healthRoutes);
 
 // Rate limiting
 app.use(apiRateLimiter);
@@ -37,8 +45,6 @@ app.use((req, _res, next) => {
 // ============================================================================
 // Routes
 // ============================================================================
-
-app.use(healthRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/notifications/booking', bookingRoutes);
 
@@ -60,12 +66,12 @@ app.use(errorHandler);
 // Start Server
 // ============================================================================
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Notifications service started on port ${PORT}`, 'SERVER', {
     port: PORT,
     env: process.env.NODE_ENV,
   });
-  
+
   logger.info('Features enabled:', 'SERVER', {
     email: process.env.ENABLE_EMAIL === 'true',
     sms: process.env.ENABLE_SMS === 'true',
@@ -79,10 +85,14 @@ app.listen(PORT, () => {
 
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully', 'SERVER');
-  process.exit(0);
+  server.close(() => process.exit(0));
 });
 
 process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully', 'SERVER');
-  process.exit(0);
+  server.close(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled promise rejection', 'SERVER', { reason: reason?.message });
 });

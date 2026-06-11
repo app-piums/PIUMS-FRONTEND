@@ -8,6 +8,7 @@ export interface ArtistData {
   name: string;
   email: string;
   bio?: string;
+  category?: string;
   specialties: string[];
   city?: string;
   state?: string;
@@ -29,12 +30,14 @@ export interface ArtistData {
     destinationCountry?: string | null;
   }>;
   geoCountry?: string | null; // Real-time GPS country code
+  avatar?: string | null;
+  coverPhoto?: string | null;
 }
 
 export const artistsClient = {
   async getArtist(artistId: string): Promise<ArtistData | null> {
     try {
-      const response = await fetch(`${ARTISTS_SERVICE_URL}/artists/${artistId}`);
+      const response = await fetch(`${ARTISTS_SERVICE_URL}/artists/${artistId}`, { signal: AbortSignal.timeout(10_000) });
 
       if (response.status === 404) {
         return null;
@@ -60,7 +63,7 @@ export const artistsClient = {
 
   async getAllArtists(page: number = 1, limit: number = 100): Promise<{ artists: ArtistData[], pagination: any }> {
     try {
-      const response = await fetch(`${ARTISTS_SERVICE_URL}/artists/search?page=${page}&limit=${limit}`);
+      const response = await fetch(`${ARTISTS_SERVICE_URL}/artists/search?page=${page}&limit=${limit}`, { signal: AbortSignal.timeout(10_000) });
 
       if (!response.ok) {
         throw new Error(`Artists service error: ${response.statusText}`);

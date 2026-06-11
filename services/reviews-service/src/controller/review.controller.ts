@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth.middleware";
+import { AppError } from "../middleware/errorHandler";
 import { reviewService } from "../services/review.service";
 import {
   createReviewSchema,
@@ -68,8 +69,9 @@ export class ReviewController {
     try {
       const id = req.params.id as string;
       const userId = req.user.id;
+      const isAdmin = req.user.role === 'admin';
 
-      const review = await reviewService.deleteReview(id, userId);
+      const review = await reviewService.deleteReview(id, userId, isAdmin);
       res.json({ message: "Reseña eliminada", review });
     } catch (error) {
       next(error);
@@ -81,8 +83,19 @@ export class ReviewController {
   async respondToReview(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const reviewId = req.params.id as string;
-      const artistId = req.user.id;
+      const authId = req.user.id;
       const { message } = respondReviewSchema.parse(req.body);
+
+      // Resolve authId → artistId via artists-service internal endpoint
+      const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+      const artistRes = await fetch(
+        `${artistsUrl}/artists/internal/by-auth/${authId}`,
+        { headers: { 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET || '' } }
+      );
+      if (!artistRes.ok) {
+        throw new AppError(403, 'No tienes un perfil de artista activo');
+      }
+      const { id: artistId } = await artistRes.json() as { id: string };
 
       const response = await reviewService.respondToReview(reviewId, artistId, message);
       res.status(201).json(response);
@@ -148,7 +161,7 @@ export class ReviewController {
 
   async getPendingReports(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      // TODO: Verificar que el usuario es admin
+      if (req.user.role !== 'admin') return next(new AppError(403, 'Admin only'));
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const estado = req.query.estado as string | undefined;
@@ -160,7 +173,7 @@ export class ReviewController {
     }
   }
 
-  async getAdminStats(req: AuthRequest, res: Response, next: NextFunction) {
+  async getAdminStats(_req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const stats = await reviewService.getAdminStats();
       res.json(stats);
@@ -177,7 +190,8 @@ export class ReviewController {
 
       const status = action === "dismissed" ? "DISMISSED" : "RESOLVED";
 
-      const report = await reviewService.resolveReport(id, resolvedBy, {
+      const reportId = Array.isArray(id) ? id[0] : id;
+      const report = await reviewService.resolveReport(reportId, resolvedBy, {
         status,
         resolution: notes,
       });
@@ -191,7 +205,7 @@ export class ReviewController {
   async getReportMessages(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const messages = await reviewService.getReportMessages(id);
+      const messages = await reviewService.getReportMessages(Array.isArray(id) ? id[0] : id);
       res.json({ messages });
     } catch (error) {
       next(error);
@@ -203,7 +217,7 @@ export class ReviewController {
       const { id } = req.params;
       const { message } = req.body;
       const senderId = req.user.id;
-      const msg = await reviewService.addReportMessage(id, senderId, "staff", message);
+      const msg = await reviewService.addReportMessage(Array.isArray(id) ? id[0] : id, senderId, "staff", message);
       res.status(201).json(msg);
     } catch (error) {
       next(error);

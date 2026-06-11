@@ -8,7 +8,7 @@ import {
 import { authenticateToken } from "../middleware/auth.middleware";
 import { apiLimiter } from "../middleware/rateLimiter";
 
-const router = Router();
+const router: Router = Router();
 
 // Todas las rutas requieren autenticación
 router.use(authenticateToken);

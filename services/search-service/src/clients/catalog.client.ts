@@ -29,7 +29,7 @@ export interface ServiceData {
 export const catalogClient = {
   async getService(serviceId: string): Promise<ServiceData | null> {
     try {
-      const response = await fetch(`${CATALOG_SERVICE_URL}/api/services/${serviceId}`);
+      const response = await fetch(`${CATALOG_SERVICE_URL}/api/services/${serviceId}`, { signal: AbortSignal.timeout(10_000) });
 
       if (response.status === 404) {
         return null;
@@ -54,7 +54,7 @@ export const catalogClient = {
 
   async getAllServices(page: number = 1, limit: number = 100): Promise<{ services: ServiceData[], pagination: any }> {
     try {
-      const response = await fetch(`${CATALOG_SERVICE_URL}/api/services?page=${page}&limit=${limit}&includeInactive=false`);
+      const response = await fetch(`${CATALOG_SERVICE_URL}/api/services?page=${page}&limit=${limit}&includeInactive=false`, { signal: AbortSignal.timeout(10_000) });
 
       if (!response.ok) {
         throw new Error(`Catalog service error: ${response.statusText}`);
@@ -79,7 +79,7 @@ export const catalogClient = {
 
   async getServicesByArtist(artistId: string): Promise<ServiceData[]> {
     try {
-      const response = await fetch(`${CATALOG_SERVICE_URL}/api/services?artistId=${artistId}&includeInactive=false`);
+      const response = await fetch(`${CATALOG_SERVICE_URL}/api/services?artistId=${artistId}&includeInactive=false`, { signal: AbortSignal.timeout(10_000) });
 
       if (!response.ok) {
         throw new Error(`Catalog service error: ${response.statusText}`);

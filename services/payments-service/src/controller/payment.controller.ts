@@ -55,6 +55,69 @@ export class PaymentController {
     }
   }
 
+  // ==================== INIT CHECKOUT (Tilopay / Stripe) ====================
+
+  async initCheckout(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const { bookingId, currency, countryCode, description, returnUrl, captureMode } = req.body as {
+        bookingId: string;
+        currency?: string;
+        countryCode?: string;
+        description?: string;
+        returnUrl?: string;
+        captureMode?: 'manual' | 'automatic';
+      };
+
+      if (!bookingId) return res.status(400).json({ error: 'bookingId es requerido' });
+
+      const result = await paymentService.initCheckout({
+        bookingId,
+        userId,
+        currency: currency || 'USD',
+        countryCode,
+        description,
+        returnUrl,
+        captureMode,
+      });
+
+      res.status(201).json(result);
+      return;
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async initTicketCheckout(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const { purchaseId, amount, currency, countryCode, returnUrl } = req.body as {
+        purchaseId: string;
+        amount: number;
+        currency?: string;
+        countryCode?: string;
+        returnUrl?: string;
+      };
+
+      if (!purchaseId) return res.status(400).json({ error: 'purchaseId es requerido' });
+      if (!amount || amount <= 0) return res.status(400).json({ error: 'amount debe ser mayor a 0' });
+
+      const result = await paymentService.initTicketCheckout({
+        purchaseId,
+        userId,
+        amount,
+        currency: currency || 'USD',
+        countryCode,
+        returnUrl,
+      });
+
+      res.status(201).json(result);
+      return;
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   async cancelPaymentIntent(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
@@ -125,16 +188,92 @@ export class PaymentController {
   async getRefundById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params['id'] as string;
+      const userId = req.user!.id;
 
-      const refund = await paymentService.getRefundById(id);
+      const refund = await paymentService.getRefundById(id, userId);
 
-      res.json(refund);
+      return res.json(refund);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // ==================== TILOPAY REDIRECT CONFIRM ====================
+
+  async confirmTilopayRedirect(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { bookingId, responseCode, orderNumber, auth, amount, currency, orderHash, external_orden_id, cardHash, cardBrand, cardLast4 } = req.body as {
+        bookingId: string;
+        responseCode: string;
+        orderNumber: string;
+        auth?: string;
+        amount: string;
+        currency?: string;
+        orderHash?: string;
+        external_orden_id?: string;
+        cardHash?: string;
+        cardBrand?: string;
+        cardLast4?: string;
+      };
+
+      if (!bookingId || !responseCode || !orderNumber) {
+        return res.status(400).json({ error: 'Faltan parámetros requeridos' });
+      }
+
+      const result = await paymentService.confirmTilopayRedirect({
+        bookingId,
+        responseCode,
+        orderNumber,
+        auth,
+        amount,
+        currency: currency || 'USD',
+        orderHash,
+        external_orden_id,
+        cardHash,
+        cardBrand,
+        cardLast4,
+        userId: req.user!.id,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // ==================== STATISTICS ====================
+
+  // ==================== INTERNAL: CAPTURE / VOID ====================
+
+  async chargeRemainingBalance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.bookingId as string;
+      const result = await paymentService.chargeRemainingBalance(bookingId);
+      res.json(result);
     } catch (error) {
       next(error);
     }
   }
 
-  // ==================== STATISTICS ====================
+  async captureBookingPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.bookingId as string;
+      await paymentService.captureBookingPayment(bookingId);
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async voidBookingPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const bookingId = req.params.bookingId as string;
+      await paymentService.voidBookingPayment(bookingId);
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
 
   async getPaymentStats(req: Request, res: Response, next: NextFunction) {
     try {

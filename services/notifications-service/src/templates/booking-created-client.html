@@ -265,6 +265,12 @@
                     <div class="detail-label">Ubicación</div>
                     <div class="detail-value">{{location}}</div>
                 </div>
+                {{#if hasEventType}}
+                <div class="detail-row">
+                    <div class="detail-label">Tipo de evento</div>
+                    <div class="detail-value">{{eventTypeIcon}} {{eventTypeLabel}}</div>
+                </div>
+                {{/if}}
             </div>
 
             <!-- Price Box -->
@@ -285,7 +291,7 @@
                 </div>
                 {{#if depositRequired}}
                 <p style="margin-top: 15px; font-size: 14px; color: #d97706;">
-                    ⚠️ Se requiere un depósito de {{depositAmount}} para confirmar la reserva.
+                    Se requiere un depósito de {{depositAmount}} para confirmar la reserva.
                 </p>
                 {{/if}}
             </div>

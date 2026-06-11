@@ -6,6 +6,24 @@ import { usersApi, type AdminUserRow } from "@/lib/api";
 import { AdminGuard } from "@/components/AdminGuard";
 
 const ROLES = ["", "cliente", "artista", "admin"];
+const PROVIDERS = ["", "email", "google", "facebook", "tiktok"];
+const PROVIDER_LABELS: Record<string, string> = {
+  "": "Todos los orígenes",
+  email: "Email / Contraseña",
+  google: "Google",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+};
+
+const CATEGORIES = ["", "MUSICO", "FOTOGRAFO", "VIDEOGRAFO", "ANIMADOR", "CREADOR_CONTENIDO"];
+const CATEGORY_LABELS: Record<string, string> = {
+  "": "Todas las categorías",
+  MUSICO: "Músico",
+  FOTOGRAFO: "Fotógrafo",
+  VIDEOGRAFO: "Videógrafo",
+  ANIMADOR: "Animador",
+  CREADOR_CONTENIDO: "Creador de Contenido",
+};
 
 function StatusBadge({ blocked }: { blocked: boolean }) {
   return (
@@ -45,11 +63,26 @@ function UsersContent() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [role, setRole] = useState("");
+  const [provider, setProvider] = useState("");
+  const [category, setCategory] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState<AdminUserRow | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AdminUserRow | null>(null);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      await usersApi.exportCSV({ role, provider, search, category });
+    } catch (err) {
+      console.error("Error exportando CSV:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-users", page, search, role],
-    queryFn: () => usersApi.list({ page, limit: 20, search, role }),
+    queryKey: ["admin-users", page, search, role, provider, category],
+    queryFn: () => usersApi.list({ page, limit: 20, search, role, provider, category }),
   });
 
   const blockMutation = useMutation({
@@ -57,6 +90,14 @@ function UsersContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       setConfirmBlock(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => usersApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      setConfirmDelete(null);
     },
   });
 
@@ -94,7 +135,7 @@ function UsersContent() {
         </form>
         <select
           value={role}
-          onChange={(e) => { setRole(e.target.value); setPage(1); }}
+          onChange={(e) => { setRole(e.target.value); setPage(1); if (e.target.value !== "artista") setCategory(""); }}
           className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 focus:border-[#FF6A00] focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
         >
           {ROLES.map((r) => (
@@ -103,6 +144,44 @@ function UsersContent() {
             </option>
           ))}
         </select>
+        <select
+          value={provider}
+          onChange={(e) => { setProvider(e.target.value); setPage(1); }}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 focus:border-[#FF6A00] focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+        >
+          {PROVIDERS.map((p) => (
+            <option key={p} value={p}>
+              {PROVIDER_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        {role === "artista" && (
+          <select
+            value={category}
+            onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 focus:border-[#FF6A00] focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          onClick={handleExport}
+          disabled={isExporting}
+          className="flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+        >
+          {isExporting ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
+          ) : (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          )}
+          {isExporting ? "Exportando…" : "Exportar CSV"}
+        </button>
       </div>
 
       {/* Mobile cards */}
@@ -128,16 +207,24 @@ function UsersContent() {
                     <span className="text-xs text-zinc-400">{new Date(u.createdAt).toLocaleDateString("es-MX")}</span>
                   </div>
                   {u.role !== "admin" && (
-                    <button
-                      onClick={() => setConfirmBlock(u)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                        u.isBlocked
-                          ? "bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-400"
-                          : "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-400"
-                      }`}
-                    >
-                      {u.isBlocked ? "Desbloquear" : "Bloquear"}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setConfirmBlock(u)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                          u.isBlocked
+                            ? "bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-400"
+                            : "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-400"
+                        }`}
+                      >
+                        {u.isBlocked ? "Desbloquear" : "Bloquear"}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(u)}
+                        className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-red-500 dark:hover:text-white"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -172,6 +259,9 @@ function UsersContent() {
                   Registrado
                 </th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Último acceso
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   Acción
                 </th>
               </tr>
@@ -196,25 +286,38 @@ function UsersContent() {
                   <td className="px-5 py-3.5 text-xs text-zinc-400">
                     {new Date(u.createdAt).toLocaleDateString("es-MX")}
                   </td>
+                  <td className="px-5 py-3.5 text-xs text-zinc-400">
+                    {u.lastLoginAt
+                      ? new Date(u.lastLoginAt).toLocaleDateString("es-MX")
+                      : <span className="text-zinc-300 dark:text-zinc-600">—</span>}
+                  </td>
                   <td className="px-5 py-3.5">
                     {u.role !== "admin" && (
-                      <button
-                        onClick={() => setConfirmBlock(u)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                          u.isBlocked
-                            ? "bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-400"
-                            : "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-400"
-                        }`}
-                      >
-                        {u.isBlocked ? "Desbloquear" : "Bloquear"}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmBlock(u)}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                            u.isBlocked
+                              ? "bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-400"
+                              : "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-400"
+                          }`}
+                        >
+                          {u.isBlocked ? "Desbloquear" : "Bloquear"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(u)}
+                          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-red-500 dark:hover:text-white"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
               ))}
               {data?.users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={6} className="py-12 text-center text-sm text-zinc-400">
                     No se encontraron usuarios
                   </td>
                 </tr>
@@ -287,6 +390,41 @@ function UsersContent() {
                   : confirmBlock.isBlocked
                   ? "Desbloquear"
                   : "Bloquear"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm delete modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-zinc-900">
+            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+              ¿Eliminar usuario?
+            </h3>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              {confirmDelete.nombre} ({confirmDelete.email}) se eliminará de forma permanente, junto con su perfil de artista (si aplica).
+            </p>
+            <p className="mt-2 text-xs font-medium text-red-600">Esta acción no se puede deshacer.</p>
+            {deleteMutation.isError && (
+              <p className="mt-3 text-xs text-red-500">
+                {(deleteMutation.error as Error).message}
+              </p>
+            )}
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-lg border border-zinc-200 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(confirmDelete.id)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleteMutation.isPending ? "Eliminando…" : "Eliminar"}
               </button>
             </div>
           </div>

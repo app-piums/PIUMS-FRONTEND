@@ -1,7 +1,10 @@
 import { Router } from 'express';
+import { PrismaClient } from '@prisma/client';
 import { searchController } from '../controller/search.controller';
 import { searchLimiter, autocompleteLimiter, indexLimiter } from '../middleware/rateLimiter';
 import { optionalAuth, requireAuth } from '../middleware/auth.middleware';
+
+const prisma = new PrismaClient();
 
 const router: Router = Router();
 
@@ -17,7 +20,22 @@ router.post('/index/service', requireAuth, indexLimiter, searchController.indexS
 router.post('/index/bulk', requireAuth, indexLimiter, searchController.bulkIndex);
 router.get('/index/status', requireAuth, searchController.getIndexStatus);
 
+// Remove an artist from the index by its id (artists-service id, same as ArtistIndex.id)
+router.delete('/index/artist/:id', requireAuth, async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    await prisma.artistIndex.deleteMany({ where: { id } });
+    await prisma.serviceIndex.deleteMany({ where: { artistId: id } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Analytics endpoints
 router.get('/popular', searchController.getPopularSearches);
+
+// Dynamic synonym registration — called from artist onboarding for custom roles
+router.post('/synonyms', requireAuth, searchController.addSynonym);
 
 export default router;

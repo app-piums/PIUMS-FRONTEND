@@ -30,8 +30,8 @@ const CATEGORIES = [
   { value: 'ESCULTOR',   label: 'Escultor' },
   { value: 'ESCRITOR',   label: 'Escritor / Letrista' },
   { value: 'MAGO',       label: 'Mago / Ilusionista' },
-  { value: 'ACROBATA',   label: 'Acróbata / Circo' },
-  { value: 'OTRO',       label: 'Otro' },
+  { value: 'ACROBATA',          label: 'Acróbata / Circo' },
+  { value: 'CREADOR_CONTENIDO', label: 'Creador de Contenido' },
 ];
 
 const CITIES_BY_COUNTRY: Record<string, { label: string; regions: { value: string; label: string }[] }> = {
@@ -149,6 +149,12 @@ function ArtistsPageContent() {
   const [clientCountry, setClientCountry] = useState<string>(
     () => (typeof window !== 'undefined' ? localStorage.getItem('client_country') ?? '' : '')
   );
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortBy, setSortBy] = useState<'relevance' | 'rating' | 'price_low' | 'price_high'>('relevance');
+  const [minRating, setMinRating] = useState(0);
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [showVerifiedOnly, setShowVerifiedOnly] = useState(false);
 
   // Debounce: wait 400ms after the user stops typing before firing the search
   useEffect(() => {
@@ -233,6 +239,38 @@ function ArtistsPageContent() {
   const allArtists = data?.pages.flatMap(p => p.artists) ?? [];
   const totalArtists = data?.pages[0]?.total ?? 0;
 
+  const activeFilterCount = [minRating > 0, minPrice !== '', maxPrice !== '', showVerifiedOnly].filter(Boolean).length;
+
+  // hourlyRateMin is stored in cents in the artists-service DB → divide by 100 to get USD
+  const artistPriceUSD = (a: any): number | null => {
+    if (a.hourlyRateMin != null) return a.hourlyRateMin / 100;
+    if (a.mainServicePrice != null) return a.mainServicePrice;
+    return null;
+  };
+
+  const displayedArtists = (() => {
+    let result = allArtists.filter(a => {
+      if (showVerifiedOnly) {
+        const verified = (a as any).verificationStatus === 'VERIFIED' || (a as any).isVerified === true;
+        if (!verified) return false;
+      }
+      if (minRating > 0 && ((a as any).rating ?? 0) < minRating) return false;
+      const price = artistPriceUSD(a as any);
+      if (minPrice && price !== null && price < parseFloat(minPrice)) return false;
+      if (maxPrice && price !== null && price > parseFloat(maxPrice)) return false;
+      return true;
+    });
+    if (sortBy !== 'relevance') {
+      result = [...result].sort((a, b) => {
+        if (sortBy === 'rating') return ((b as any).rating ?? 0) - ((a as any).rating ?? 0);
+        const pa = artistPriceUSD(a as any) ?? (sortBy === 'price_low' ? Infinity : 0);
+        const pb = artistPriceUSD(b as any) ?? (sortBy === 'price_low' ? Infinity : 0);
+        return sortBy === 'price_low' ? pa - pb : pb - pa;
+      });
+    }
+    return result;
+  })();
+
   return (
     <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
       <ClientSidebar userName={user?.nombre ?? 'Usuario'} />
@@ -245,7 +283,7 @@ function ArtistsPageContent() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Explorar Artistas</h1>
             {eventDate ? (
-              <p className="text-sm text-[#FF6A00] font-medium">
+              <p className="text-sm text-[#FF6B35] font-medium">
                 Disponibilidad para el {new Date(eventDate + 'T12:00:00').toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             ) : (
@@ -274,7 +312,7 @@ function ArtistsPageContent() {
             <div>
               <h1 className="text-xl font-bold text-gray-900">Explorar Artistas</h1>
               {eventDate ? (
-                <p className="text-sm text-[#FF6A00] font-medium mt-0.5">
+                <p className="text-sm text-[#FF6B35] font-medium mt-0.5">
                   Disponibilidad: {new Date(eventDate + 'T12:00:00').toLocaleDateString('es-GT', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </p>
               ) : (
@@ -290,7 +328,7 @@ function ArtistsPageContent() {
 
           {/* Filters */}
           <form onSubmit={handleSearch} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
-            {/* Main search bar — full-width and prominent */}
+            {/* Main search bar */}
             <div className="relative mb-3">
               <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
@@ -298,25 +336,23 @@ function ArtistsPageContent() {
                 placeholder="Nombre, ciudad, estilo... (ej: músico, DJ, fotografía)"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 text-base border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/30 focus:border-[#FF6A00] transition placeholder:text-gray-300"
+                className="w-full pl-12 pr-4 py-3.5 text-base border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35] transition placeholder:text-gray-300"
               />
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* hidden placeholder to keep structure intact */}
-              <div className="hidden" />
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={selectedCategory}
                 onChange={e => { setSelectedCategory(e.target.value); updateURL({ category: e.target.value }); }}
-                className="sm:w-44 px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] transition text-gray-700"
+                className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20 focus:border-[#FF6B35] transition text-gray-700"
               >
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
               <select
                 value={selectedCity}
                 onChange={e => { setSelectedCity(e.target.value); updateURL({ location: e.target.value }); }}
-                className="sm:w-44 px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] transition text-gray-700"
+                className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20 focus:border-[#FF6B35] transition text-gray-700"
               >
-              {cities.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                {cities.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
               <input
                 type="number"
@@ -324,22 +360,124 @@ function ArtistsPageContent() {
                 value={guests}
                 onChange={e => setGuests(e.target.value)}
                 placeholder="# personas"
-                className="sm:w-32 px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] transition text-gray-700"
+                className="w-28 px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20 focus:border-[#FF6B35] transition text-gray-700"
               />
+              {/* Sort */}
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20 focus:border-[#FF6B35] transition text-gray-700"
+              >
+                <option value="relevance">Relevancia</option>
+                <option value="rating">Mejor valorados</option>
+                <option value="price_low">Precio: menor a mayor</option>
+                <option value="price_high">Precio: mayor a menor</option>
+              </select>
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-[#FF6A00] text-white text-sm font-semibold rounded-xl hover:bg-[#e05e00] transition-colors"
+                className="px-5 py-2.5 bg-[#FF6B35] text-white text-sm font-semibold rounded-xl hover:bg-[#e05e00] transition-colors"
               >
                 Buscar
               </button>
+              {/* Advanced filters */}
+              <button
+                type="button"
+                onClick={() => setShowFilters(v => !v)}
+                className={`relative px-4 py-2.5 text-sm font-semibold rounded-xl border transition-colors flex items-center gap-2 ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-[#FF6B35] border-[#FF6B35] text-white shadow-sm shadow-orange-200'
+                    : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-[#FF6B35] hover:text-[#FF6B35]'
+                }`}
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                Filtros
+                {activeFilterCount > 0 && (
+                  <span className="ml-0.5 h-4 w-4 rounded-full bg-white text-[#FF6B35] text-[10px] font-bold flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
             </div>
+
+            {/* Expanded filter panel */}
+            {showFilters && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Rating */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Calificación mínima</label>
+                    <StarRatingFilter value={minRating} onChange={setMinRating} />
+                  </div>
+
+                  {/* Price range */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Precio por hora (USD)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={minPrice}
+                        onChange={e => setMinPrice(e.target.value)}
+                        placeholder="Mín"
+                        min={0}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35] transition"
+                      />
+                      <span className="text-gray-300 font-medium shrink-0">—</span>
+                      <input
+                        type="number"
+                        value={maxPrice}
+                        onChange={e => setMaxPrice(e.target.value)}
+                        placeholder="Máx"
+                        min={0}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35] transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Verified */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Verificación</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowVerifiedOnly(v => !v)}
+                      className={`w-full text-sm py-2.5 rounded-xl border transition-all font-semibold flex items-center gap-2 justify-center ${
+                        showVerifiedOnly
+                          ? 'bg-[#FF6B35] border-[#FF6B35] text-white shadow-sm shadow-orange-200'
+                          : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-[#FF6B35] hover:text-[#FF6B35]'
+                      }`}
+                    >
+                      <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Solo verificados
+                    </button>
+                  </div>
+                </div>
+
+                {activeFilterCount > 0 && (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setMinRating(0); setMinPrice(''); setMaxPrice(''); setShowVerifiedOnly(false); }}
+                      className="text-xs text-gray-400 hover:text-[#FF6B35] transition-colors font-medium"
+                    >
+                      Limpiar filtros avanzados
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </form>
 
           {/* Count badge */}
-          {!isLoading && totalArtists > 0 && (
+          {!isLoading && allArtists.length > 0 && (
             <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-gray-400">
-                {totalArtists} {totalArtists === 1 ? 'artista encontrado' : 'artistas encontrados'}
+              <p className="text-xs text-gray-500 font-medium">
+                <span className="text-[#FF6B35] font-semibold">{displayedArtists.length}</span>
+                {activeFilterCount > 0 && displayedArtists.length !== totalArtists
+                  ? ` de ${totalArtists} artistas`
+                  : ` artista${displayedArtists.length !== 1 ? 's' : ''} encontrado${displayedArtists.length !== 1 ? 's' : ''}`}
               </p>
               {eventDate && !loadingAvailability && busyArtistIds.size > 0 && (
                 <p className="text-xs text-amber-600 font-medium">
@@ -360,22 +498,22 @@ function ArtistsPageContent() {
               <p className="text-gray-700 font-medium">Error al cargar artistas</p>
               <button
                 onClick={() => window.location.reload()}
-                className="text-sm text-[#FF6A00] hover:underline font-medium"
+                className="text-sm text-[#FF6B35] hover:underline font-medium"
               >
                 Intentar de nuevo
               </button>
             </div>
-          ) : allArtists.length === 0 ? (
+          ) : displayedArtists.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-100 py-16 flex flex-col items-center gap-3 text-center">
               <div className="h-14 w-14 rounded-2xl bg-orange-50 flex items-center justify-center">
-                <SearchIcon className="h-7 w-7 text-[#FF6A00]" />
+                <SearchIcon className="h-7 w-7 text-[#FF6B35]" />
               </div>
               <p className="text-gray-700 font-medium">No se encontraron artistas</p>
               <p className="text-sm text-gray-400">Intenta ajustar los filtros de búsqueda</p>
               {hasActiveFilters && (
                 <button
                   onClick={handleClearFilters}
-                  className="text-sm text-[#FF6A00] hover:underline font-medium"
+                  className="text-sm text-[#FF6B35] hover:underline font-medium"
                 >
                   Limpiar filtros
                 </button>
@@ -384,7 +522,7 @@ function ArtistsPageContent() {
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 mb-8">
-                {allArtists.map(artist => (
+                {displayedArtists.map(artist => (
                   <div key={artist.id} className="relative">
                     {busyArtistIds.has(artist.id) && (
                       <div className="absolute inset-0 z-10 rounded-2xl bg-gray-900/50 flex flex-col items-center justify-center gap-2 pointer-events-none">
@@ -403,7 +541,7 @@ function ArtistsPageContent() {
                 <div ref={loadMoreRef} className="flex justify-center py-8">
                   {isFetchingNextPage ? (
                     <div className="flex items-center gap-3 text-gray-500 text-sm">
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-200 border-t-[#FF6A00]" />
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-200 border-t-[#FF6B35]" />
                       Cargando más artistas...
                     </div>
                   ) : (
@@ -441,6 +579,33 @@ export default function ArtistsPage() {
     >
       <ArtistsPageContent />
     </Suspense>
+  );
+}
+
+function StarRatingFilter({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [hovered, setHovered] = React.useState(0);
+  const active = hovered > 0 ? hovered : value;
+  return (
+    <div className="flex items-center gap-1.5">
+      {[1, 2, 3, 4, 5].map(star => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => onChange(star === value ? 0 : star)}
+          onMouseEnter={() => setHovered(star)}
+          onMouseLeave={() => setHovered(0)}
+          className="transition-transform hover:scale-125 focus:outline-none"
+          aria-label={`${star} estrella${star !== 1 ? 's' : ''}`}
+        >
+          <svg className="h-7 w-7 drop-shadow-sm" viewBox="0 0 20 20"
+            fill={star <= active ? '#F59E0B' : 'none'}
+            stroke={star <= active ? '#F59E0B' : '#D1D5DB'}
+            strokeWidth={1.2}>
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+        </button>
+      ))}
+    </div>
   );
 }
 

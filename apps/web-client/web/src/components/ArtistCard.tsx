@@ -1,18 +1,45 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { cImg } from '@/lib/cloudinaryImg';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import type { Artist } from '@piums/sdk';
+import { Sparkles } from 'lucide-react';
+
+const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
+  MUSICO:     ['#FF6B35', '#F59E0B'],
+  DJ:         ['#FF6B35', '#C026D3'],
+  FOTOGRAFO:  ['#F59E0B', '#1D4ED8'],
+  VIDEOGRAFO: ['#4F46E5', '#C026D3'],
+  DISENADOR:  ['#F59E0B', '#10B981'],
+  BAILARIN:   ['#FF6B35', '#EF4444'],
+  ANIMADOR:   ['#F59E0B', '#FF6B35'],
+  TATUADOR:   ['#1E1B4B', '#7C3AED'],
+  MAQUILLADOR:['#EC4899', '#9D174D'],
+  PINTOR:     ['#0891B2', '#059669'],
+  ESCULTOR:   ['#475569', '#1E293B'],
+  ESCRITOR:   ['#4F46E5', '#F59E0B'],
+  MAGO:       ['#7C3AED', '#4F46E5'],
+  ACROBATA:   ['#FF6B35', '#F59E0B'],
+};
+
+function coverGradient(category?: string): string {
+  const [a, b] = CATEGORY_GRADIENTS[category ?? ''] ?? ['#FF6B35', '#F59E0B'];
+  return `linear-gradient(135deg, ${a} 0%, ${b} 100%)`;
+}
 
 interface ArtistCardProps {
   artist: Artist;
 }
+
+// 60-day window for "new artist" badge
+const isNewArtist = (a: Artist) =>
+  !!a.createdAt && new Date(a.createdAt) >= new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
 
 export const ArtistCard: React.FC<ArtistCardProps> = ({ artist }) => {
   const { formatPrice } = useCurrency();
@@ -20,13 +47,21 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({ artist }) => {
     <Link href={`/artists/${artist.slug || artist.id}`}>
       <Card hover padding="none" className="overflow-hidden h-full">
         {/* Cover Photo */}
-        <div className="relative h-48 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400">
+        <div className="relative h-48 overflow-hidden" style={{ background: coverGradient(artist.category) }}>
+          {!artist.coverPhoto && (
+            <>
+              <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                <span className="text-white font-black" style={{ fontSize: '7rem', lineHeight: 1, opacity: 0.12 }}>
+                  {(artist.nombre?.[0] ?? '?').toUpperCase()}
+                </span>
+              </div>
+            </>
+          )}
           {artist.coverPhoto && (
-            <Image
-              src={artist.coverPhoto}
+            <img
+              src={cImg(artist.coverPhoto)}
               alt={artist.nombre}
-              width={768}
-              height={384}
               className="w-full h-full object-cover"
             />
           )}
@@ -34,7 +69,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({ artist }) => {
           {/* Badges */}
           <div className="absolute top-3 right-3 flex flex-col gap-2">
             {artist.isVerified && (
-              <Badge variant="success" size="sm" className="bg-white text-green-600">
+              <Badge variant="success" size="sm" className="bg-[#FF6B35] text-white border-none shadow-md">
                 <svg className="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
@@ -44,6 +79,12 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({ artist }) => {
             {artist.isPremium && (
               <Badge variant="warning" size="sm" className="bg-yellow-100 text-yellow-800">
                 Premium
+              </Badge>
+            )}
+            {isNewArtist(artist) && (
+              <Badge variant="warning" size="sm" className="bg-amber-400 text-white border-none shadow-md flex items-center gap-1">
+                <Sparkles size={11} />
+                Nuevo
               </Badge>
             )}
           </div>
@@ -119,7 +160,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({ artist }) => {
           {artist.matchedService ? (
             <div className="flex items-center justify-between gap-2 bg-orange-50 rounded-lg px-2.5 py-1.5 mb-3">
               <span className="text-xs text-gray-500 truncate">{artist.matchedService.name}</span>
-              <span className="text-xs font-bold text-[#FF6A00] shrink-0">
+              <span className="text-xs font-bold text-[#FF6B35] shrink-0">
                 {formatPrice(artist.matchedService.price)}
               </span>
             </div>
@@ -128,7 +169,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({ artist }) => {
               <span className="text-xs text-gray-500 truncate">
                 {artist.mainServiceName ?? 'Servicio principal'}
               </span>
-              <span className="text-sm font-semibold text-[#FF6A00]">
+              <span className="text-sm font-semibold text-[#FF6B35]">
                 Desde {formatPrice(artist.mainServicePrice)}
               </span>
             </div>

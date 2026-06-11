@@ -1,6 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import type { Artist, GetArtistsParams, SmartSearchParams } from '@piums/sdk';
-import { MOCK_ARTISTS } from '@/lib/mockData';
+import type { Artist, GetArtistsParams } from '@piums/sdk';
 
 export interface ArtistsFilters {
   q?: string;
@@ -37,32 +36,6 @@ function resolveFilters(filters: ArtistsFilters): ArtistsFilters {
   return { ...filters, q: norm };
 }
 
-// ─── Mock data path ───────────────────────────────────────────────────────────
-
-const getMockPage = (page: number, filters: ArtistsFilters): ArtistsPageResponse => {
-  const resolved = resolveFilters(filters);
-  let filtered = MOCK_ARTISTS as Artist[];
-  if (resolved.category) filtered = filtered.filter(a => a.category?.toLowerCase() === resolved.category!.toLowerCase());
-  if (resolved.cityId) filtered = filtered.filter(a => a.cityId === resolved.cityId);
-  if (resolved.q) {
-    const q = resolved.q;
-    filtered = filtered.filter(a =>
-      stripAccents(a.nombre).toLowerCase().includes(q) ||
-      (a.category && stripAccents(a.category).toLowerCase().includes(q))
-    );
-  }
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
-  const start = (page - 1) * ITEMS_PER_PAGE;
-  return {
-    artists: filtered.slice(start, start + ITEMS_PER_PAGE),
-    total,
-    page,
-    totalPages,
-    hasNextPage: page < totalPages,
-  };
-};
-
 // ─── Real API path ────────────────────────────────────────────────────────────
 
 type ArtistsQueryParams = GetArtistsParams;
@@ -72,43 +45,35 @@ const fetchArtistsPage = async (
   filters: ArtistsFilters
 ): Promise<ArtistsPageResponse> => {
   try {
-    const { sdk } = await import('@piums/sdk');
     const resolved = resolveFilters(filters);
 
-    // When a free-text query is present (and no explicit category override),
-    // use the smart semantic search endpoint for synonym expansion + scoring.
-    if (resolved.q && !resolved.category) {
-      const params: SmartSearchParams = {
-        q: resolved.q,
-        page,
-        limit: ITEMS_PER_PAGE,
-        ...(resolved.cityId && { city: resolved.cityId }),
-        ...(filters.guests != null && { minGuests: filters.guests }),
-      };
-      const result = await sdk.smartSearch(params);
-      return {
-        artists: result.artists,
-        total: result.pagination.total,
-        page: result.pagination.page,
-        totalPages: result.pagination.totalPages,
-        hasNextPage: result.pagination.page < result.pagination.totalPages,
-      };
-    }
+    // Build query params directly — SDK sends 'categoria'/'ciudad' but
+    // artists-service expects 'category'/'city', so we call the endpoint manually.
+    const params = new URLSearchParams();
+    if (resolved.q)        params.append('q',        resolved.q);
+    if (resolved.category) params.append('category', resolved.category);
+    if (resolved.cityId)   params.append('city',     resolved.cityId);
+    params.append('page',  String(page));
+    params.append('limit', String(ITEMS_PER_PAGE));
 
-    const params: ArtistsQueryParams = { page, limit: ITEMS_PER_PAGE };
-    if (resolved.category) params.category = resolved.category;
-    if (resolved.cityId) params.city = resolved.cityId;
-    if (resolved.q) params.q = resolved.q;
-    const result = await sdk.getArtists(params);
+    const response = await fetch(`/api/artists/search?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    const artists = data.artists ?? [];
+    const total   = data.pagination?.total ?? artists.length;
+    const totalPages = data.pagination?.totalPages ?? Math.ceil(total / ITEMS_PER_PAGE);
+
     return {
-      artists: result.artists,
-      total: result.total || result.artists.length,
-      page: result.page || page,
-      totalPages: result.totalPages,
-      hasNextPage: page < result.totalPages,
+      artists,
+      total,
+      page:        data.pagination?.page ?? page,
+      totalPages,
+      hasNextPage: page < totalPages,
     };
-  } catch {
-    return getMockPage(page, filters);
+  } catch (err) {
+    console.error('[useInfiniteArtists] API error:', err);
+    throw err;
   }
 };
 
@@ -118,7 +83,7 @@ export function useInfiniteArtists(filters: ArtistsFilters) {
     queryFn: ({ pageParam = 1 }) => fetchArtistsPage(pageParam, filters),
     getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.page + 1 : undefined,
     initialPageParam: 1,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000, // 30 s — short enough to recover quickly from transient errors
   });
 }
 

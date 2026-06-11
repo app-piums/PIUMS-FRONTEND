@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
+import { cImg } from '@/lib/cloudinaryImg';
 import { useParams, useRouter } from 'next/navigation';
 import { Lightbox } from '@/components/Lightbox';
 import { Loading } from '@/components/Loading';
@@ -14,8 +14,45 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { ReportModal } from '@/components/ReportModal';
 import type { ArtistProfile, Review, Service } from '@piums/sdk';
-import { getMockArtist, getMockServices, getMockReviews } from '@/lib/mockData';
+import { formatArtistCategory } from '@/lib/artistCategory';
 import { toast } from '@/lib/toast';
+
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function VideoModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const videoId = extractYouTubeId(url);
+  if (!videoId) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl mx-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white text-2xl font-bold hover:text-gray-300"
+          aria-label="Cerrar"
+        >
+          ✕
+        </button>
+        <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
+          <iframe
+            className="absolute inset-0 w-full h-full rounded-xl"
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ArtistProfilePage() {
   const params = useParams();
@@ -31,6 +68,7 @@ export default function ArtistProfilePage() {
   const [reviewsPage, setReviewsPage] = useState(1);
   const [reviewsTotalPages, setReviewsTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState('');
@@ -47,6 +85,7 @@ export default function ArtistProfilePage() {
   const [activeTab, setActiveTab] = useState<'about' | 'services' | 'portfolio' | 'reviews'>('services');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [videoModal, setVideoModal] = useState<string | null>(null);
   const [hoveredServiceId, setHoveredServiceId] = useState<string | null>(null);
   const startingPrice = useMemo(() => {
     if (services.length > 0) {
@@ -76,23 +115,17 @@ export default function ArtistProfilePage() {
   const loadArtistData = useCallback(async () => {
     try {
       setLoading(true);
-      // Try API first, fall back to mock
-      let artistData: ArtistProfile | null = null;
-      let servicesData: Service[] = [];
-      try {
-        const { sdk } = await import('@piums/sdk');
-        artistData = await sdk.getArtist(artistId);
-        servicesData = await sdk.getArtistServices(artistId);
-      } catch {
-        artistData = getMockArtist(artistId);
-        servicesData = getMockServices(artistId);
-      }
+      setLoadError(false);
+      const { sdk } = await import('@piums/sdk');
+      const [artistData, servicesData] = await Promise.all([
+        sdk.getArtist(artistId),
+        sdk.getArtistServices(artistId).catch(() => [] as Service[]),
+      ]);
+      if (!artistData) { setLoadError(true); return; }
       setArtist(artistData);
       setServices(servicesData);
-    } catch (error) {
-      console.error('Error loading artist:', error);
-      setArtist(getMockArtist(artistId));
-      setServices(getMockServices(artistId));
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -108,17 +141,11 @@ export default function ArtistProfilePage() {
       let reviewsData: Review[] = [];
       let total = 0;
       let totalPages = 1;
-      try {
-        const { sdk } = await import('@piums/sdk');
-        const result = await sdk.getArtistReviews(artistId, page, 5);
-        reviewsData = result.reviews;
-        total = result.total;
-        totalPages = result.totalPages;
-      } catch {
-        reviewsData = getMockReviews(artistId);
-        total = reviewsData.length;
-        totalPages = 1;
-      }
+      const { sdk } = await import('@piums/sdk');
+      const result = await sdk.getArtistReviews(artistId, page, 5);
+      reviewsData = result.reviews;
+      total = result.total;
+      totalPages = result.totalPages;
       if (page === 1) {
         setReviews(reviewsData);
       } else {
@@ -223,8 +250,15 @@ export default function ArtistProfilePage() {
     }
   };
 
+  const imagePortfolioItems = artist?.portfolio?.filter(item => item.type !== 'video') ?? [];
+  const portfolioImages = imagePortfolioItems.map(item => ({
+    url: cImg(item.url ?? item.imageUrl ?? '') || '/placeholder-image.jpg',
+    title: item.title,
+    description: item.description,
+  }));
+
   const nextImage = () => {
-    if (artist?.portfolio && lightboxIndex < artist.portfolio.length - 1) {
+    if (lightboxIndex < portfolioImages.length - 1) {
       setLightboxIndex(lightboxIndex + 1);
     }
   };
@@ -241,6 +275,7 @@ export default function ArtistProfilePage() {
     }
   };
 
+
   if (loading) {
     return <Loading fullScreen />;
   }
@@ -250,7 +285,15 @@ export default function ArtistProfilePage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Artista no encontrado</h2>
-          <Button onClick={() => router.push('/artists')}>Volver a Artistas</Button>
+          <p className="text-gray-500 mb-6">
+            {loadError ? 'Ocurrio un error al cargar el perfil.' : 'Este artista no existe o fue eliminado.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            {loadError && (
+              <Button onClick={loadArtistData} variant="outline">Reintentar</Button>
+            )}
+            <Button onClick={() => router.push('/artists')}>Volver a Artistas</Button>
+          </div>
         </div>
       </div>
     );
@@ -271,11 +314,6 @@ export default function ArtistProfilePage() {
     });
   };
 
-  const portfolioImages = artist.portfolio?.map(item => ({
-    url: item.imageUrl || '/placeholder-image.jpg',
-    title: item.title,
-    description: item.description
-  })) || [];
 
   return (
     <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
@@ -290,6 +328,11 @@ export default function ArtistProfilePage() {
           onNext={nextImage}
           onPrev={prevImage}
         />
+      )}
+
+      {/* Video modal */}
+      {videoModal && (
+        <VideoModal url={videoModal} onClose={() => setVideoModal(null)} />
       )}
 
       <div className="flex-1 min-w-0 overflow-y-auto p-4 pt-20 lg:p-0 lg:pt-0">
@@ -311,17 +354,43 @@ export default function ArtistProfilePage() {
           Artistas
         </button>
         {/* Cover Photo */}
-        <div className="relative h-48 lg:h-64 bg-gradient-to-br from-violet-400 via-purple-500 to-pink-500 rounded-none lg:rounded-2xl overflow-hidden mb-8">
-          {artist.coverPhoto && (
-            <Image
-              src={artist.coverPhoto}
-              alt={artist.nombre}
-              width={1200}
-              height={512}
-              className="w-full h-full object-cover"
-            />
-          )}
-        </div>
+        {(() => {
+          const CAT_GRAD: Record<string, [string, string]> = {
+            MUSICO:     ['#FF6B35', '#F59E0B'],
+            DJ:         ['#FF6B35', '#C026D3'],
+            FOTOGRAFO:  ['#F59E0B', '#1D4ED8'],
+            VIDEOGRAFO: ['#4F46E5', '#C026D3'],
+            DISENADOR:  ['#F59E0B', '#10B981'],
+            BAILARIN:   ['#FF6B35', '#EF4444'],
+            ANIMADOR:   ['#F59E0B', '#FF6B35'],
+            TATUADOR:   ['#1E1B4B', '#7C3AED'],
+            MAQUILLADOR:['#EC4899', '#9D174D'],
+            PINTOR:     ['#0891B2', '#059669'],
+            ESCULTOR:   ['#475569', '#1E293B'],
+            ESCRITOR:   ['#4F46E5', '#F59E0B'],
+            MAGO:       ['#7C3AED', '#4F46E5'],
+            ACROBATA:   ['#FF6B35', '#F59E0B'],
+          };
+          const [a, b] = CAT_GRAD[artist.category ?? ''] ?? ['#FF6B35', '#F59E0B'];
+          return (
+            <div className="relative h-48 lg:h-64 rounded-none lg:rounded-2xl overflow-hidden mb-8" style={{ background: `linear-gradient(135deg, ${a} 0%, ${b} 100%)` }}>
+              {!artist.coverPhoto && (
+                <>
+                  <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.15) 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }} />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                    <span className="text-white font-black" style={{ fontSize: '12rem', lineHeight: 1, opacity: 0.1 }}>
+                      {(artist.nombre?.[0] ?? '?').toUpperCase()}
+                    </span>
+                  </div>
+                </>
+              )}
+              {artist.coverPhoto && (
+                <img src={cImg(artist.coverPhoto)} alt={artist.nombre} className="w-full h-full object-cover" />
+              )}
+            </div>
+          );
+        })()}
+
 
         {/* Profile Header */}
         <div className="flex flex-col md:flex-row md:items-start md:space-x-6 mb-8 px-4 lg:px-0">
@@ -338,7 +407,7 @@ export default function ArtistProfilePage() {
             <div className="flex items-center space-x-2 mb-2">
               <h1 className="text-3xl font-bold text-gray-900">{artist.nombre}</h1>
               {artist.isVerified && (
-                <svg className="h-6 w-6 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="h-6 w-6 text-[#FF6B35]" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               )}
@@ -347,7 +416,7 @@ export default function ArtistProfilePage() {
               )}
             </div>
 
-            <p className="text-lg text-gray-600 mb-2">{artist.category}</p>
+            <p className="text-lg text-gray-600 mb-2">{formatArtistCategory(artist.category, artist.specialties)}</p>
 
             <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
               {artist.cityId && (
@@ -386,21 +455,18 @@ export default function ArtistProfilePage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={handleBookNow} size="lg">
-                Reservar Ahora
-              </Button>
               <button
                 type="button"
                 onClick={handleFavoriteToggle}
                 aria-pressed={artistIsFavorite}
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors shadow-sm ${
                   artistIsFavorite
-                    ? 'border-[#FF6A00] text-[#FF6A00] bg-[#FF6A00]/5'
-                    : 'border-gray-200 text-gray-600 hover:border-[#FF6A00]/60 hover:text-[#FF6A00]'
+                    ? 'border-[#FF6B35] text-[#FF6B35] bg-[#FF6B35]/5'
+                    : 'border-gray-200 text-gray-600 hover:border-[#FF6B35]/60 hover:text-[#FF6B35]'
                 }`}
               >
                 <svg
-                  className={`h-5 w-5 ${artistIsFavorite ? 'fill-[#FF6A00]' : ''}`}
+                  className={`h-5 w-5 ${artistIsFavorite ? 'fill-[#FF6B35]' : ''}`}
                   fill={artistIsFavorite ? 'currentColor' : 'none'}
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -416,7 +482,7 @@ export default function ArtistProfilePage() {
               </button>
             </div>
             {artistIsFavorite && (
-              <p className="flex items-center gap-1 mt-2 text-xs text-[#FF6A00]">
+              <p className="flex items-center gap-1 mt-2 text-xs text-[#FF6B35]">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -435,7 +501,7 @@ export default function ArtistProfilePage() {
                 onClick={() => setActiveTab(key)}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === key
-                    ? 'border-[#FF6A00] text-[#FF6A00]'
+                    ? 'border-[#FF6B35] text-[#FF6B35]'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
@@ -460,7 +526,7 @@ export default function ArtistProfilePage() {
                       <div className="space-y-2">
                         {artist.certifications.map((cert) => (
                           <div key={cert.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                            <svg className="h-6 w-6 text-[#00AEEF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-6 w-6 text-[#F59E0B] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                             </svg>
                             <div>
@@ -497,7 +563,14 @@ export default function ArtistProfilePage() {
                       <CardContent>
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex-1 min-w-0">
-                            <h3 className="text-lg font-semibold text-gray-900">{service.name}</h3>
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <h3 className="text-lg font-semibold text-gray-900">{service.name}</h3>
+                              {service.isOnSale && (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-600 border border-red-200">
+                                  OFERTA
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-600 mt-1">{service.description}</p>
                             {/* What's included — revealed on hover with smooth animation */}
                             {(service.whatIsIncluded?.length ?? 0) > 0 && (
@@ -511,7 +584,7 @@ export default function ArtistProfilePage() {
                                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Incluye</p>
                                     {service.whatIsIncluded!.map((item, i) => (
                                       <div key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                                        <svg className="h-3.5 w-3.5 text-[#FF6A00] shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                                        <svg className="h-3.5 w-3.5 text-[#FF6B35] shrink-0" fill="currentColor" viewBox="0 0 24 24">
                                           <path d="M12 2l1.8 5.4 5.7.4-4.4 3.3 1.6 5.5L12 13.5l-4.7 3.1 1.6-5.5L4.5 7.8l5.7-.4z" />
                                         </svg>
                                         <span>{item}</span>
@@ -523,7 +596,7 @@ export default function ArtistProfilePage() {
                             )}
                           </div>
                           <div className="text-right ml-4 shrink-0">
-                            <p className="text-2xl font-bold text-[#FF6A00]">${(service.basePrice / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                            <p className="text-2xl font-bold text-[#FF6B35]">${(service.basePrice / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                             <p className="text-sm text-gray-500">{Math.floor((service.duration ?? 0) / 60)} horas</p>
                           </div>
                         </div>
@@ -540,38 +613,53 @@ export default function ArtistProfilePage() {
 
             {activeTab === 'portfolio' && (
               <div className="grid grid-cols-2 gap-4">
-                {artist.portfolio && artist.portfolio.length > 0 ? (
-                  artist.portfolio.map((item, index) => (
-                    <Card 
-                      key={item.id} 
-                      padding="none" 
-                      className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => openLightbox(index)}
-                    >
-                      <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                        {item.imageUrl ? (
-                          <Image
-                            src={item.imageUrl}
-                            alt={item.title}
-                            width={600}
-                            height={384}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <svg className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <p className="font-medium text-gray-900">{item.title}</p>
-                        {item.description && (
-                          <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                        )}
-                      </div>
-                    </Card>
-                  ))
-                ) : (
+                {artist.portfolio && artist.portfolio.length > 0 ? (() => {
+                  let imgIdx = 0;
+                  return artist.portfolio.map((item) => {
+                    const isVideo = item.type === 'video';
+                    const currentImgIdx = isVideo ? -1 : imgIdx++;
+                    const thumb = isVideo
+                      ? (item.thumbnailUrl ?? '')
+                      : (item.url ?? item.imageUrl ?? '');
+                    return (
+                      <Card
+                        key={item.id}
+                        padding="none"
+                        className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => isVideo ? setVideoModal(item.url ?? '') : openLightbox(currentImgIdx)}
+                      >
+                        <div className="relative h-48 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                          {thumb ? (
+                            <img
+                              src={isVideo ? thumb : cImg(thumb)}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <svg className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                          {isVideo && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="bg-black/50 rounded-full p-3">
+                                <svg className="h-8 w-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M8 5v14l11-7z"/>
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <p className="font-medium text-gray-900">{item.title}</p>
+                          {item.description && (
+                            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  });
+                })() : (
                   <Card className="col-span-2">
                     <CardContent>
                       <p className="text-gray-600 text-center py-8">
@@ -595,7 +683,7 @@ export default function ArtistProfilePage() {
                           <p className="text-sm text-gray-600">¿Ya trabajaste con este artista?</p>
                           <button
                             onClick={() => setShowReviewForm(true)}
-                            className="flex items-center gap-2 rounded-xl bg-[#FF6A00] px-4 py-2 text-sm font-semibold text-white hover:bg-[#E65F00] transition-colors"
+                            className="flex items-center gap-2 rounded-xl bg-[#FF6B35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#E85D2F] transition-colors"
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
@@ -614,7 +702,7 @@ export default function ArtistProfilePage() {
                               <select
                                 value={reviewBookingId}
                                 onChange={e => setReviewBookingId(e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#FF6A00] focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20"
                               >
                                 {completedBookings.map(b => (
                                   <option key={b.id} value={b.id}>{b.code}</option>
@@ -666,7 +754,7 @@ export default function ArtistProfilePage() {
                               onChange={e => setReviewComment(e.target.value)}
                               placeholder="Cuéntanos tu experiencia con este artista…"
                               maxLength={2000}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 focus:border-[#FF6A00] focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 resize-none"
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 focus:border-[#FF6B35] focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20 resize-none"
                             />
                             <div className="mt-1 flex justify-between text-xs text-gray-400">
                               <span>{reviewComment.trim().length > 0 && reviewComment.trim().length < 3 ? <span className="text-red-500">Mínimo 3 caracteres</span> : null}</span>
@@ -688,7 +776,7 @@ export default function ArtistProfilePage() {
                             <button
                               onClick={handleSubmitReview}
                               disabled={reviewSubmitting || reviewRating === 0}
-                              className="flex-1 rounded-xl bg-[#FF6A00] py-2 text-sm font-semibold text-white hover:bg-[#E65F00] disabled:opacity-60 transition-colors"
+                              className="flex-1 rounded-xl bg-[#FF6B35] py-2 text-sm font-semibold text-white hover:bg-[#E85D2F] disabled:opacity-60 transition-colors"
                             >
                               {reviewSubmitting ? 'Enviando…' : 'Publicar reseña'}
                             </button>
@@ -796,17 +884,48 @@ export default function ArtistProfilePage() {
             <Card className="sticky top-8">
               <CardTitle className="mb-4">Información de Contacto</CardTitle>
               <CardContent>
-                <Button fullWidth size="lg" onClick={handleBookNow} className="mb-3">
-                  Reservar Ahora
-                </Button>
-                <Button fullWidth variant="outline">
-                  Enviar Mensaje
-                </Button>
-                
-                <div className="mt-6 pt-6 border-t border-gray-200">
+                <div>
                   <h4 className="font-medium text-gray-900 mb-3">Tiempo de Respuesta</h4>
                   <p className="text-sm text-gray-600">Generalmente responde en menos de 2 horas</p>
                 </div>
+
+                {(artist.instagram || artist.facebook || artist.youtube || artist.tiktok || artist.website) && (
+                  <div className="mt-6 pt-6 border-t border-gray-200">
+                    <h4 className="font-medium text-gray-900 mb-3">Redes Sociales</h4>
+                    <div className="flex flex-wrap gap-3">
+                      {artist.instagram && (
+                        <a href={artist.instagram.startsWith('http') ? artist.instagram : `https://instagram.com/${artist.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-pink-600 transition-colors">
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+                          Instagram
+                        </a>
+                      )}
+                      {artist.facebook && (
+                        <a href={artist.facebook.startsWith('http') ? artist.facebook : `https://facebook.com/${artist.facebook}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-blue-700 transition-colors">
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                          Facebook
+                        </a>
+                      )}
+                      {artist.youtube && (
+                        <a href={artist.youtube.startsWith('http') ? artist.youtube : `https://youtube.com/${artist.youtube}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-red-600 transition-colors">
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                          YouTube
+                        </a>
+                      )}
+                      {artist.tiktok && (
+                        <a href={artist.tiktok.startsWith('http') ? artist.tiktok : `https://tiktok.com/${artist.tiktok.startsWith('@') ? artist.tiktok : '@' + artist.tiktok}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+                          TikTok
+                        </a>
+                      )}
+                      {artist.website && (
+                        <a href={artist.website.startsWith('http') ? artist.website : `https://${artist.website}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#FF6B35] transition-colors">
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+                          Sitio web
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirma la recepcion de tu servicio - Piums</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 26px;
+            font-weight: 600;
+        }
+        .header p {
+            color: rgba(255,255,255,0.85);
+            margin: 8px 0 0 0;
+            font-size: 15px;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .info-text {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .booking-box {
+            background-color: #f8f9ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 30px;
+        }
+        .booking-box p {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .booking-box p:last-child {
+            margin-bottom: 0;
+        }
+        .booking-box strong {
+            color: #333;
+        }
+        .action-buttons {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 36px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            text-align: center;
+        }
+        .button-primary {
+            background-color: #4f46e5;
+            color: #ffffff;
+        }
+        .button-secondary {
+            background-color: #ffffff;
+            color: #dc2626;
+            border: 2px solid #dc2626;
+        }
+        .notice-box {
+            background-color: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            padding: 14px 18px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 30px;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 13px;
+            color: #92400e;
+            line-height: 1.5;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 25px 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #e0e0e0;
+        }
+        .footer a {
+            color: #4f46e5;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Confirma la recepcion de tu servicio</h1>
+            <p>Tienes 24 horas para revisar y confirmar</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <p style="font-size: 16px; margin-bottom: 24px;">
+                Hola <strong>{{clientName}}</strong>,
+            </p>
+            <p class="info-text">
+                El artista <strong>{{artistName}}</strong> ha marcado tu servicio como entregado. Por favor, revisa que hayas recibido todo lo acordado y confirma la recepcion.
+            </p>
+
+            <!-- Booking details -->
+            <div class="booking-box">
+                <p>Servicio: <strong>{{serviceName}}</strong></p>
+                <p>Codigo de reserva: <strong>{{bookingCode}}</strong></p>
+                <p>Artista: <strong>{{artistName}}</strong></p>
+            </div>
+
+            <div class="action-buttons">
+                <a href="{{confirmUrl}}" class="button button-primary">Confirmar recepcion</a>
+                &nbsp;&nbsp;
+                <a href="{{disputeUrl}}" class="button button-secondary">Tuve un problema</a>
+            </div>
+
+            <!-- Auto-release notice -->
+            <div class="notice-box">
+                <p>
+                    Si no realizas ninguna accion, el pago al artista se liberara automaticamente el <strong>{{autoReleaseTime}}</strong>. Si tuviste algun problema con el servicio, usa la opcion de soporte antes de esa fecha.
+                </p>
+            </div>
+
+            <p class="info-text">
+                Si tienes alguna duda o inconveniente con el servicio recibido, contactanos antes de que venza el plazo.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>
+                © {{currentYear}} Piums Platform. Todos los derechos reservados.<br>
+                <a href="{{helpUrl}}">Soporte</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

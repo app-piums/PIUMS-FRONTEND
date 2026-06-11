@@ -3,9 +3,10 @@
  */
 
 import jwt from "jsonwebtoken";
+import { logger } from '../utils/logger';
 
 const BOOKING_SERVICE_URL = process.env.BOOKING_SERVICE_URL || 'http://localhost:4005';
-const JWT_SECRET = process.env.JWT_SECRET || 'default_secret';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 const generateServiceToken = (userId: string): string => {
   return jwt.sign({ userId, email: 'service@internal', isService: true }, JWT_SECRET, { expiresIn: '5m' });
@@ -26,6 +27,7 @@ export class BookingClient {
       const serviceToken = generateServiceToken(userId);
       
       const response = await fetch(`${this.baseUrl}/api/bookings/${bookingId}`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${serviceToken}`,
@@ -34,13 +36,13 @@ export class BookingClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[BookingClient] Error obteniendo booking:', error);
+        logger.error('Error obteniendo booking', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[BookingClient] Error de conexión con booking-service:', error);
+      logger.error('Error de conexion con booking-service', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }
@@ -53,6 +55,7 @@ export class BookingClient {
       const serviceToken = generateServiceToken(userId);
       
       const response = await fetch(`${this.baseUrl}/api/bookings/${bookingId}`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -63,13 +66,13 @@ export class BookingClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        console.error('[BookingClient] Error actualizando booking:', error);
+        logger.error('Error actualizando booking', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error('[BookingClient] Error de conexión con booking-service:', error);
+      logger.error('Error de conexion con booking-service', 'BOOKING_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

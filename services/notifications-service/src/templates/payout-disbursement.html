@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pago Transferido - Piums</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header p {
+            color: rgba(255,255,255,0.85);
+            margin: 8px 0 0 0;
+            font-size: 15px;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .success-icon {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .amount-box {
+            text-align: center;
+            background-color: #f0fdf4;
+            border: 2px solid #86efac;
+            padding: 24px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .amount-box p {
+            margin: 0 0 6px 0;
+            font-size: 13px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .amount-box h2 {
+            margin: 0;
+            font-size: 36px;
+            color: #16a34a;
+            font-weight: 700;
+        }
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        .details-table td {
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+        .details-table td:first-child {
+            color: #888;
+            width: 45%;
+        }
+        .details-table td:last-child {
+            font-weight: 600;
+            color: #333;
+            text-align: right;
+        }
+        .reference-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #22c55e;
+            padding: 16px 20px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 30px;
+        }
+        .reference-box p {
+            margin: 0 0 4px 0;
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .reference-box span {
+            font-size: 15px;
+            font-weight: 700;
+            color: #333;
+            letter-spacing: 1px;
+        }
+        .info-text {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            text-align: center;
+        }
+        .button-primary {
+            background-color: #16a34a;
+            color: #ffffff;
+        }
+        .action-buttons {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 25px 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #e0e0e0;
+        }
+        .footer a {
+            color: #16a34a;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Pago Transferido</h1>
+            <p>Tu pago ha sido procesado exitosamente</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <p style="font-size: 16px; margin-bottom: 24px;">
+                Hola <strong>{{artistName}}</strong>,
+            </p>
+            <p class="info-text">
+                Te informamos que hemos procesado la transferencia correspondiente a tu servicio. El monto neto ya fue enviado a tu cuenta.
+            </p>
+
+            <!-- Net Amount -->
+            <div class="amount-box">
+                <p>Monto transferido</p>
+                <h2>{{netAmount}} {{currency}}</h2>
+            </div>
+
+            <!-- Details -->
+            <table class="details-table">
+                <tr>
+                    <td>Código de reserva</td>
+                    <td>{{bookingCode}}</td>
+                </tr>
+                <tr>
+                    <td>Monto bruto</td>
+                    <td>{{grossAmount}} {{currency}}</td>
+                </tr>
+                <tr>
+                    <td>Comisión plataforma ({{commissionRate}}%)</td>
+                    <td>- {{platformFee}} {{currency}}</td>
+                </tr>
+                <tr>
+                    <td>Fecha de transferencia</td>
+                    <td>{{transferDate}}</td>
+                </tr>
+            </table>
+
+            <!-- Transfer Reference -->
+            <div class="reference-box">
+                <p>Referencia de transferencia</p>
+                <span>{{transferReference}}</span>
+            </div>
+
+            <p class="info-text">
+                Si tienes alguna duda sobre este pago, por favor contáctanos indicando el código de reserva y la referencia de transferencia.
+            </p>
+
+            <div class="action-buttons">
+                <a href="{{dashboardUrl}}" class="button button-primary">Ver mis pagos</a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>
+                © {{currentYear}} Piums Platform. Todos los derechos reservados.<br>
+                <a href="{{dashboardUrl}}">Panel de Artista</a> •
+                <a href="{{helpUrl}}">Soporte</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

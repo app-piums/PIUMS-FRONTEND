@@ -11,24 +11,41 @@ datasource db {
 }
 
 enum BookingStatus {
-  PENDING           // Esperando confirmación del artista
-  CONFIRMED         // Confirmada por el artista
-  PAYMENT_PENDING   // Esperando pago del depósito
-  PAYMENT_COMPLETED // Pago completado
-  IN_PROGRESS       // En progreso (día de la cita)
-  COMPLETED         // Completada exitosamente
-  RESCHEDULED       // Reprogramada
-  CANCELLED_CLIENT  // Cancelada por el cliente
-  CANCELLED_ARTIST  // Cancelada por el artista
-  REJECTED          // Rechazada por el artista
-  NO_SHOW           // Cliente no se presentó
+  PENDING                    // Esperando confirmación del artista
+  CONFIRMED                  // Confirmada por el artista
+  PAYMENT_PENDING            // Esperando pago del anticipo
+  PAYMENT_COMPLETED          // Pago completado
+  IN_PROGRESS                // En progreso (día de la cita)
+  DELIVERED                  // Artista marcó el servicio como entregado
+  COMPLETED                  // Completada exitosamente
+  RESCHEDULED                // Reprogramada
+  RESCHEDULE_PENDING_ARTIST  // Solicitud de cambio esperando respuesta del artista
+  RESCHEDULE_PENDING_CLIENT  // Artista aceptó, esperando confirmación del cliente
+  CANCELLED_CLIENT           // Cancelada por el cliente
+  CANCELLED_ARTIST           // Cancelada por el artista
+  REJECTED                   // Rechazada por el artista
+  NO_SHOW                    // Artista no se presentó (reportado por cliente)
+  DISPUTE_OPEN               // Disputa abierta por el cliente
+  DISPUTE_RESOLVED           // Disputa resuelta por admin
+}
+
+enum RescheduleStatus {
+  PENDING_ARTIST   // Esperando que el artista acepte o rechace
+  PENDING_CLIENT   // Artista aceptó, esperando confirmación del cliente
+  CONFIRMED        // Cliente confirmó, fecha cambiada
+  REJECTED         // Artista rechazó la solicitud
+  EXPIRED          // El cliente no confirmó a tiempo (24h)
 }
 
 enum PaymentStatus {
   PENDING
-  DEPOSIT_PAID      // Depósito pagado
-  FULLY_PAID        // Totalmente pagado
-  REFUNDED          // Reembolsado
+  CARD_AUTHORIZED    // Tarjeta pre-autorizada (fondos retenidos), esperando confirmación del artista
+  ANTICIPO_PAID      // Anticipo pagado, saldo restante pendiente
+  DEPOSIT_PAID       // Legacy — usar ANTICIPO_PAID
+  FULLY_PAID         // Totalmente pagado
+  CHARGING_REMAINING // Cobrando el saldo restante (estado transitorio)
+  FROZEN             // Pago congelado por disputa activa
+  REFUNDED           // Reembolsado
   PARTIALLY_REFUNDED
 }
 
@@ -46,6 +63,20 @@ enum EventStatus {
   CANCELLED   // Cancelado
 }
 
+enum EventType {
+  CUMPLEANOS        // Cumpleaños
+  BODA              // Boda
+  GRADUACION        // Graduación
+  QUINCEANERA       // Quinceañera
+  CORPORATIVO       // Evento Corporativo
+  CONCIERTO         // Concierto / Festival
+  FIESTA            // Fiesta / Celebración
+  BABY_SHOWER       // Baby Shower
+  BAUTIZO           // Bautizo / Bienvenida
+  ANIVERSARIO       // Aniversario
+  OTRO              // Otro
+}
+
 // ==================== EVENTO ====================
 // Un Evento agrupa múltiples Bookings independientes bajo un mismo paraguas.
 // Cada booking mantiene su propia fecha/hora y artista.
@@ -56,6 +87,7 @@ model Event {
   clientId    String      // Dueño del evento (users-service)
   name        String      // Nombre del evento (ej: "Graduación Juan")
   description String?     @db.Text
+  eventType   EventType?  // Tipo de evento (cumpleaños, boda, etc.)
   location    String?     // Dirección del evento
   locationLat Float?
   locationLng Float?
@@ -97,27 +129,37 @@ model Booking {
   
   // Pricing
   servicePrice   Int          // Precio del servicio en centavos
-  addonsPrice    Int          @default(0) // Precio de addons en centavos
+  addonsPrice    Int          @default(0) // Precio de addons en centavos (sin viáticos)
+  travelPrice    Int          @default(0) // Viáticos / traslado en centavos
   totalPrice     Int          // Precio total en centavos
-  currency       String       @default("GTQ")
-  
+  currency       String       @default("USD")
+
   // Snapshot del quote completo al momento de la reserva (inmutable)
   quoteSnapshot  Json?        // Incluye: items[], breakdown, totales
-  
-  depositRequired Boolean     @default(false)
-  depositAmount   Int?        // Monto del depósito en centavos
-  depositPaidAt   DateTime?
-  
+
+  anticipoRequired Boolean    @default(false)
+  anticipoAmount   Int?       // Monto del anticipo en centavos
+  anticipoPaidAt   DateTime?
+
+  captureScheduledAt DateTime? // Cuándo capturar el pago pre-autorizado (confirmedAt + 48h)
+
   paymentStatus   PaymentStatus @default(PENDING)
-  paymentIntentId String?     // ID del Payment Intent de Stripe (payments-service)
+  providerPaymentId String?   // ID del Payment Intent del proveedor (payments-service)
   paymentId       String?     // Referencia al Payment completado (payments-service)
   paidAmount      Int          @default(0)
   paidAt          DateTime?
   paymentMethod   String?
-  
+  savedCardToken  String?     // Token de tarjeta guardada para cobro automático del saldo
+  couponCode            String?   // Código de cupón aplicado
+  couponDiscountAmount  Int       @default(0) // Descuento de cupón en centavos
+  dayOfferDiscountAmount Int      @default(0) // Descuento de oferta de día en centavos
+
   // Add-ons contratados (array de IDs)
   selectedAddons  String[]
   
+  // Tipo de evento (para que el artista sepa a qué va)
+  eventType       EventType?
+
   // Notas
   clientNotes     String?      @db.Text
   artistNotes     String?      @db.Text
@@ -128,7 +170,33 @@ model Booking {
   cancelledBy     String?      // userId que canceló
   cancellationReason String?   @db.Text
   refundAmount    Int?         // Monto reembolsado en centavos
-  
+
+  // No-show (artista no se presentó)
+  noShowAt         DateTime?
+  noShowReportedBy String?     // auth ID de quien reportó el no-show
+  noShowReason     String?     @db.Text
+
+  // Entrega del servicio (flujo post-evento)
+  estimatedDuration     Int?      // Duración estimada del servicio en minutos (default: 120)
+  deliveredAt           DateTime? // Cuándo el artista marcó como entregado
+  autoCompleteAt        DateTime? // Programado = deliveredAt + 24h (auto-complete si cliente no responde)
+  deliveryConfirmedAt   DateTime? // Cuándo el cliente confirmó recepción
+  deliveryConfirmedBy   String?   // clientId que confirmó
+  productDeliveryUrl    String?   // URL opcional a galería/drive al entregar el producto (foto/video)
+  disputeReason         String?   @db.Text
+
+  // Código de asistencia (flujo fast-path, estilo Uber)
+  requiresProductDelivery Boolean  @default(false) // Copiado del servicio al crear la reserva
+  attendanceCode          String?                  // 6 dígitos generados al confirmar la reserva
+  attendanceCodeUsedAt    DateTime?                // Cuándo el artista lo ingresó exitosamente
+  disputeResolvedAt     DateTime?
+  disputeResolvedBy     String?   // ID del admin que resolvió
+
+  // Ubicación del cliente (para regla de 60km mismo día)
+  clientLat    Float?          // Latitud ingresada por el cliente al reservar
+  clientLng    Float?          // Longitud ingresada por el cliente al reservar
+  distanceKm   Float?          // Distancia artista↔cliente calculada (Haversine)
+
   // Reprogramación
   rescheduledAt   DateTime?
   rescheduledBy   String?      // userId que reprogramó
@@ -139,10 +207,23 @@ model Booking {
   confirmedAt     DateTime?
   confirmedBy     String?      // artistId
   
-  // Recordatorios enviados
-  reminderSent24h Boolean      @default(false)
-  reminderSent2h  Boolean      @default(false)
+  // Recordatorios enviados — cliente
+  reminderSent7d      Boolean  @default(false)
+  reminderSent3d      Boolean  @default(false)
+  reminderSentSameDay Boolean  @default(false)
+  reminderSent24h     Boolean  @default(false)
+  reminderSent2h      Boolean  @default(false)
+
+  // Recordatorios enviados — artista
+  artistReminderSent7d      Boolean  @default(false)
+  artistReminderSent3d      Boolean  @default(false)
+  artistReminderSent24h     Boolean  @default(false)
+  artistReminderSentSameDay Boolean  @default(false)
   
+  // Google Calendar event IDs (null si el usuario no conectó Calendar)
+  clientCalendarEventId  String?
+  artistCalendarEventId  String?
+
   // Review (después de completar)
   reviewId        String?      @unique
 
@@ -150,12 +231,18 @@ model Booking {
   eventId         String?
   event           Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
+  // Colaboradores (artistas adicionales invitados por el lead artist)
+  collaborators   BookingCollaborator[]
+
+  // Solicitudes de cambio de fecha
+  rescheduleRequests RescheduleRequest[]
+
   // Soft delete para auditorías
   deletedAt       DateTime?
-  
+
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
-  
+
   @@index([clientId])
   @@index([artistId])
   @@index([serviceId])
@@ -387,4 +474,221 @@ model DisputeMessage {
   @@index([senderId])
   @@index([createdAt])
   @@map("dispute_messages")
+}
+
+// Solicitudes de cambio de fecha — flujo de doble confirmación
+model RescheduleRequest {
+  id                    String           @id @default(uuid())
+  bookingId             String
+  booking               Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  requestedBy           String           // clientId que solicita el cambio
+  proposedDate          DateTime         // Nueva fecha propuesta
+  reason                String?          @db.Text
+
+  status                RescheduleStatus @default(PENDING_ARTIST)
+
+  // Token para que el cliente confirme por email (válido 24h)
+  confirmationToken     String?          @unique
+  tokenExpiresAt        DateTime?
+
+  // Respuesta del artista
+  artistRespondedAt     DateTime?
+  artistRejectionReason String?          @db.Text
+
+  // Confirmación final del cliente
+  clientConfirmedAt     DateTime?
+
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([bookingId])
+  @@index([confirmationToken])
+  @@index([status])
+  @@map("reschedule_requests")
+}
+
+model BookingFunnelEvent {
+  id        String   @id @default(uuid())
+  sessionId String
+  userId    String?
+  step      String   // service | datetime | details | review | checkout | confirmed
+  action    String   // enter | complete | abandon
+  bookingId String?
+  artistId  String?
+  serviceId String?
+  createdAt DateTime @default(now())
+
+  @@index([step, action])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("booking_funnel_events")
+}
+
+// ============================================================================
+// Ticket Events — TicketEvent / TicketTier / TicketPurchase
+// ============================================================================
+
+enum TicketEventStatus {
+  BORRADOR
+  PUBLICADO
+  AGOTADO
+  CANCELADO
+  FINALIZADO
+}
+
+enum TicketPurchaseStatus {
+  PENDIENTE
+  PAGADO
+  USADO
+  REEMBOLSADO
+  EXPIRADO
+}
+
+model TicketEvent {
+  id          String            @id @default(uuid())
+  code        String            @unique
+  artistId    String
+  name        String
+  description String?           @db.Text
+  venue       String
+  address     String
+  locationLat Float?
+  locationLng Float?
+  eventDate   DateTime
+  doorsOpen   DateTime?
+  imageUrl    String?
+  maxCapacity Int
+  status      TicketEventStatus @default(BORRADOR)
+  tiers       TicketTier[]
+  purchases   TicketPurchase[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([artistId])
+  @@index([status])
+  @@index([eventDate])
+  @@map("ticket_events")
+}
+
+model TicketTier {
+  id            String         @id @default(uuid())
+  ticketEventId String
+  ticketEvent   TicketEvent    @relation(fields: [ticketEventId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?        @db.Text
+  priceCents    Int
+  currency      String         @default("USD")
+  totalQty      Int
+  soldQty       Int            @default(0)
+  maxPerOrder   Int            @default(10)
+  purchases     TicketPurchase[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([ticketEventId])
+  @@map("ticket_tiers")
+}
+
+model TicketPurchase {
+  id            String               @id @default(uuid())
+  code          String               @unique
+  ticketEventId String
+  ticketEvent   TicketEvent          @relation(fields: [ticketEventId], references: [id])
+  tierId        String
+  tier          TicketTier           @relation(fields: [tierId], references: [id])
+  buyerId       String
+  buyerEmail    String
+  buyerName     String
+  quantity      Int                  @default(1)
+  subtotalCents Int
+  discountCents Int                  @default(0)
+  totalCents    Int
+  currency      String               @default("USD")
+  couponCode    String?
+  couponId      String?
+  status        TicketPurchaseStatus @default(PENDIENTE)
+  orderNumber   String?              @unique
+  providerRef   String?
+  paidAt        DateTime?
+  checkedInAt   DateTime?
+  checkedInBy   String?
+  deletedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([ticketEventId])
+  @@index([tierId])
+  @@index([buyerId])
+  @@index([status])
+  @@map("ticket_purchases")
+}
+
+// ============================================================================
+// Colaboración entre artistas (Flujo B: lead artist invita a sub-artistas)
+// ============================================================================
+
+enum CollaboratorStatus {
+  INVITED    // Invitación enviada, pendiente de respuesta
+  ACCEPTED   // Colaborador aceptó
+  REJECTED   // Colaborador rechazó
+  CANCELLED  // Lead artist canceló la invitación
+}
+
+model BookingCollaborator {
+  id          String             @id @default(uuid())
+  bookingId   String
+  booking     Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  artistId    String             // Artista invitado (auth user ID)
+  invitedBy   String             // Lead artist ID (= booking.artistId)
+  role        String?            // "Violinista", "Baterista", etc.
+  status      CollaboratorStatus @default(INVITED)
+  notes       String?            @db.Text
+  invitedAt   DateTime           @default(now())
+  respondedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([bookingId, artistId])
+  @@index([bookingId])
+  @@index([artistId])
+  @@map("booking_collaborators")
+}
+
+// ============================================================================
+// Reemplazo de emergencia — cuando un artista cancela dentro de 72h del evento
+// ============================================================================
+
+enum ReplacementSearchStatus {
+  AWAITING_CLIENT  // Se le preguntó al cliente si quiere reemplazo, sin respuesta aún
+  OPTED_OUT        // El cliente dijo que no quiere reemplazo
+  SEARCHING        // Cliente aceptó, búsqueda en progreso
+  NOTIFIED         // Resultados enviados al cliente
+  NO_MATCHES       // Cliente aceptó pero no se encontraron artistas disponibles
+  EXPIRED          // La ventana de 2h (prompt) o 4h (resultados) venció
+}
+
+model ReplacementSearch {
+  id                String                  @id @default(uuid())
+  bookingId         String                  @unique
+  clientId          String
+  category          String?
+  city              String?
+  budgetCents       Int
+  scheduledDate     DateTime
+  durationMinutes   Int
+  status            ReplacementSearchStatus @default(AWAITING_CLIENT)
+  matchedServiceIds String[]                @default([])
+  matchedArtistIds  String[]                @default([])
+  clientOptedInAt   DateTime?
+  clientNotifiedAt  DateTime?
+  artistsNotifiedAt DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([bookingId])
+  @@index([clientId])
+  @@index([status, expiresAt])
+  @@map("replacement_searches")
 }

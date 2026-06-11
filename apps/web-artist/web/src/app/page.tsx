@@ -1,188 +1,557 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Footer } from "@/components/Footer";
+import { PiumsCinematicFooter } from "@/components/ui/motion-footer";
+import { RevealObserver } from "@/components/RevealObserver";
+import { HeroPiums } from "@/components/ui/shape-landing-hero";
 import { headers } from "next/headers";
+import {
+  Calendar, Users, DollarSign, ArrowRight, Check,
+  MessageCircle, BarChart3, TrendingUp,
+} from "lucide-react";
 
-const DISCIPLINES = [
-  "Músico", "Fotógrafo", "DJ", "Diseñador gráfico",
-  "Videógrafo", "Maquillador", "Tatuador", "Performer",
+const DISCIPLINES_MARQUEE = [
+  "Cantante solista", "Fotógrafo de bodas", "Maestro de ceremonia", "Videógrafo", "Banda musical",
+  "TikToker", "Mariachi", "Fotógrafo de eventos", "Animador", "Creador de contenido",
+  "Trio musical", "Marimba", "YouTuber", "Director audiovisual", "Influencer",
+  "Cantante solista", "Fotógrafo de bodas", "Maestro de ceremonia", "Videógrafo", "Banda musical",
+  "TikToker", "Mariachi", "Fotógrafo de eventos", "Animador", "Creador de contenido",
+  "Trio musical", "Marimba", "YouTuber", "Director audiovisual", "Influencer",
+];
+
+const STATS = [
+  { value: "500+",   label: "Artistas activos"    },
+  { value: "2,400+", label: "Reservas completadas"},
+  { value: "$280",   label: "Ingreso promedio / mes" },
+];
+
+const FEATURES = [
+  { Icon: Calendar,       title: "Tu tiempo, tus reglas",  desc: "Acepta o rechaza reservas con un toque. Sin explicaciones, sin compromisos forzados.", color: "#A855F7" },
+  { Icon: Users,          title: "Clientes que te buscan", desc: "Tu perfil trabaja 24/7. Los clientes llegan solos — tú solo confirmas.",              color: "#14B8A6" },
+  { Icon: DollarSign,     title: "Cobra en USD estables",  desc: "Sin volatilidad, sin sorpresas. Pago directo a tu cuenta al completar el servicio.",   color: "#10B981" },
+  { Icon: MessageCircle,  title: "Tú y tu cliente",        desc: "Chat directo para coordinar detalles. Sin intermediarios ni comisiones ocultas.",       color: "#3B82F6" },
 ];
 
 const STEPS = [
-  {
-    num: "01",
-    title: "Crea tu perfil",
-    desc: "Publica tus servicios, precios y disponibilidad en minutos. Sin costo de entrada.",
-  },
-  {
-    num: "02",
-    title: "Recibe reservas",
-    desc: "Los clientes te descubren, eligen fecha y pagan directamente en la plataforma.",
-  },
-  {
-    num: "03",
-    title: "Cobra en Quetzales",
-    desc: "El pago llega a tu cuenta al completar el servicio. Seguro, sin comisiones ocultas.",
-  },
+  { num: "1", title: "Crea tu perfil",   desc: "Sube tu portafolio, define servicios y precios. Listo en minutos, sin costo de entrada." },
+  { num: "2", title: "Recibe reservas",  desc: "Los clientes te descubren, eligen fecha y pagan. Tú solo confirmas." },
+  { num: "3", title: "Cobra puntual",    desc: "El pago se libera al completar el servicio. A tu cuenta, en 48 horas." },
 ];
+
+const PERKS = [
+  "Sé tu propio jefe",
+  "Sin cuota mensual",
+  "Tu precio, tus reglas",
+  "Sin exclusividad",
+];
+
+const MINI_CHART = [0.35, 0.5, 0.45, 0.65, 0.7, 0.85, 1.0];
+
+const PREVIEW_BOOKINGS = [
+  { name: "Sesión fotográfica", price: "$200", date: "Sáb 24 mayo", color: "#14B8A6" },
+  { name: "DJ — Evento corp.",  price: "$400", date: "Vie 30 mayo", color: "#A855F7" },
+];
+
+const PROFILE_SERVICES = [
+  { name: "Sesión de retratos",  price: "$150" },
+  { name: "Cobertura de boda",   price: "$400" },
+];
+
+const PROFILE_TAGS = ["Bodas", "Eventos", "Retratos", "Corporativo"];
 
 export default async function Home() {
   const headersList = await headers();
-  const host = headersList.get('host') || 'localhost:3001';
-  const hostname = host.split(':')[0];
+  const host = headersList.get("host") || "localhost:3001";
+  const hostname = host.split(":")[0];
   const CLIENT_APP_URL = process.env.NEXT_PUBLIC_CLIENT_URL || `http://${hostname}:3000`;
 
   return (
     <>
-      <div className="flex min-h-screen flex-col bg-zinc-950">
+      <div
+        className="flex min-h-[100dvh] flex-col"
+        style={{ background: "#080808", color: "#fafafa", fontFamily: "var(--font-geist-sans)" }}
+      >
+        {/* Ambient glows */}
+        <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+          <div style={{
+            position: "absolute", top: "-20%", left: "50%", transform: "translateX(-50%)",
+            width: "120%", height: "60%",
+            background: "radial-gradient(ellipse at 50% 0%, rgba(255,107,53,0.10) 0%, transparent 65%)",
+          }} />
+          <div style={{
+            position: "absolute", bottom: "10%", left: "-10%", width: "50%", height: "50%",
+            background: "radial-gradient(ellipse, rgba(168,85,247,0.04) 0%, transparent 60%)",
+          }} />
+        </div>
+
         {/* Navbar */}
-        <nav className="flex items-center justify-between px-8 py-5 border-b border-zinc-800">
-          <Image
-            src="/logo.png"
-            alt="Piums for Artists"
-            width={36}
-            height={36}
-            className="h-9 w-auto"
-            priority
-          />
-          <div className="flex items-center gap-4">
-            <Link
-              href="/login"
-              className="text-sm font-medium text-zinc-400 hover:text-zinc-50 transition-colors"
-            >
+        <nav
+          className="relative z-20 flex items-center justify-between px-6 md:px-12 py-4"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+        >
+          <Image src="/logo-white.png" alt="Piums for Artists" width={100} height={30} className="h-7 w-auto" priority />
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="hidden sm:block text-sm font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>
               Iniciar sesión
             </Link>
             <Link
               href="/register/artist"
-              className="rounded-full bg-[#FF6A00] px-5 py-2 text-sm font-semibold text-white hover:bg-[#e05e00] transition-colors"
+              className="rounded-full px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-85"
+              style={{ background: "#FF6B35" }}
             >
               Empezar gratis
             </Link>
           </div>
         </nav>
 
-        {/* Hero */}
-        <main className="flex flex-1 flex-col items-center px-6 pt-20 pb-12 text-center">
-          <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#FF6A00]/40 bg-[#FF6A00]/10 px-4 py-1.5 text-xs font-medium text-[#FF6A00]">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
-            </svg>
-            La plataforma para artistas de Guatemala
-          </span>
+        <main className="relative z-10 flex flex-1 flex-col items-center overflow-hidden">
+          <RevealObserver />
 
-          <h1 className="max-w-3xl text-5xl font-bold tracking-tight text-zinc-50 leading-tight">
-            Tu talento merece<br />
-            <span className="text-[#FF6A00]">clientes que te valoren</span>
-          </h1>
+          {/* ── Hero ──────────────────────────────────────────────── */}
+          <HeroPiums
+            badge="Para artistas creativos de Guatemala"
+            headline={
+              <>
+                Tu talento.
+                <br />
+                <span style={{
+                  background: "linear-gradient(90deg, #FF6B35 0%, #F59E0B 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}>
+                  Tu negocio.
+                </span>
+              </>
+            }
+            subtitle="Gestiona reservas, cobra en USD y crece tu negocio creativo en Guatemala. Sin cuota mensual."
+            ctaPrimary={{ label: "Crear mi perfil gratis", href: "/register/artist" }}
+            ctaSecondary={{ label: "Ya tengo cuenta", href: "/login" }}
+            perks={PERKS}
+          />
 
-          <p className="mt-6 max-w-lg text-lg text-zinc-400 leading-relaxed">
-            Gestiona reservas, agenda y cobros en Quetzales desde un solo lugar.
-            Para músicos, fotógrafos, diseñadores, DJs y más.
-          </p>
+          {/* ── Earnings dashboard preview ────────────────────────── */}
+          <div className="w-full max-w-sm mx-auto px-6 mt-10 mb-12 reveal">
+            <div className="rounded-2xl p-5 overflow-hidden" style={{ background: "#0f0f0f", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>Ingresos este mes</p>
+                  <p className="text-3xl font-bold tracking-tight">
+                    $840
+                    <span className="text-base font-normal ml-1" style={{ color: "rgba(255,255,255,0.35)" }}>USD</span>
+                  </p>
+                </div>
+                <span
+                  className="text-xs rounded-full px-2.5 py-1 font-medium flex items-center gap-1"
+                  style={{ background: "rgba(16,185,129,0.12)", color: "#10B981" }}
+                >
+                  <TrendingUp className="h-3 w-3" />
+                  +18%
+                </span>
+              </div>
 
-          {/* Discipline pills */}
-          <div className="mt-8 flex flex-wrap justify-center gap-2 max-w-2xl">
-            {DISCIPLINES.map((d) => (
-              <span key={d} className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
-                {d}
-              </span>
-            ))}
+              <div className="flex items-end gap-0.5 h-12 mb-4">
+                {MINI_CHART.map((h, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-sm"
+                    style={{
+                      height: `${h * 100}%`,
+                      background: i === MINI_CHART.length - 1
+                        ? "#FF6B35"
+                        : `rgba(255,107,53,${0.12 + h * 0.18})`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginBottom: 12 }} />
+
+              <p className="text-xs mb-2" style={{ color: "rgba(255,255,255,0.28)" }}>Próximas reservas</p>
+              <div className="space-y-1.5">
+                {PREVIEW_BOOKINGS.map((b) => (
+                  <div key={b.name} className="flex items-center gap-2.5 py-2 px-3 rounded-xl" style={{ background: "#1a1a1a" }}>
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: b.color }} />
+                    <span className="text-xs flex-1" style={{ color: "rgba(255,255,255,0.75)" }}>{b.name}</span>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-semibold" style={{ color: "#FF6B35" }}>{b.price}</p>
+                      <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.22)" }}>{b.date}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginTop: 14, paddingTop: 12 }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Completadas este mes</span>
+                  <div className="flex items-center gap-1.5">
+                    <BarChart3 className="h-3 w-3" style={{ color: "rgba(255,107,53,0.5)" }} />
+                    <span className="text-xs font-semibold" style={{ color: "#FF6B35" }}>6 servicios</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-center text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>
+              Datos de ejemplo de un artista real en Piums
+            </p>
           </div>
 
-          <div className="mt-10 flex flex-col sm:flex-row gap-4">
-            <Link
-              href="/register/artist"
-              className="rounded-full bg-[#FF6A00] px-8 py-3.5 text-sm font-semibold text-white hover:bg-[#e05e00] transition-colors shadow-lg shadow-[#FF6A00]/30"
+          {/* ── Marquee ───────────────────────────────────────────── */}
+          <div
+            className="w-full overflow-hidden py-4"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+          >
+            <div className="animate-marquee gap-3">
+              {DISCIPLINES_MARQUEE.map((d, i) => (
+                <span
+                  key={i}
+                  className="shrink-0 rounded-full px-4 py-1.5 text-xs font-medium mr-3"
+                  style={{ border: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.02)" }}
+                >
+                  {d}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Stats ─────────────────────────────────────────────── */}
+          <div className="w-full max-w-3xl mx-auto px-6 md:px-12 mt-24 reveal">
+            <div className="grid grid-cols-3 rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+              {STATS.map((s, i) => (
+                <div
+                  key={s.label}
+                  className="flex flex-col items-center py-9 px-4 text-center"
+                  style={{ background: "#0f0f0f", borderRight: i < STATS.length - 1 ? "1px solid rgba(255,255,255,0.07)" : "none" }}
+                >
+                  <span className="text-3xl md:text-4xl font-bold tracking-tight" style={{ color: "#FF6B35" }}>{s.value}</span>
+                  <span className="mt-2 text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-center text-xs" style={{ color: "rgba(255,255,255,0.22)" }}>
+              3x el salario promedio guatemalteco
+            </p>
+          </div>
+
+          {/* ── Manifesto band ────────────────────────────────────── */}
+          <div className="w-full max-w-2xl mx-auto px-6 md:px-12 mt-28 text-center reveal">
+            <p className="text-3xl md:text-4xl font-bold leading-tight mb-3" style={{ letterSpacing: "-0.025em" }}>
+              No eres un freelancer.
+            </p>
+            <p
+              className="text-3xl md:text-4xl font-bold leading-tight mb-6"
+              style={{
+                letterSpacing: "-0.025em",
+                background: "linear-gradient(90deg, #FF6B35 0%, #F59E0B 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
             >
-              Crear mi perfil — es gratis
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-full border border-zinc-700 bg-zinc-900 px-8 py-3.5 text-sm font-semibold text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800 transition-colors"
-            >
-              Ya tengo cuenta
-            </Link>
+              Eres un negocio.
+            </p>
+            <p className="text-sm leading-relaxed max-w-sm mx-auto" style={{ color: "rgba(255,255,255,0.35)" }}>
+              Herramientas que otros pagan miles. Gratis para artistas guatemaltecos en Piums.
+            </p>
           </div>
 
-          {/* Feature cards */}
-          <div className="mt-20 grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl text-left w-full">
-            <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FF6A00]/10">
-                <svg className="h-5 w-5 text-[#FF6A00]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-zinc-50 mb-1">Gestiona tu agenda</h3>
-              <p className="text-sm text-zinc-500">Acepta o rechaza reservas. Controla tu disponibilidad con un calendario propio.</p>
+          {/* ── Features 2×2 ──────────────────────────────────────── */}
+          <div className="w-full max-w-3xl mx-auto px-6 md:px-12 mt-20">
+            <div className="text-center mb-14 reveal">
+              <h2 className="text-2xl md:text-3xl font-bold" style={{ letterSpacing: "-0.02em" }}>
+                Tu negocio, a tu medida
+              </h2>
+              <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
+                Enfócate en crear. Piums maneja lo demás.
+              </p>
             </div>
-            <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FF6A00]/10">
-                <svg className="h-5 w-5 text-[#FF6A00]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-zinc-50 mb-1">Llega a más clientes</h3>
-              <p className="text-sm text-zinc-500">Tu perfil aparece en búsquedas de clientes que buscan artistas como tú.</p>
-            </div>
-            <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FF6A00]/10">
-                <svg className="h-5 w-5 text-[#FF6A00]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-zinc-50 mb-1">Cobra en Quetzales</h3>
-              <p className="text-sm text-zinc-500">Pagos seguros y directos en GTQ. Sin efectivo, sin riesgos, sin intermediarios.</p>
-            </div>
-          </div>
-
-          {/* Cómo funciona */}
-          <div className="mt-24 w-full max-w-3xl">
-            <h2 className="text-2xl font-bold text-zinc-50 mb-2">¿Cómo funciona?</h2>
-            <p className="text-sm text-zinc-500 mb-10">Empieza a generar ingresos con tu talento en 3 pasos</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-left">
-              {STEPS.map((s) => (
-                <div key={s.num} className="flex flex-col gap-3">
-                  <span className="font-mono text-3xl font-bold text-[#FF6A00] opacity-50">{s.num}</span>
-                  <h3 className="font-semibold text-zinc-50">{s.title}</h3>
-                  <p className="text-sm text-zinc-500 leading-relaxed">{s.desc}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {FEATURES.map(({ Icon, title, desc, color }, i) => (
+                <div
+                  key={title}
+                  className={`rounded-2xl p-6 flex flex-col gap-3 reveal reveal-d${i + 1}`}
+                  style={{ background: "#0f0f0f", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${color}18` }}>
+                    <Icon className="h-5 w-5" style={{ color }} />
+                  </div>
+                  <h3 className="font-semibold text-sm">{title}</h3>
+                  <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>{desc}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Bottom CTA */}
-          <div className="mt-20 w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900 p-10 flex flex-col items-center gap-4">
-            <h2 className="text-2xl font-bold text-zinc-50">¿Listo para crecer?</h2>
-            <p className="max-w-sm text-center text-sm text-zinc-500">
-              Únete a los artistas guatemaltecos que ya gestionan su negocio con PIUMS.
-            </p>
-            <Link
-              href="/register/artist"
-              className="rounded-full bg-[#FF6A00] px-8 py-3.5 text-sm font-semibold text-white hover:bg-[#e05e00] transition-colors shadow-lg shadow-[#FF6A00]/30"
+          {/* ── Tu perfil público — Squarespace-style split section ── */}
+          <div className="w-full max-w-5xl mx-auto px-6 md:px-12 mt-32">
+            <div className="flex flex-col lg:flex-row gap-14 lg:gap-20 lg:items-center">
+
+              {/* Left: text */}
+              <div className="flex-1 flex flex-col reveal">
+                <p
+                  className="text-xs font-medium uppercase mb-4"
+                  style={{ color: "#FF6B35", letterSpacing: "0.08em" }}
+                >
+                  Tu vitrina pública
+                </p>
+                <h2 className="text-2xl md:text-3xl font-bold mb-5" style={{ letterSpacing: "-0.02em" }}>
+                  Tu perfil trabaja
+                  <br />
+                  mientras tú creas
+                </h2>
+                <p className="text-sm leading-relaxed mb-8" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  Cada cliente que te busca ve tu portafolio, servicios y reseñas
+                  en tiempo real. Tu perfil es tu negocio, abierto 24/7.
+                </p>
+                <div className="flex flex-col gap-3.5">
+                  {[
+                    "Badge de artista verificado visible",
+                    "Portafolio con tus mejores trabajos",
+                    "Servicios con precios definidos por ti",
+                    "Reseñas reales de clientes satisfechos",
+                  ].map((item) => (
+                    <div key={item} className="flex items-center gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#FF6B35" }} />
+                      <span className="text-sm" style={{ color: "rgba(255,255,255,0.65)" }}>{item}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <Link
+                  href="/register/artist"
+                  className="mt-10 self-start inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ background: "#FF6B35" }}
+                >
+                  Crear mi perfil
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+
+              {/* Right: mock profile card */}
+              <div className="lg:w-[280px] shrink-0 reveal reveal-d2">
+                <div
+                  className="rounded-2xl overflow-hidden"
+                  style={{ background: "#0f0f0f", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  {/* Cover */}
+                  <div className="h-24 relative" style={{ background: "linear-gradient(135deg, #134E4A 0%, #0F766E 100%)" }}>
+                    <div
+                      className="absolute -bottom-5 left-4 flex items-center justify-center rounded-full text-sm font-bold"
+                      style={{ width: 44, height: 44, background: "#0f0f0f", border: "2px solid #14B8A6", color: "#14B8A6" }}
+                    >
+                      CM
+                    </div>
+                    <div
+                      className="absolute top-3 right-3 flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+                      style={{ background: "rgba(0,0,0,0.45)", color: "rgba(255,255,255,0.8)" }}
+                    >
+                      <span style={{ color: "#10B981" }}>●</span> Verificado
+                    </div>
+                  </div>
+
+                  <div className="px-4 pt-8 pb-4">
+                    <p className="font-semibold text-sm">Carlos Martínez</p>
+                    <div className="flex items-center gap-1.5 mt-0.5 mb-1">
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Fotógrafo · Guatemala</span>
+                    </div>
+                    <div className="flex items-center gap-1 mb-4">
+                      <span className="text-xs font-medium" style={{ color: "#F59E0B" }}>★★★★★</span>
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.32)" }}>4.9 · 47 reseñas</span>
+                    </div>
+
+                    {/* Tags */}
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {PROFILE_TAGS.map((tag) => (
+                        <span
+                          key={tag}
+                          className="text-xs rounded-full px-2.5 py-0.5"
+                          style={{ border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.38)" }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Services */}
+                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 12, marginBottom: 14 }}>
+                      {PROFILE_SERVICES.map((s) => (
+                        <div key={s.name} className="flex items-center justify-between py-1.5">
+                          <span className="text-xs" style={{ color: "rgba(255,255,255,0.62)" }}>{s.name}</span>
+                          <span className="text-xs font-semibold" style={{ color: "#FF6B35" }}>{s.price}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div
+                      className="w-full text-center py-2.5 rounded-xl text-xs font-semibold text-white"
+                      style={{ background: "#FF6B35" }}
+                    >
+                      Reservar ahora
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-center text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>
+                  Así ve tu perfil un cliente potencial
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Potencial de ingresos ─────────────────────────────── */}
+          <div className="w-full max-w-3xl mx-auto px-6 md:px-12 mt-20 reveal">
+            <div
+              className="rounded-2xl p-8 relative overflow-hidden"
+              style={{ background: "#0f0f0f", border: "1px solid rgba(255,107,53,0.12)" }}
             >
-              Unirme a la comunidad
-            </Link>
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "radial-gradient(ellipse at 0% 50%, rgba(255,107,53,0.06) 0%, transparent 60%)" }}
+              />
+              <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between">
+                <div className="flex-1">
+                  <p className="text-xs mb-3 uppercase font-semibold" style={{ color: "rgba(255,107,53,0.7)", letterSpacing: "0.10em" }}>
+                    Potencial de ingresos
+                  </p>
+                  <p className="text-base leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+                    Con tan solo{" "}
+                    <span className="font-semibold" style={{ color: "#fafafa" }}>5 servicios al mes</span>
+                    {" "}puedes llegar a ganar hasta
+                  </p>
+                  <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.28)" }}>
+                    * Aplican condiciones. Los resultados pueden variar.
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-5xl font-bold tracking-tight" style={{ color: "#FF6B35" }}>$820</p>
+                  <p className="text-sm mt-1 font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>USD al mes*</p>
+                  <p className="text-xs mt-2 font-semibold" style={{ color: "rgba(255,107,53,0.6)" }}>
+                    3× el salario promedio en Guatemala
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Testimonial ───────────────────────────────────────── */}
+          <div className="w-full max-w-2xl mx-auto px-6 md:px-12 mt-20 reveal">
+            <div
+              className="rounded-2xl p-8 md:p-10 relative overflow-hidden"
+              style={{ background: "#0f0f0f", border: "1px solid rgba(255,107,53,0.1)" }}
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "radial-gradient(ellipse at 0% 0%, rgba(255,107,53,0.04) 0%, transparent 55%)" }}
+              />
+              <p
+                className="absolute top-5 left-7 text-7xl font-serif leading-none select-none"
+                style={{ color: "rgba(255,107,53,0.1)", lineHeight: 1 }}
+                aria-hidden="true"
+              >
+                &ldquo;
+              </p>
+              <div className="relative pt-8">
+                <p className="text-base md:text-lg leading-relaxed mb-7" style={{ color: "rgba(255,255,255,0.72)" }}>
+                  Antes hacía cotizaciones por WhatsApp y esperaba semanas. Ahora el 70% de mis clientes llegan solos y cobro el doble.
+                </p>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex items-center justify-center rounded-full text-sm font-bold shrink-0"
+                    style={{ width: 40, height: 40, background: "linear-gradient(135deg, #134E4A 0%, #0F766E 100%)", color: "#14B8A6", border: "1.5px solid rgba(20,184,166,0.3)" }}
+                  >
+                    MG
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">María García</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.38)" }}>Fotógrafa · Ciudad de Guatemala · desde 2024</span>
+                    </div>
+                  </div>
+                  <div className="ml-auto shrink-0 flex items-center gap-1">
+                    <span className="text-xs font-medium" style={{ color: "#F59E0B" }}>★ 4.9</span>
+                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>· 34 reseñas</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Cómo funciona — vertical timeline ─────────────────── */}
+          <div className="w-full max-w-2xl mx-auto px-6 md:px-12 mt-32">
+            <div className="text-center mb-16 reveal">
+              <h2 className="text-2xl md:text-3xl font-bold" style={{ letterSpacing: "-0.02em" }}>
+                Tu negocio, en 3 pasos
+              </h2>
+            </div>
+            <div className="relative">
+              <div
+                className="hidden sm:block absolute"
+                style={{
+                  left: 19, top: 44,
+                  width: 1, height: "calc(100% - 88px)",
+                  background: "linear-gradient(to bottom, rgba(255,107,53,0.35), rgba(255,107,53,0.03))",
+                }}
+              />
+              <div className="flex flex-col gap-11">
+                {STEPS.map((s, i) => (
+                  <div key={s.num} className={`flex gap-6 items-start reveal reveal-d${i + 1}`}>
+                    <div
+                      className="flex items-center justify-center rounded-full shrink-0 font-bold text-sm z-10"
+                      style={{
+                        width: 40, height: 40,
+                        background: i === 0 ? "#FF6B35" : "#111",
+                        border: `1px solid ${i === 0 ? "transparent" : "rgba(255,107,53,0.25)"}`,
+                        color: i === 0 ? "white" : "#FF6B35",
+                      }}
+                    >
+                      {s.num}
+                    </div>
+                    <div className="pt-2.5">
+                      <h3 className="font-semibold text-base mb-1.5">{s.title}</h3>
+                      <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>{s.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── CTA ───────────────────────────────────────────────── */}
+          <div className="w-full max-w-4xl mx-auto px-6 md:px-12 mt-24 mb-20 reveal">
+            <div
+              className="rounded-3xl p-14 md:p-20 flex flex-col items-center text-center relative overflow-hidden"
+              style={{ background: "#0f0f0f", border: "1px solid rgba(255,107,53,0.15)" }}
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "radial-gradient(ellipse at 50% -20%, rgba(255,107,53,0.12) 0%, transparent 60%)" }}
+              />
+              <h2 className="relative text-2xl md:text-4xl font-bold mb-4" style={{ letterSpacing: "-0.02em" }}>
+                ¿Listo para crecer?
+              </h2>
+              <p className="relative text-sm mb-9 max-w-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+                Únete a los artistas guatemaltecos que ya gestionan su negocio con Piums.
+              </p>
+              <Link
+                href="/register/artist"
+                className="relative inline-flex items-center gap-2 rounded-full px-9 py-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "#FF6B35", boxShadow: "0 0 48px rgba(255,107,53,0.35)" }}
+              >
+                Crear mi perfil gratis
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </main>
 
-        {/* Footer para clientes */}
-        <div className="border-t border-zinc-800 bg-zinc-900 px-8 py-6">
-          <div className="mx-auto max-w-3xl flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
-            <span>¿Buscas talento para tu próximo evento o proyecto?</span>
-            <a
-              href={CLIENT_APP_URL}
-              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800 px-5 py-2 font-medium text-zinc-300 hover:border-zinc-600 hover:bg-zinc-700 transition-colors"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              Explorar artistas en Piums
-            </a>
-          </div>
-        </div>
       </div>
-      <Footer />
+      <PiumsCinematicFooter
+        heading="¿Listo para crecer tu negocio creativo?"
+        ctaPrimary={{ label: "Crear mi perfil gratis", href: "/register/artist" }}
+        ctaSecondary={{ label: "Ya tengo cuenta", href: "/login" }}
+        appIosHref={process.env.NEXT_PUBLIC_ARTIST_APP_IOS || "#"}
+        appAndroidHref={process.env.NEXT_PUBLIC_ARTIST_APP_ANDROID || "#"}
+        crosslinkHref={CLIENT_APP_URL}
+        crosslinkLabel="Buscar artistas en Piums"
+      />
     </>
   );
 }
-

@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
-import { 
-  checkReservationConflict, 
+import {
+  checkReservationConflict,
   getArtistReservations,
   getMonthlyCalendar,
   getDailyTimeSlots,
 } from '../services/availability.service';
+import { logger } from '../utils/logger';
 
 /**
  * GET /api/availability/check-reservation
@@ -37,7 +38,7 @@ export const checkReservation = async (req: Request, res: Response) => {
 
     return res.json(result);
   } catch (error) {
-    console.error('Error checking reservation:', error);
+    logger.error('Error checking reservation', 'AVAILABILITY', { error: typeof error === 'string' ? error : (error as any)?.message });
     return res.status(500).json({
       error: 'Internal server error',
     });
@@ -78,7 +79,7 @@ export const getArtistAvailability = async (req: Request, res: Response) => {
       count: reservations.length,
     });
   } catch (error) {
-    console.error('Error getting artist reservations:', error);
+    logger.error('Error getting artist reservations', 'AVAILABILITY', { error: typeof error === 'string' ? error : (error as any)?.message });
     return res.status(500).json({
       error: 'Internal server error',
     });
@@ -117,7 +118,7 @@ export const getCalendar = async (req: Request, res: Response) => {
       ...calendar,
     });
   } catch (error) {
-    console.error('Error getting calendar:', error);
+    logger.error('Error getting calendar', 'AVAILABILITY', { error: typeof error === 'string' ? error : (error as any)?.message });
     return res.status(500).json({
       error: 'Internal server error',
     });
@@ -153,7 +154,7 @@ export const getTimeSlots = async (req: Request, res: Response) => {
       ...timeSlots,
     });
   } catch (error) {
-    console.error('Error getting time slots:', error);
+    logger.error('Error getting time slots', 'AVAILABILITY', { error: typeof error === 'string' ? error : (error as any)?.message });
     return res.status(500).json({
       error: 'Internal server error',
     });

@@ -1,4 +1,5 @@
-import { PrismaClient, PricingType, ServiceStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PricingType, ServiceStatus } from "../types/prisma-enums";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 
@@ -168,6 +169,21 @@ export class CatalogService {
   // ==================== SERVICIOS ====================
 
   /**
+   * Obtener todos los servicios del artista autenticado (sin filtro de status)
+   */
+  async getMyServices(artistId: string) {
+    const services = await prisma.service.findMany({
+      where: { artistId },
+      include: {
+        category: true,
+        addons: { orderBy: { order: 'asc' } },
+      },
+      orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
+    });
+    return { services };
+  }
+
+  /**
    * Buscar servicios con filtros
    */
   async searchServices(filters: {
@@ -186,7 +202,7 @@ export class CatalogService {
     const limit = filters.limit || 10;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { status: 'ACTIVE', isAvailable: true };
 
     if (filters.artistId) where.artistId = filters.artistId;
     if (filters.categoryId) where.categoryId = filters.categoryId;
@@ -287,6 +303,7 @@ export class CatalogService {
     depositAmount?: number;
     depositPercentage?: number;
     requiresConsultation?: boolean;
+    requiresProductDelivery?: boolean;
     whatIsIncluded?: string[];
     cancellationPolicy?: string;
     termsAndConditions?: string;
@@ -323,7 +340,7 @@ export class CatalogService {
         categoryId: data.categoryId,
         pricingType: data.pricingType,
         basePrice: data.basePrice,
-        currency: data.currency || "GTQ",
+        currency: data.currency || "USD",
         durationMin: data.durationMin,
         durationMax: data.durationMax,
         images: data.images || [],
@@ -332,6 +349,7 @@ export class CatalogService {
         depositAmount: data.depositAmount,
         depositPercentage: data.depositPercentage,
         requiresConsultation: data.requiresConsultation || false,
+        requiresProductDelivery: data.requiresProductDelivery || false,
         whatIsIncluded: data.whatIsIncluded || [],
         cancellationPolicy: data.cancellationPolicy,
         termsAndConditions: data.termsAndConditions,
@@ -479,6 +497,31 @@ export class CatalogService {
     return updated;
   }
 
+  async toggleServiceSale(id: string, artistId: string) {
+    const service = await prisma.service.findUnique({ where: { id } });
+
+    if (!service) {
+      throw new AppError(404, "Servicio no encontrado");
+    }
+
+    if (service.artistId !== artistId) {
+      throw new AppError(403, "No tienes permiso para modificar este servicio");
+    }
+
+    const updated = await prisma.service.update({
+      where: { id },
+      data: { isOnSale: !(service as any).isOnSale },
+      include: { category: true, addons: true },
+    });
+
+    logger.info("Oferta de servicio actualizada", "CATALOG_SERVICE", {
+      serviceId: id,
+      isOnSale: (updated as any).isOnSale,
+    });
+
+    return updated;
+  }
+
   // ==================== ADD-ONS ====================
 
   /**
@@ -617,7 +660,7 @@ export class CatalogService {
         originalPrice: data.originalPrice,
         packagePrice: data.packagePrice,
         savings: data.savings,
-        currency: data.currency || "GTQ",
+        currency: data.currency || "USD",
         thumbnail: data.thumbnail,
         validFrom: data.validFrom,
         validUntil: data.validUntil,

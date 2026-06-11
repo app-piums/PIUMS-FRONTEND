@@ -5,7 +5,6 @@ import { logger } from '../utils/logger';
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     role?: string;
   };
 }
@@ -34,8 +33,7 @@ export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
     // Agregar usuario al request
     req.user = {
       id: decoded.id,
-      email: decoded.email,
-      role: decoded.role
+      role: decoded.role,
     };
 
     next();

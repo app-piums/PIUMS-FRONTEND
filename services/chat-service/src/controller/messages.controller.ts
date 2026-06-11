@@ -29,7 +29,7 @@ export const sendMessage = async (req: AuthRequest, res: Response, next: NextFun
       return res.status(401).json({ message: 'No autenticado' });
     }
 
-    const { conversationId, content, type = 'text' } = req.body;
+    const { conversationId, content, type = 'TEXT' } = req.body;
 
     if (!conversationId || !content) {
       return res.status(400).json({ message: 'conversationId y content son requeridos' });
@@ -65,7 +65,7 @@ export const getUnreadCount = async (req: AuthRequest, res: Response, next: Next
     }
 
     const count = await chatService.getUnreadCount(userId);
-    res.json({ unreadCount: count });
+    res.json(count);
   } catch (error) {
     next(error);
   }

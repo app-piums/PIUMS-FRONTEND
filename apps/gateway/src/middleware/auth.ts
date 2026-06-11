@@ -2,12 +2,15 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { logger } from "../utils/logger";
 
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
+  process.exit(1);
+}
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_CHANGE_ME";
 
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     [key: string]: any;
   };
 }
@@ -47,11 +50,10 @@ export const authMiddleware = (
     // Adjuntar información del usuario al request
     req.user = {
       id: decoded.id,
-      email: decoded.email,
       ...decoded,
     };
 
-    logger.debug(`User authenticated: ${decoded.email}`, "AUTH_MIDDLEWARE");
+    logger.debug(`User authenticated: id=${decoded.id} role=${decoded.role}`, "AUTH_MIDDLEWARE");
     
     next();
   } catch (error: any) {
@@ -98,7 +100,6 @@ export const optionalAuthMiddleware = (
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       req.user = {
         id: decoded.id,
-        email: decoded.email,
         ...decoded,
       };
     } catch (error) {

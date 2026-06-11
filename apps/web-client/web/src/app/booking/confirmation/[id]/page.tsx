@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import ClientSidebar from '@/components/ClientSidebar';
 import { Loading } from '@/components/Loading';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +15,7 @@ import { toast } from '@/lib/toast';
 export default function BookingConfirmationPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const userName = (user as any)?.name || (user as any)?.nombre || (user as any)?.email?.split('@')[0] || 'Cliente';
   const bookingId = params.id as string;
@@ -24,6 +25,7 @@ export default function BookingConfirmationPage() {
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [paymentDeclined, setPaymentDeclined] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -38,7 +40,7 @@ export default function BookingConfirmationPage() {
 
       // Cargar booking
       const bookingData = await sdk.getBooking(bookingId);
-      
+
       if (!bookingData) {
         setError('Reserva no encontrada');
         return;
@@ -53,7 +55,7 @@ export default function BookingConfirmationPage() {
       ]);
 
       setArtist(artistData);
-      
+
       // Encontrar el servicio específico
       const serviceData = servicesData.find(s => s.id === bookingData.serviceId);
       setService(serviceData || null);
@@ -66,6 +68,38 @@ export default function BookingConfirmationPage() {
       setLoading(false);
     }
   }, [bookingId]);
+
+  // Procesar resultado del redirect de Tilopay si hay query params
+  useEffect(() => {
+    const responseCode = searchParams.get('responseCode');
+    const orderNumber = searchParams.get('orderNumber');
+    const amount = searchParams.get('amount');
+    const auth = searchParams.get('auth') || undefined;
+    const currency = searchParams.get('currency') || 'USD';
+    const orderHash = searchParams.get('orderHash') || undefined;
+    // hash = card token returned by Tilopay when tokenize=1 was requested
+    const cardHash = searchParams.get('hash') || undefined;
+
+    if (!responseCode || !orderNumber) return;
+
+    if (responseCode !== '00') {
+      setPaymentDeclined(true);
+      toast.error(`Pago no aprobado (código ${responseCode}). Intenta de nuevo.`);
+      return;
+    }
+
+    // Confirmar el pago en el backend y luego recargar el booking para reflejar el estado actualizado
+    sdk.confirmTilopayRedirect({ bookingId, responseCode, orderNumber: orderNumber!, amount: amount!, auth, currency, orderHash })
+      .then(() => loadBookingData())
+      .catch(() => {
+        // No bloquear la UI si falla — el admin puede confirmar manualmente
+      });
+
+    if (cardHash) {
+      sdk.saveProviderToken({ provider: 'TILOPAY', token: cardHash })
+        .catch(() => {});
+    }
+  }, [bookingId, searchParams, loadBookingData]);
 
   useEffect(() => {
     if (isAuthenticated && bookingId) {
@@ -98,6 +132,7 @@ export default function BookingConfirmationPage() {
       CONFIRMED: { label: 'Confirmada', color: 'bg-green-100 text-green-800' },
       PAYMENT_PENDING: { label: 'Pago Pendiente', color: 'bg-orange-100 text-orange-800' },
       PAYMENT_COMPLETED: { label: 'Pagado', color: 'bg-blue-100 text-blue-800' },
+      CARD_AUTHORIZED: { label: 'Pendiente de confirmacion', color: 'bg-yellow-100 text-yellow-800' },
       IN_PROGRESS: { label: 'En Progreso', color: 'bg-indigo-100 text-indigo-800' },
       COMPLETED: { label: 'Completada', color: 'bg-green-100 text-green-800' },
       CANCELLED_CLIENT: { label: 'Cancelada', color: 'bg-red-100 text-red-800' },
@@ -117,10 +152,8 @@ export default function BookingConfirmationPage() {
 
   const handleDownloadPDF = () => {
     if (!bookingId) return;
-    
-    // Abrir PDF en nueva ventana para descarga
-    const pdfUrl = `/api/booking/bookings/${bookingId}/pdf`;
-    window.open(pdfUrl, '_blank');
+    // PDF generation not yet implemented — endpoint pending
+    toast.info('La descarga de PDF estará disponible próximamente.');
   };
 
   const handleAddToCalendar = (type: 'google' | 'apple') => {
@@ -231,28 +264,61 @@ END:VCALENDAR`;
 
         <div className="flex-1 px-4 lg:px-6 py-6">
 
-        {/* Success Header */}
-        <Card className="mb-6">
-          <CardContent className="text-center py-8">
-            <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+        {/* Banner pago rechazado */}
+        {paymentDeclined && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <svg className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <div>
+              <p className="font-medium text-red-800">Pago no procesado</p>
+              <p className="text-sm text-red-600 mt-1">Tu reserva está guardada pero el pago fue rechazado. Puedes intentarlo de nuevo desde el detalle de la reserva.</p>
+              <Button className="mt-3" variant="outline" onClick={() => router.push(`/bookings/${bookingId}`)}>
+                Ir a la reserva
+              </Button>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              ¡Reserva Confirmada!
-            </h1>
-            <p className="text-gray-600 mb-4">
-              Tu reserva ha sido creada exitosamente. Hemos enviado los detalles a tu correo.
-            </p>
-            {booking.code && (
-              <div className="inline-block bg-gray-100 px-6 py-3 rounded-lg">
-                <p className="text-sm text-gray-600 mb-1">Código de Reserva</p>
-                <p className="text-2xl font-bold text-gray-900 font-mono">{booking.code}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
+
+        {/* Status Header */}
+        {(() => {
+          const paymentStatus = (booking as any).paymentStatus;
+          const isPending = paymentStatus === 'PAYMENT_PENDING' || paymentStatus === 'PENDING';
+          const isCardAuthorized = paymentStatus === 'CARD_AUTHORIZED';
+          return (
+            <Card className="mb-6">
+              <CardContent className="text-center py-8">
+                <div className={`h-16 w-16 ${isPending || isCardAuthorized ? 'bg-yellow-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  {isPending || isCardAuthorized ? (
+                    <svg className="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  {isPending ? 'Reserva Creada — Pago Pendiente' : isCardAuthorized ? 'Reserva Recibida' : '¡Reserva Confirmada!'}
+                </h1>
+                <p className="text-gray-600 mb-4">
+                  {isPending
+                    ? 'Tu reserva fue registrada. Completa el pago con los datos que te enviamos al correo para confirmarla.'
+                    : isCardAuthorized
+                    ? 'Tu reserva fue creada exitosamente. El artista la revisara y confirmara en breve. Recibiras una notificacion cuando esto suceda.'
+                    : 'Tu reserva ha sido creada exitosamente. Hemos enviado los detalles a tu correo.'}
+                </p>
+                {booking.code && (
+                  <div className="inline-block bg-gray-100 px-6 py-3 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Código de Reserva</p>
+                    <p className="text-2xl font-bold text-gray-900 font-mono">{booking.code}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
           {/* Booking Details */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -429,6 +495,15 @@ END:VCALENDAR`;
                     </div>
                   )}
 
+                  {(booking.travelPrice ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Viáticos / traslado</span>
+                      <span className="font-medium text-gray-900">
+                        ${((booking.travelPrice ?? 0) / 100).toLocaleString('en-US')}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="pt-3 border-t border-gray-200">
                     <div className="flex justify-between">
                       <span className="font-semibold text-gray-900">Total</span>
@@ -438,12 +513,12 @@ END:VCALENDAR`;
                     </div>
                   </div>
 
-                  {booking.depositRequired && booking.depositAmount && (
+                  {booking.anticipoRequired && booking.anticipoAmount != null && (
                     <div className="pt-3 border-t border-gray-200">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Depósito requerido</span>
+                        <span className="text-gray-600">Anticipo pagado</span>
                         <span className="font-medium text-orange-600">
-                          ${(booking.depositAmount / 100).toLocaleString('en-US')}
+                          ${(booking.anticipoAmount / 100).toLocaleString('en-US')}
                         </span>
                       </div>
                     </div>
@@ -481,6 +556,43 @@ END:VCALENDAR`;
               <Button variant="outline" onClick={() => router.push('/dashboard')} fullWidth>
                 Ir al Dashboard
               </Button>
+            </div>
+
+            {/* App Download Banner */}
+            <div className="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base">📱</span>
+                <p className="text-sm font-semibold text-white">Descarga la app</p>
+              </div>
+              <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                Gestiona tus reservas, chatea con artistas y recibe notificaciones en tiempo real.
+              </p>
+              <div className="flex flex-col gap-2">
+                <a
+                  href={process.env.NEXT_PUBLIC_CLIENT_APP_IOS || 'https://apps.apple.com/app/piums-cliente'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                  <div>
+                    <div className="text-[9px] text-gray-400 leading-none">Disponible en</div>
+                    <div className="text-xs font-semibold text-white">App Store</div>
+                  </div>
+                </a>
+                <a
+                  href={process.env.NEXT_PUBLIC_CLIENT_APP_ANDROID || 'https://play.google.com/store/apps/details?id=io.piums.cliente'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.76c.3.17.64.19.96.07l11.37-6.57-2.39-2.39-9.94 8.89zm-1.76-20.1C1.16 3.96 1 4.34 1 4.8v14.4c0 .46.16.84.42 1.14l.06.06 8.07-8.07v-.19L1.42 3.6l-.06.06zm17.16 8.67l-2.3-1.33-2.67 2.67 2.67 2.67 2.31-1.33c.66-.38.66-1.01 0-1.68h-.01zm-15.4 9.28L14.55 13l-2.39-2.39L3.18 2.24C2.86 2.12 2.52 2.14 2.22 2.31c-.61.35-.61 1.31 0 1.68l.14.08L14.55 12 2.36 20.43l-.14.08c-.61.37-.61 1.33 0 1.68.3.17.64.19.96.07l-.14-.08.14.08z"/></svg>
+                  <div>
+                    <div className="text-[9px] text-gray-400 leading-none">Disponible en</div>
+                    <div className="text-xs font-semibold text-white">Google Play</div>
+                  </div>
+                </a>
+              </div>
             </div>
           </div>
           </div>

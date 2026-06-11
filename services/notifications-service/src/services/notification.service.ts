@@ -1,4 +1,27 @@
-import { PrismaClient, NotificationChannel, NotificationStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+// NOTE: NotificationChannel/NotificationStatus are not re-exported by the local
+// (ungenerated) @prisma/client stub and `prisma generate` is unavailable offline.
+// These mirror the enums in prisma/schema.prisma exactly (same names and values),
+// so runtime behavior is identical to the generated client.
+const NotificationChannel = {
+  EMAIL: 'EMAIL',
+  SMS: 'SMS',
+  PUSH: 'PUSH',
+  IN_APP: 'IN_APP',
+} as const;
+type NotificationChannel = (typeof NotificationChannel)[keyof typeof NotificationChannel];
+
+const NotificationStatus = {
+  PENDING: 'PENDING',
+  SCHEDULED: 'SCHEDULED',
+  SENDING: 'SENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  FAILED: 'FAILED',
+  READ: 'READ',
+} as const;
+type NotificationStatus = (typeof NotificationStatus)[keyof typeof NotificationStatus];
 import { emailProvider } from '../providers/email.provider';
 import { smsProvider } from '../providers/sms.provider';
 import { pushProvider } from '../providers/push.provider';
@@ -21,10 +44,39 @@ export class NotificationService {
   // Send Notifications
   // ============================================================================
 
+  /**
+   * Resuelve el token FCM del usuario desde auth-service cuando el caller no lo
+   * provee. auth.users.fcmToken es el almacén canónico (lo escribe
+   * PATCH /auth/fcm-token). Sin esto, las notificaciones PUSH se crean con
+   * fcmToken=null y sendViaPush falla con "FCM token not provided".
+   */
+  private async resolveFcmToken(userId: string): Promise<string | null> {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:4001';
+    const secret = process.env.INTERNAL_SERVICE_SECRET || '';
+    try {
+      const res = await fetch(`${authUrl}/auth/internal/fcm-token/${userId}`, {
+        headers: { 'x-internal-secret': secret },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { fcmToken?: string | null };
+      return data.fcmToken ?? null;
+    } catch (err: any) {
+      logger.warn('No se pudo resolver fcmToken desde auth-service', 'NOTIFICATION_SERVICE', { userId, error: err.message });
+      return null;
+    }
+  }
+
   async sendNotification(data: SendNotificationInput) {
     try {
       // Get user preferences
       const preferences = await this.getUserPreferences(data.userId);
+
+      // Para PUSH, si el caller no pasó el token, resolverlo desde auth-service
+      if (data.channel === NotificationChannel.PUSH && !data.fcmToken) {
+        const resolved = await this.resolveFcmToken(data.userId);
+        if (resolved) data.fcmToken = resolved;
+      }
 
       // Check if user has this channel enabled
       if (!this.isChannelEnabled(data.channel, preferences)) {
@@ -191,6 +243,17 @@ export class NotificationService {
         'email-verification': 'email-verification.html',
         'payment-confirmation': 'payment-confirmation.html',
         'review-request': 'review-request.html',
+        'welcome-client': 'welcome-client.html',
+        'welcome-artist': 'welcome-artist.html',
+        'document-review-alert': 'document-review-alert.html',
+        'booking-created-client': 'booking-created-client.html',
+        'booking-created-artist': 'booking-created-artist.html',
+        'booking-confirmed': 'booking-confirmed.html',
+        'booking-confirmed-artist': 'booking-confirmed-artist.html',
+        'booking-reminder-24h': 'booking-reminder-24h.html',
+        'booking-reminder-2h': 'booking-reminder-2h.html',
+        'payout-disbursement': 'payout-disbursement.html',
+        'delivery-confirmation': 'delivery-confirmation.html',
       };
 
       const templateFile = templateFiles[template];
@@ -206,10 +269,17 @@ export class NotificationService {
 
       let htmlContent = fs.readFileSync(templatePath, 'utf-8');
 
-      // Reemplazar variables
+      // Resolve {{#if var}}...{{/if}} blocks before variable substitution
+      htmlContent = htmlContent.replace(
+        /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
+        (_match: string, varName: string, block: string) =>
+          variables[varName] ? block : ''
+      );
+
+      // Reemplazar variables simples
       Object.keys(variables).forEach(key => {
         const regex = new RegExp(`{{${key}}}`, 'g');
-        htmlContent = htmlContent.replace(regex, variables[key] || '');
+        htmlContent = htmlContent.replace(regex, String(variables[key] ?? ''));
       });
 
       // Determinar subject según template
@@ -218,6 +288,11 @@ export class NotificationService {
         'email-verification': '¡Bienvenido a Piums! Verifica tu email',
         'payment-confirmation': 'Confirmación de pago - Piums',
         'review-request': '¿Cómo fue tu experiencia? Comparte tu opinión',
+        'welcome-client': '¡Bienvenido a Piums! 🎉',
+        'welcome-artist': '¡Bienvenido a Piums! Tu perfil de artista está listo 🎨',
+        'document-review-alert': 'Documentos pendientes de revisión - Piums',
+        'payout-disbursement': 'Tu pago ha sido transferido - Piums',
+        'delivery-confirmation': 'Confirma la recepcion de tu servicio - Piums',
       };
 
       const subject = subjects[template] || 'Notificación - Piums';
@@ -301,6 +376,9 @@ export class NotificationService {
 
         // Log success
         await this.logNotificationEvent(notificationId, 'sent', result.messageId);
+
+        // Push real-time event to connected web clients
+        this.dispatchRealtime(notification.userId, notification);
 
         logger.info('Notification sent successfully', 'NOTIFICATION_SERVICE', {
           notificationId,
@@ -661,6 +739,35 @@ export class NotificationService {
     }
 
     return result;
+  }
+
+  private dispatchRealtime(userId: string, notification: any) {
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const secret = process.env.INTERNAL_SERVICE_SECRET;
+    if (!chatUrl || !secret) return;
+
+    fetch(`${chatUrl}/internal/notify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-secret': secret,
+      },
+      body: JSON.stringify({
+        userId,
+        event: 'notification:new',
+        data: {
+          id: notification.id,
+          title: notification.title,
+          message: notification.message,
+          type: notification.type,
+          category: notification.category,
+          channel: notification.channel,
+          createdAt: notification.createdAt ?? new Date().toISOString(),
+        },
+      }),
+    }).catch((err) => {
+      logger.warn('Could not dispatch realtime notification', 'NOTIFICATION_SERVICE', err);
+    });
   }
 
   private async logNotificationEvent(

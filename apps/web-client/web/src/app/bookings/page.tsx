@@ -1,8 +1,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { PageHelpButton } from '@/components/PageHelpButton';
-import Image from 'next/image';
 import Link from 'next/link';
+import { cImg } from '@/lib/cloudinaryImg';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ClientSidebar from '@/components/ClientSidebar';
@@ -12,7 +12,7 @@ import { ReportarQuejaModal } from '@/components/quejas/ReportarQuejaModal';
 import { toast } from '@/lib/toast';
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
-type BookingStatus = 'confirmed' | 'accepted' | 'pending' | 'completed' | 'cancelled' | 'rejected';
+type BookingStatus = 'confirmed' | 'accepted' | 'pending' | 'completed' | 'delivered' | 'dispute_open' | 'cancelled' | 'rejected';
 
 interface MockBooking {
   id: string;
@@ -33,11 +33,17 @@ interface MockBooking {
   artistId?: string;
   reviewId?: string;
   eventId?: string;
+  paymentStatus?: string;
+  anticipoAmount?: number;
+  totalPriceCents?: number;
+  currency?: string;
+  scheduledDateISO?: string;
+  paidAmount?: number;
 }
 
 
 const STATS = [
-  { label: 'Reservas Totales', value: 0, icon: BookIcon,        color: 'text-[#FF6A00] bg-orange-50' },
+  { label: 'Reservas Totales', value: 0, icon: BookIcon,        color: 'text-[#FF6B35] bg-orange-50' },
   { label: 'Próximas',         value: 0, icon: ClockIcon,       color: 'text-blue-600 bg-blue-50'   },
   { label: 'Pendientes',       value: 0, icon: BellIcon,        color: 'text-yellow-600 bg-yellow-50'},
   { label: 'Completadas',      value: 0, icon: CheckCircleIcon, color: 'text-green-600 bg-green-50' },
@@ -52,13 +58,24 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'cancelled', label: 'Canceladas'         },
 ];
 
+// Cada tab agrupa múltiples booking statuses
+const FILTER_MAP: Record<string, string[]> = {
+  pending:   ['pending', 'card_authorized'],
+  confirmed: ['confirmed', 'anticipo_paid', 'in_progress'],
+  completed: ['completed', 'delivered'],
+  cancelled: ['cancelled', 'cancelled_client', 'cancelled_artist', 'rejected', 'no_show'],
+};
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  confirmed: { label: 'Confirmada', className: 'bg-green-100 text-green-700'  },
-  accepted:  { label: 'Aceptada',    className: 'bg-green-100 text-green-700'  },
-  pending:   { label: 'Pendiente',  className: 'bg-yellow-100 text-yellow-700'},
-  completed: { label: 'Completada', className: 'bg-blue-100 text-blue-700'   },
-  cancelled: { label: 'Cancelada',  className: 'bg-red-100 text-red-600'     },
-  rejected:  { label: 'Rechazada',  className: 'bg-red-100 text-red-600'     },
+  confirmed:       { label: 'Confirmada',  className: 'bg-green-100 text-green-700'   },
+  accepted:        { label: 'Aceptada',    className: 'bg-green-100 text-green-700'   },
+  pending:         { label: 'Pendiente',   className: 'bg-yellow-100 text-yellow-700' },
+  card_authorized: { label: 'Pendiente',   className: 'bg-yellow-100 text-yellow-700' },
+  completed:       { label: 'Completada',  className: 'bg-blue-100 text-blue-700'     },
+  delivered:       { label: 'Entregado',   className: 'bg-purple-100 text-purple-700' },
+  dispute_open:    { label: 'En disputa',  className: 'bg-red-100 text-red-700'       },
+  cancelled:       { label: 'Cancelada',   className: 'bg-red-100 text-red-600'       },
+  rejected:        { label: 'Rechazada',   className: 'bg-red-100 text-red-600'       },
 };
 
 // ─── Booking card ─────────────────────────────────────────────────────────────
@@ -72,11 +89,9 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
     >
       <div className="flex flex-col sm:flex-row">
         <div className="relative sm:w-40 h-36 sm:h-auto shrink-0 bg-gray-100">
-          <Image
-            src={b.imageUrl}
+          <img
+            src={cImg(b.imageUrl)}
             alt={b.title}
-            width={320}
-            height={192}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
           <span className={`absolute top-2 left-2 text-[11px] font-bold px-2.5 py-1 rounded-full ${cfg?.className || 'bg-gray-100 text-gray-600'}`}>
@@ -88,14 +103,14 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
             <div>
               <h3 className="font-semibold text-gray-900 text-base leading-snug">{b.title}</h3>
               <div className="flex items-center gap-1.5 mt-1">
-                <div className="h-5 w-5 rounded-full bg-gradient-to-br from-[#FF6A00] to-pink-400 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                <div className="h-5 w-5 rounded-full bg-gradient-to-br from-[#FF6B35] to-pink-400 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
                   {b.artistName.charAt(0)}
                 </div>
                 <span className="text-xs text-gray-500">con <span className="font-medium text-gray-700">{b.artistName}</span></span>
               </div>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-lg font-bold text-[#FF6A00]">$${b.price.toLocaleString('en-US')}</p>
+              <p className="text-lg font-bold text-[#FF6B35]">${b.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               <p className="text-[11px] text-gray-400">{b.priceLabel}</p>
             </div>
           </div>
@@ -133,13 +148,41 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
               <p className="text-xs text-red-600 leading-relaxed">{b.cancelReason}</p>
             </div>
           )}
+          {(b as any).paymentStatus === 'CARD_AUTHORIZED' && (
+            <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2.5" onClick={e => e.stopPropagation()}>
+              <InfoIcon className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-yellow-800">Reserva en espera de confirmacion</p>
+                <p className="text-xs text-yellow-700">Tu reserva esta confirmada de nuestra parte. Esperamos que el artista la acepte en breve.</p>
+              </div>
+            </div>
+          )}
+          {b.paymentStatus === 'ANTICIPO_PAID' && b.totalPriceCents != null && b.anticipoAmount != null && (
+            <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start gap-2">
+                <InfoIcon className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-800">Saldo restante pendiente</p>
+                  <p className="text-xs text-amber-700">
+                    ${((b.totalPriceCents - b.anticipoAmount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} se cobrará 72h antes del evento
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={`/booking/checkout?bookingId=${b.id}`}
+                className="shrink-0 text-xs font-bold text-amber-800 bg-amber-200 hover:bg-amber-300 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Pagar ahora
+              </Link>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 mt-auto pt-1" onClick={e => e.stopPropagation()}>
             {(b.status === 'confirmed' || b.status === 'accepted') && (
               <>
                 <Btn variant="primary-outline" icon={<ChatBubbleIcon className="h-4 w-4" />} onClick={() => onMessage(b)}>Mensaje al Artista</Btn>
                 <Btn variant="ghost" href={`/bookings/${b.id}`}>Ver Detalles</Btn>
                 {!b.reviewId && (
-                  <Btn variant="ghost" className="bg-orange-50 !text-[#FF6A00]" icon={<StarIcon className="h-4 w-4" />} onClick={() => onReview(b)}>Reseñar</Btn>
+                  <Btn variant="ghost" className="bg-orange-50 !text-[#FF6B35]" icon={<StarIcon className="h-4 w-4" />} onClick={() => onReview(b)}>Reseñar</Btn>
                 )}
                 <Btn variant="danger-ghost" icon={<FlagIcon className="h-4 w-4" />} onClick={() => onQueja(b)}>Reportar queja</Btn>
                 <Btn variant="danger-ghost" onClick={() => onCancel(b)}>Cancelar Reserva</Btn>
@@ -150,9 +193,9 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
                 <Btn variant="primary-outline" icon={<ChatBubbleIcon className="h-4 w-4" />} onClick={() => onMessage(b)}>Mensaje al Artista</Btn>
                 <Btn variant="ghost" href={`/bookings/${b.id}`}>Ver Detalles</Btn>
                 {b.eventId ? (
-                  <Btn variant="ghost" href={`/events/${b.eventId}`} className="!text-[#FF6A00] bg-orange-50">Ver Evento</Btn>
+                  <Btn variant="ghost" href={`/events/${b.eventId}`} className="!text-[#FF6B35] bg-orange-50">Ver Evento</Btn>
                 ) : (
-                  <Btn variant="ghost" className="!text-[#FF6A00] bg-orange-50" onClick={() => onAddToEvent(b)}>Agregar a Evento</Btn>
+                  <Btn variant="ghost" className="!text-[#FF6B35] bg-orange-50" onClick={() => onAddToEvent(b)}>Agregar a Evento</Btn>
                 )}
                 <Btn variant="danger-ghost" onClick={() => onCancel(b)}>Cancelar Solicitud</Btn>
               </>
@@ -169,9 +212,18 @@ function BookingCard({ b, onReview, onQueja, onMessage, onAddToEvent, onCancel }
                   </Btn>
                 )}
                 <Btn variant="ghost" href={`/bookings/${b.id}`}>Ver Recibo</Btn>
-                <Btn variant="ghost" className="ml-auto !text-[#FF6A00]" href={`/services/${b.serviceId || '1'}`} data-serviceid={b.serviceId}>Volver a reservar</Btn>
+                <Btn variant="ghost" className="ml-auto !text-[#FF6B35]" href={`/services/${b.serviceId || '1'}`} data-serviceid={b.serviceId}>Volver a reservar</Btn>
                 <Btn variant="danger-ghost" icon={<FlagIcon className="h-4 w-4" />} onClick={() => onQueja(b)}>Reportar queja</Btn>
               </>
+            )}
+            {b.status === 'delivered' && (
+              <>
+                <Btn variant="primary-solid" href={`/bookings/${b.id}`}>Confirmar servicio</Btn>
+                <Btn variant="danger-ghost" icon={<FlagIcon className="h-4 w-4" />} onClick={() => onQueja(b)}>Reportar queja</Btn>
+              </>
+            )}
+            {b.status === 'dispute_open' && (
+              <Btn variant="ghost" href={`/bookings/${b.id}`}>Ver disputa</Btn>
             )}
             {(b.status === 'cancelled' || b.status === 'rejected') && (
               <Btn variant="ghost" href={`/bookings/${b.id}`}>Ver Detalles</Btn>
@@ -193,8 +245,8 @@ function Btn({ children, variant = 'ghost', icon, href, className = '', onClick 
 }) {
   const base = 'flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all';
   const v: Record<string, string> = {
-    'primary-solid':   'bg-[#FF6A00] text-white hover:bg-orange-600',
-    'primary-outline': 'border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50',
+    'primary-solid':   'bg-[#FF6B35] text-white hover:bg-orange-600',
+    'primary-outline': 'border border-[#FF6B35] text-[#FF6B35] hover:bg-orange-50',
     'ghost':           'text-gray-600 hover:bg-gray-100',
     'danger-ghost':    'text-red-500 hover:bg-red-50',
   };
@@ -294,7 +346,7 @@ function AddToEventModal({ booking, onClose, onDone }: {
                   <button
                     onClick={() => handleAdd(ev.id)}
                     disabled={adding === ev.id}
-                    className="shrink-0 bg-[#FF6A00] text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#e55a00] disabled:opacity-50"
+                    className="shrink-0 bg-[#FF6B35] text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#e55a00] disabled:opacity-50"
                   >
                     {adding === ev.id ? '…' : 'Agregar'}
                   </button>
@@ -311,7 +363,7 @@ function AddToEventModal({ booking, onClose, onDone }: {
                 type="text"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/40 focus:border-[#FF6A00]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/40 focus:border-[#FF6B35]"
                 placeholder="Ej: Boda García-López"
                 maxLength={200}
                 autoFocus
@@ -321,7 +373,7 @@ function AddToEventModal({ booking, onClose, onDone }: {
                 <button
                   onClick={handleCreateAndAdd}
                   disabled={creating || !newName.trim()}
-                  className="flex-1 bg-[#FF6A00] text-white rounded-lg py-2 text-sm font-bold hover:bg-[#e55a00] disabled:opacity-50"
+                  className="flex-1 bg-[#FF6B35] text-white rounded-lg py-2 text-sm font-bold hover:bg-[#e55a00] disabled:opacity-50"
                 >
                   {creating ? 'Creando…' : 'Crear y agregar'}
                 </button>
@@ -330,7 +382,7 @@ function AddToEventModal({ booking, onClose, onDone }: {
           ) : (
             <button
               onClick={() => setShowCreate(true)}
-              className="w-full border-2 border-dashed border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-500 hover:border-[#FF6A00] hover:text-[#FF6A00] transition-colors flex items-center justify-center gap-2"
+              className="w-full border-2 border-dashed border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-500 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               Crear nuevo evento y agregar
@@ -381,7 +433,13 @@ export default function BookingsPage() {
   };
 
   const handleCancelBooking = async (b: MockBooking) => {
-    const reason = prompt('¿Razón de la cancelación? (mínimo 10 caracteres)');
+    const isConfirmed = ['confirmed', 'accepted'].includes(b.status);
+    const paid = b.paidAmount ?? 0;
+    let refundInfo = '';
+    if (isConfirmed && paid > 0) {
+      refundInfo = `\nReembolso: $${(Math.floor(paid * 0.5) / 100).toFixed(2)} (50% de lo pagado)`;
+    }
+    const reason = prompt(`¿Razón de la cancelación? (mínimo 10 caracteres)${refundInfo}`);
     if (reason === null) return;
     if (reason.trim().length < 10) { toast.warning('La razón debe tener al menos 10 caracteres'); return; }
     try {
@@ -418,7 +476,7 @@ export default function BookingsPage() {
     const fetchBookings = async () => {
       try {
         setLoading(true);
-        const data = await sdk.listBookings({ limit: 100 });
+        const data = await sdk.listBookings({ limit: 100, sortBy: 'createdAt', sortOrder: 'desc' });
         const bookingsList = data?.bookings || [];
 
         if (Array.isArray(bookingsList)) {
@@ -445,13 +503,19 @@ export default function BookingsPage() {
               artistId: b.artistId,
               reviewId: b.reviewId || undefined,
               eventId: b.eventId || undefined,
+              paymentStatus: b.paymentStatus || undefined,
+              anticipoAmount: b.anticipoAmount != null ? Number(b.anticipoAmount) : undefined,
+              totalPriceCents: b.totalPrice != null ? Number(b.totalPrice) : undefined,
+              currency: b.currency || 'USD',
+              scheduledDateISO: b.scheduledDate || undefined,
+              paidAmount: b.paidAmount != null ? Number(b.paidAmount) : undefined,
             };
           });
 
           setBookings(mappedBookings);
 
           const newStats = [
-            { label: 'Reservas Totales', value: mappedBookings.length,                                              icon: BookIcon,        color: 'text-[#FF6A00] bg-orange-50' },
+            { label: 'Reservas Totales', value: mappedBookings.length,                                              icon: BookIcon,        color: 'text-[#FF6B35] bg-orange-50' },
             { label: 'Próximas',         value: mappedBookings.filter(b => b.status === 'confirmed').length,        icon: ClockIcon,       color: 'text-blue-600 bg-blue-50'   },
             { label: 'Pendientes',       value: mappedBookings.filter(b => b.status === 'pending').length,          icon: BellIcon,        color: 'text-yellow-600 bg-yellow-50'},
             { label: 'Completadas',      value: mappedBookings.filter(b => b.status === 'completed').length,        icon: CheckCircleIcon, color: 'text-green-600 bg-green-50' },
@@ -470,7 +534,8 @@ export default function BookingsPage() {
   }, [authLoading, user]);
 
   const filtered = bookings.filter(b => {
-    const matchTab = activeTab === 'all' || b.status === activeTab;
+    const matchTab = activeTab === 'all' ||
+    (FILTER_MAP[activeTab]?.includes(b.status.toLowerCase()) ?? b.status === activeTab);
     const matchSearch = b.title.toLowerCase().includes(search.toLowerCase()) ||
                         b.artistName.toLowerCase().includes(search.toLowerCase());
     return matchTab && matchSearch;
@@ -491,13 +556,13 @@ export default function BookingsPage() {
             <div className="relative hidden sm:block">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input type="text" placeholder="Buscar reservas..." value={search} onChange={e => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/20 focus:border-[#FF6A00] transition w-56" />
+                className="pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20 focus:border-[#FF6B35] transition w-56" />
             </div>
             <button className="relative p-2 rounded-xl hover:bg-gray-100 transition-colors">
               <BellIcon className="h-5 w-5 text-gray-500" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-[#FF6A00] rounded-full" />
+              <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-[#FF6B35] rounded-full" />
             </button>
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#FF6A00] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#FF6B35] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
               {userName.charAt(0).toUpperCase()}
             </div>
           </div>
@@ -523,7 +588,7 @@ export default function BookingsPage() {
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                 className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                   activeTab === tab.key
-                    ? 'bg-[#FF6A00] text-white shadow-sm shadow-orange-200'
+                    ? 'bg-[#FF6B35] text-white shadow-sm shadow-orange-200'
                     : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                 }`}>
                 {tab.label}
@@ -538,7 +603,7 @@ export default function BookingsPage() {
               <div className="bg-white rounded-2xl border border-gray-100 py-16 flex flex-col items-center gap-3 text-center">
                 <BookIcon className="h-10 w-10 text-gray-200" />
                 <p className="text-gray-500 font-medium">No se encontraron reservas</p>
-                <Link href="/artists" className="text-sm text-[#FF6A00] hover:underline font-medium">Explorar artistas →</Link>
+                <Link href="/artists" className="text-sm text-[#FF6B35] hover:underline font-medium">Explorar artistas →</Link>
               </div>
             ) : (
               filtered.map(b => (

@@ -33,8 +33,9 @@ export default function OAuthCallbackPage() {
         // Save token to localStorage
         localStorage.setItem('token', token);
 
-        // Decode JWT to get user info (basic decode without verification - verification happens on backend)
         try {
+          document.cookie = `auth_token=${token}; path=/; SameSite=strict; max-age=86400`;
+
           const base64Url = token.split('.')[1];
           const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
           const jsonPayload = decodeURIComponent(
@@ -45,19 +46,30 @@ export default function OAuthCallbackPage() {
           );
           const decoded = JSON.parse(jsonPayload);
 
-          // Update auth context with user info
-          const user = {
-            id: decoded.id ?? decoded.sub ?? crypto.randomUUID(),
-            nombre: decoded.nombre || decoded.name || decoded.email || 'Usuario',
-            email: decoded.email ?? '',
-            role: decoded.role || 'cliente',
-            token,
-          };
+          try {
+            const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              login({ ...meData.user, token });
+            } else {
+              login({
+                id: decoded.id ?? decoded.sub ?? crypto.randomUUID(),
+                nombre: decoded.nombre || decoded.name || 'Usuario',
+                email: '',
+                role: decoded.role || 'cliente',
+                token,
+              });
+            }
+          } catch {
+            login({
+              id: decoded.id ?? decoded.sub ?? crypto.randomUUID(),
+              nombre: decoded.nombre || decoded.name || 'Usuario',
+              email: '',
+              role: decoded.role || 'cliente',
+              token,
+            });
+          }
 
-          login(user);
-
-          // Para clientes OAuth: resetear onboarding para que el middleware
-          // redirija si es primer ingreso
           if ((decoded.role || 'cliente') === 'cliente') {
             document.cookie = 'onboarding_completed=false; path=/; max-age=86400; SameSite=strict';
           }

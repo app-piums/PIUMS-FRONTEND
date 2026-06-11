@@ -1,10 +1,14 @@
 import { Server as SocketServer, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { Redis } from 'ioredis';
 import { Server as HttpServer } from 'http';
 import { verifySocketToken } from '../middleware/auth.middleware';
 import { ChatService } from '../services/chat.service';
+import { GroupChatService } from '../services/group-chat.service';
 import { logger } from '../utils/logger';
 
 const chatService = new ChatService();
+const groupChatService = new GroupChatService();
 
 interface AuthenticatedSocket extends Socket {
   data: {
@@ -15,6 +19,7 @@ interface AuthenticatedSocket extends Socket {
   };
   userId?: string;
   email?: string;
+  role?: string;
 }
 
 export class ChatGateway {
@@ -32,19 +37,67 @@ export class ChatGateway {
 
     this.setupMiddleware();
     this.setupEventHandlers();
-    
-    // Listen to HTTP POST messages being created and broadcast them via WebSocket
+
+    // Initialize Redis adapter when REDIS_HOST is defined (required for K8s multi-replica)
+    // Falls back to in-memory adapter when REDIS_HOST is not set (local dev)
+    if (process.env.REDIS_HOST) {
+      const redisOptions = {
+        host: process.env.REDIS_HOST,
+        port: parseInt(process.env.REDIS_PORT || '6379'),
+        password: process.env.REDIS_PASSWORD || undefined,
+        lazyConnect: true,
+        retryStrategy: () => null, // no reintentar — el adaptador in-memory es suficiente si Redis no está disponible
+      };
+      const pubClient = new Redis(redisOptions);
+      const subClient = pubClient.duplicate();
+
+      // Listeners de error obligatorios antes de connect() para evitar crashes por eventos no manejados
+      pubClient.on('error', (err: Error) => logger.error('Redis pub error', 'CHAT_GATEWAY', err));
+      subClient.on('error', (err: Error) => logger.error('Redis sub error', 'CHAT_GATEWAY', err));
+
+      Promise.all([pubClient.connect(), subClient.connect()])
+        .then(() => {
+          this.io.adapter(createAdapter(pubClient, subClient));
+          logger.info('Socket.io Redis adapter connected', 'CHAT_GATEWAY');
+        })
+        .catch((err) => {
+          logger.error('Redis adapter connection failed, falling back to in-memory', 'CHAT_GATEWAY', err);
+          pubClient.disconnect();
+          subClient.disconnect();
+        });
+    }
+
+    // Listen to HTTP POST messages and broadcast via WebSocket
     import('../services/chat.service').then(({ chatEmitter }) => {
       chatEmitter.on('new_message', (message, conversation) => {
-        const recipientId = conversation.userId === message.senderId ? conversation.artistId : conversation.userId;
-        
-        // Notify recipient if connected
+        const recipientId = conversation.participant1Id === message.senderId ? conversation.participant2Id : conversation.participant1Id;
         this.io.to(`user:${recipientId}`).emit('message:received', message);
-        
-        // Notify sender if connected across other tabs
         this.io.to(`user:${message.senderId}`).emit('message:received', message);
       });
+
+      // Group chat events
+      chatEmitter.on('group:new_message', ({ groupId, message, senderIds }: { groupId: string; message: any; senderIds: string[] }) => {
+        // Broadcast to all group participants via their personal rooms
+        for (const uid of senderIds) {
+          this.io.to(`user:${uid}`).emit('group:message:received', { groupId, message });
+        }
+        // Also broadcast to the group room (for connected sockets that joined it)
+        this.io.to(`group:${groupId}`).emit('group:message:received', { groupId, message });
+      });
+
+      chatEmitter.on('group:participant:joined', ({ groupId, userId }: { groupId: string; userId: string }) => {
+        this.io.to(`group:${groupId}`).emit('group:participant:joined', { groupId, userId });
+      });
+
+      chatEmitter.on('group:participant:left', ({ groupId, userId }: { groupId: string; userId: string }) => {
+        this.io.to(`group:${groupId}`).emit('group:participant:left', { groupId, userId });
+      });
     });
+  }
+
+  // Helper to get the other participant
+  private getOtherParticipant(conversation: any, currentUserId: string): string {
+    return conversation.participant1Id === currentUserId ? conversation.participant2Id : conversation.participant1Id;
   }
 
   private setupMiddleware() {
@@ -64,7 +117,7 @@ export class ChatGateway {
       }
 
       socket.userId = user.id;
-      socket.email = user.email;
+      socket.role = user.role;
       next();
     });
   }
@@ -80,6 +133,11 @@ export class ChatGateway {
       // Join user to their personal room
       socket.join(`user:${userId}`);
 
+      // Admins also join the shared broadcast room
+      if (socket.role === 'admin') {
+        socket.join('room:admins');
+      }
+
       // ==================== EVENTS ====================
 
       // Enviar mensaje
@@ -93,20 +151,20 @@ export class ChatGateway {
           const conversation = await chatService.getConversation(data.conversationId, userId);
           
           if (conversation.status !== 'ACTIVE') {
-            return socket.emit('message:error', { message: 'La conversación aún no está activa. El artista debe confirmar la reserva.' });
+            return socket.emit('message:error', { message: 'La conversación aún no está activa.' });
           }
 
           const message = await chatService.sendMessage(
             data.conversationId,
             userId,
             data.content,
-            data.type || 'text'
+            data.type || 'TEXT'
           );
 
           // Enviar el mensaje al emisor
           socket.emit('message:sent', { message });
 
-          const recipientId = conversation.userId === userId ? conversation.artistId : conversation.userId;
+          const recipientId = this.getOtherParticipant(conversation, userId);
 
           // Enviar al destinatario si está conectado
           const recipientSocketId = this.userSockets.get(recipientId);
@@ -143,7 +201,7 @@ export class ChatGateway {
       socket.on('typing:start', async (data: { conversationId: string }) => {
         try {
           const conversation = await chatService.getConversation(data.conversationId, userId);
-          const recipientId = conversation.userId === userId ? conversation.artistId : conversation.userId;
+          const recipientId = this.getOtherParticipant(conversation, userId);
 
           // Notificar al otro usuario
           this.io.to(`user:${recipientId}`).emit('typing:start', {
@@ -161,7 +219,7 @@ export class ChatGateway {
       socket.on('typing:stop', async (data: { conversationId: string }) => {
         try {
           const conversation = await chatService.getConversation(data.conversationId, userId);
-          const recipientId = conversation.userId === userId ? conversation.artistId : conversation.userId;
+          const recipientId = this.getOtherParticipant(conversation, userId);
 
           // Notificar al otro usuario
           this.io.to(`user:${recipientId}`).emit('typing:stop', {
@@ -187,6 +245,34 @@ export class ChatGateway {
         logger.debug(`User left conversation room`, 'CHAT_GATEWAY', { userId, conversationId: data.conversationId });
       });
 
+      // ==================== GROUP CHAT EVENTS ====================
+
+      socket.on('group:conversation:join', (data: { groupId: string }) => {
+        socket.join(`group:${data.groupId}`);
+        logger.debug('User joined group room', 'CHAT_GATEWAY', { userId, groupId: data.groupId });
+      });
+
+      socket.on('group:conversation:leave', (data: { groupId: string }) => {
+        socket.leave(`group:${data.groupId}`);
+      });
+
+      socket.on('group:message:send', async (data: { groupId: string; content: string; type?: string }) => {
+        try {
+          const message = await groupChatService.sendGroupMessage(data.groupId, userId, data.content, data.type || 'TEXT');
+          socket.emit('group:message:sent', { groupId: data.groupId, message });
+        } catch (error: any) {
+          socket.emit('group:message:error', { error: error.message });
+        }
+      });
+
+      socket.on('group:typing:start', async (data: { groupId: string }) => {
+        this.io.to(`group:${data.groupId}`).emit('group:typing:start', { groupId: data.groupId, userId });
+      });
+
+      socket.on('group:typing:stop', async (data: { groupId: string }) => {
+        this.io.to(`group:${data.groupId}`).emit('group:typing:stop', { groupId: data.groupId, userId });
+      });
+
       // Desconexión
       socket.on('disconnect', () => {
         this.userSockets.delete(userId);
@@ -195,8 +281,11 @@ export class ChatGateway {
     });
   }
 
-  // Método para enviar notificaciones desde el backend
   public notifyUser(userId: string, event: string, data: any) {
     this.io.to(`user:${userId}`).emit(event, data);
+  }
+
+  public notifyAdmins(event: string, data: any) {
+    this.io.to('room:admins').emit(event, data);
   }
 }

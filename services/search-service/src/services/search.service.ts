@@ -23,6 +23,7 @@ export class SearchService {
     const {
       q,
       query: queryParam,
+      category,
       city,
       state,
       country,
@@ -30,6 +31,7 @@ export class SearchService {
       minRating,
       minPrice,
       maxPrice,
+      minGuests,
       isVerified,
       isAvailable,
       sortBy,
@@ -40,20 +42,32 @@ export class SearchService {
     const skip = (page! - 1) * limit!;
     const query = q || queryParam;
 
+    // Merge explicit category into specialties filter (ArtistIndex stores the
+    // category value inside the specialties array, e.g. ['MUSICO', 'Guitarrista'])
+    const allSpecialties = [
+      ...(specialties ?? []).filter(s => s !== 'OTRO'),
+      ...(category && category !== 'OTRO' ? [category] : []),
+    ];
+
     // Build where clause
+    // By default (unless explicitly set to false) only verified artists are
+    // shown in search results — an unverified profile is hidden.
+    const verifiedFilter = isVerified === false ? undefined : true;
     const where: any = {
       isActive: true,
+      servicesCount: { gt: 0 },
       ...(city && { city: { contains: city, mode: 'insensitive' } }),
       ...(state && { state: { contains: state, mode: 'insensitive' } }),
       ...(country && {country}),
       ...(minRating && { averageRating: { gte: minRating } }),
       ...(minPrice && { hourlyRateMin: { gte: minPrice } }),
       ...(maxPrice && { hourlyRateMax: { lte: maxPrice } }),
-      ...(isVerified !== undefined && { isVerified }),
+      ...(verifiedFilter !== undefined && { isVerified: verifiedFilter }),
       ...(isAvailable !== undefined && { isAvailable }),
-      ...(specialties && specialties.length > 0 && {
+      // category is merged into allSpecialties above; minGuests has no ArtistIndex-level capacity field
+      ...(allSpecialties.length > 0 && {
         specialties: {
-          hasSome: specialties
+          hasSome: allSpecialties
         }
       })
     };
@@ -79,18 +93,44 @@ export class SearchService {
       where.activeAbsenceType = null;
     }
 
-    // Add text search if query provided
+    // Add text search if query provided — uses unaccent for accent-insensitive
+    // matching (e.g. "sofia" ↔ "Sofía", "fotografo" ↔ "fotógrafo").
     if (query) {
       const expandedQuery = expandQuery(query);
-      // Flatten: artist must match at least one field for at least one term
-      const fieldConditions: any[] = [];
-      for (const term of expandedQuery) {
-        fieldConditions.push({ name: { contains: term, mode: 'insensitive' } });
-        fieldConditions.push({ bio: { contains: term, mode: 'insensitive' } });
-        fieldConditions.push({ specialties: { hasSome: [term] } });
-        fieldConditions.push({ serviceTitles: { hasSome: [term] } });
+      const likePatterns = expandedQuery.map(t => `%${t.toLowerCase()}%`);
+      try {
+        const matchedIds = await prisma.$queryRaw<Array<{ id: string }>>`
+          WITH patterns AS (
+            SELECT unaccent(p) AS p FROM unnest(${likePatterns}::text[]) AS p
+          )
+          SELECT DISTINCT id
+          FROM "ArtistIndex"
+          WHERE "isActive" = true
+            AND (
+              unaccent(lower(name)) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              OR unaccent(lower(coalesce(bio, ''))) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              OR EXISTS (
+                SELECT 1 FROM unnest(specialties) AS s
+                WHERE unaccent(lower(s)) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              )
+              OR EXISTS (
+                SELECT 1 FROM unnest("serviceTitles") AS st
+                WHERE unaccent(lower(st)) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              )
+            )
+        `;
+        andConditions.push({ id: { in: matchedIds.map((r: { id: string }) => r.id) } });
+      } catch (err: any) {
+        logger.warn(`Unaccent search failed, falling back to ILIKE: ${err.message}`);
+        const fieldConditions: any[] = [];
+        for (const term of expandedQuery) {
+          fieldConditions.push({ name: { contains: term, mode: 'insensitive' } });
+          fieldConditions.push({ bio: { contains: term, mode: 'insensitive' } });
+          fieldConditions.push({ specialties: { hasSome: [term] } });
+          fieldConditions.push({ serviceTitles: { hasSome: [term] } });
+        }
+        andConditions.push({ OR: fieldConditions });
       }
-      andConditions.push({ OR: fieldConditions });
     }
 
     if (andConditions.length > 0) {
@@ -288,6 +328,7 @@ export class SearchService {
         results.artists = await prisma.artistIndex.findMany({
           where: {
             isActive: true,
+            NOT: { specialties: { equals: ['OTRO'] } },
             OR: [
               { name: { contains: query, mode: 'insensitive' } },
               { specialties: { hasSome: [query] } }
@@ -377,7 +418,14 @@ export class SearchService {
           name: artist.name,
           email: artist.email,
           bio: artist.bio,
-          specialties: artist.specialties || [],
+          // Prepend the ArtistCategory enum value (e.g. "MUSICO") so that
+          // category-based search filters (hasSome: ["MUSICO"]) work correctly.
+          specialties: [
+            ...new Set([
+              ...(artist.category && artist.category !== 'OTRO' ? [artist.category] : []),
+              ...(artist.specialties || []).filter((s: string) => s !== 'OTRO'),
+            ]),
+          ],
           city: artist.city,
           state: artist.state,
           country: artist.country,
@@ -387,7 +435,10 @@ export class SearchService {
         responseRate: rating?.responseRate || 0,
         hourlyRateMin: artist.minHourlyRate,
         hourlyRateMax: artist.maxHourlyRate,
-        isVerified: artist.isVerified,
+        // Derive boolean from the authoritative verificationStatus enum on
+        // artists-service. The previous `artist.isVerified` field never
+        // existed, so every artist was flagged as unverified.
+        isVerified: (artist as any).verificationStatus === 'VERIFIED',
         isActive: artist.isActive,
         isAvailable: artist.isAvailable,
         servicesCount: services.length,
@@ -401,6 +452,8 @@ export class SearchService {
           const main = services.find((s: ServiceData) => s.isMainService) || services[0] || null;
           return main ? main.title : null;
         })(),
+        avatar: artist.avatar ?? null,
+        coverPhoto: artist.coverPhoto ?? null,
         lastSyncedAt: new Date(),
         // Absence tracking: manual blackout takes priority; fall back to GPS-detected country
         ...((() => {
@@ -493,6 +546,7 @@ export class SearchService {
           isActive: service.isActive,
           isAvailable: service.isAvailable,
           isMainService: service.isMainService || false,
+          isOnSale: (service as any).isOnSale || false,
           totalBookings: stats?.completed || 0,
         lastSyncedAt: new Date()
       };
@@ -737,8 +791,11 @@ export class SearchService {
     minPrice?: number;
     maxPrice?: number;
     minGuests?: number;
+    isVerified?: boolean;
   } = {}) {
-    const { page = 1, limit = 12, city, country, minPrice, maxPrice, minGuests } = options;
+    const { page = 1, limit = 12, city, country, minPrice, maxPrice, minGuests, isVerified } = options;
+    // Default: only verified artists. Pass isVerified=false explicitly to include unverified.
+    const verifiedFilter = isVerified === false ? undefined : true;
 
     const expandedTerms = expandQuery(query);
     logger.info(`smartSearch: "${query}" → [${expandedTerms.slice(0, 6).join(', ')}...]`);
@@ -751,7 +808,7 @@ export class SearchService {
       { tags: { hasSome: [term] } },
     ]);
 
-    const whereClause: any = {
+    const serviceWhereClause: any = {
       isActive: true,
       isAvailable: true,
       OR: whereConditions,
@@ -762,24 +819,71 @@ export class SearchService {
       ...(minGuests != null && { capacity: { gte: minGuests } }),
     };
 
-    try {
-      const services = await prisma.serviceIndex.findMany({
-        where: whereClause,
-        orderBy: [
-          { artistRating: 'desc' },
-          { totalBookings: 'desc' },
-        ],
-        take: limit * 5, // fetch more to deduplicate by artist
-      });
+    // Also match artists directly by name / bio / specialties / service titles.
+    // This lets queries like "cristofer", "Alejandro", "DJ Alex" resolve even
+    // when the artist has no services indexed yet.
+    // Uses `unaccent` so "sofia" matches "Sofía" and vice versa.
+    const artistWhereClause: any = {
+      isActive: true,
+      ...(verifiedFilter !== undefined && { isVerified: verifiedFilter }),
+      ...(city && { city: { contains: city, mode: 'insensitive' } }),
+      ...(country && { country }),
+    };
 
-      // Deduplicate: best-scored service per artist
+    try {
+      // Use raw SQL with unaccent for accent-insensitive artist matching.
+      // We compute term LIKE patterns on the DB side.
+      const likePatterns = expandedTerms.map(t => `%${t.toLowerCase()}%`);
+
+      const [services, directArtistRows] = await Promise.all([
+        prisma.serviceIndex.findMany({
+          where: serviceWhereClause,
+          orderBy: [
+            { artistRating: 'desc' },
+            { totalBookings: 'desc' },
+          ],
+          take: limit * 5,
+        }),
+        prisma.$queryRaw<Array<{ id: string }>>`
+          WITH patterns AS (
+            SELECT unaccent(p) AS p FROM unnest(${likePatterns}::text[]) AS p
+          )
+          SELECT DISTINCT id
+          FROM "ArtistIndex"
+          WHERE "isActive" = true
+            AND (
+              unaccent(lower(name)) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              OR unaccent(lower(coalesce(bio, ''))) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              OR EXISTS (
+                SELECT 1 FROM unnest(specialties) AS s
+                WHERE unaccent(lower(s)) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              )
+              OR EXISTS (
+                SELECT 1 FROM unnest("serviceTitles") AS st
+                WHERE unaccent(lower(st)) LIKE ANY(ARRAY(SELECT p FROM patterns))
+              )
+            )
+          LIMIT ${limit * 5}
+        `.catch((err: any) => {
+          logger.error(`Raw artist search failed: ${err.message}`);
+          return [] as Array<{ id: string }>;
+        }),
+      ]);
+
+      const directArtistIds = directArtistRows.map((r: { id: string }) => r.id);
+      const directArtistMatches = directArtistIds.length
+        ? await prisma.artistIndex.findMany({
+            where: { id: { in: directArtistIds }, ...artistWhereClause },
+          })
+        : [];
+
+      // Deduplicate: best-scored service per artist (from ServiceIndex hits)
       const artistBestMatch = new Map<string, {
-        service: typeof services[0];
+        service: typeof services[0] | null;
         score: number;
         isExactMatch: boolean;
       }>();
 
-      const queryLower = query.toLowerCase();
       const exactTerms = expandedTerms.map(t => t.toLowerCase());
 
       for (const svc of services) {
@@ -806,11 +910,48 @@ export class SearchService {
         }
       }
 
-      // Fetch artist index data for the matched artists
+      // Merge direct artist matches (by name/bio/specialties). If an artist is
+      // already matched via a service, keep the richer entry; otherwise add a
+      // name-based match with a modest score.
+      for (const a of directArtistMatches) {
+        const nameLower = (a.name || '').toLowerCase();
+        const bioLower = (a.bio || '').toLowerCase();
+        const specialtiesLower = (a.specialties || []).map((s: string) => s.toLowerCase());
+
+        const isNameMatch = exactTerms.some(t => nameLower.includes(t));
+        const isBioMatch = exactTerms.some(t => bioLower.includes(t));
+        const isSpecMatch = exactTerms.some(t => specialtiesLower.some((s: string) => s.includes(t)));
+
+        const directScore =
+          (isNameMatch ? 4 : 0) +
+          (isSpecMatch ? 2 : 0) +
+          (isBioMatch ? 1 : 0) +
+          (a.averageRating || 0) * 0.3 +
+          Math.log((a.totalBookings || 0) + 1) * 0.2;
+
+        const existing = artistBestMatch.get(a.id);
+        if (!existing) {
+          artistBestMatch.set(a.id, {
+            service: null,
+            score: directScore,
+            isExactMatch: isNameMatch,
+          });
+        } else if (directScore > existing.score) {
+          artistBestMatch.set(a.id, {
+            ...existing,
+            score: directScore,
+            isExactMatch: existing.isExactMatch || isNameMatch,
+          });
+        }
+      }
+
+      // Fetch artist index data for all matched artists
       const artistIds = Array.from(artistBestMatch.keys());
-      const artists = await prisma.artistIndex.findMany({
-        where: { id: { in: artistIds }, isActive: true },
-      });
+      const artists = artistIds.length
+        ? await prisma.artistIndex.findMany({
+            where: { id: { in: artistIds }, isActive: true, ...(verifiedFilter !== undefined && { isVerified: verifiedFilter }) },
+          })
+        : [];
 
       // Build SmartResult array, sorted by score
       const sorted = Array.from(artistBestMatch.entries())
@@ -818,20 +959,23 @@ export class SearchService {
         .slice((page - 1) * limit, page * limit);
 
       const results = sorted.map(([artistId, { service, score, isExactMatch }]) => {
-        const artist = artists.find(a => a.id === artistId);
+        const artist = artists.find((a: { id: string }) => a.id === artistId);
+        if (!artist) return null;
         return {
           ...artist,
-          matchedService: {
-            id: service.id,
-            name: service.title,
-            price: service.price,
-            currency: service.currency,
-            pricingType: service.pricingType,
-            isExactMatch,
-          },
+          matchedService: service
+            ? {
+                id: service.id,
+                name: service.title,
+                price: service.price,
+                currency: service.currency,
+                pricingType: service.pricingType,
+                isExactMatch,
+              }
+            : null,
           score,
         };
-      }).filter(r => r.id); // filter out if artist no longer in index
+      }).filter((r): r is NonNullable<typeof r> => r !== null);
 
       await this.logSearchQuery({
         query,

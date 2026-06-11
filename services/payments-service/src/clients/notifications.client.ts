@@ -1,10 +1,20 @@
 /**
  * Cliente HTTP para comunicarse con notifications-service
  */
+import jwt from 'jsonwebtoken';
+import { logger } from '../utils/logger';
 
 const NOTIFICATIONS_SERVICE_URL =
-  process.env.NOTIFICATIONS_SERVICE_URL || "http://localhost:4006";
-const SERVICE_TOKEN = process.env.JWT_SECRET;
+  process.env.NOTIFICATIONS_SERVICE_URL || "http://notifications-service:4007";
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
+
+function getServiceToken(): string {
+  return jwt.sign(
+    { id: 'payments-service', email: 'payments@internal', role: 'service' },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
 
 interface SendNotificationPayload {
   userId: string;
@@ -13,26 +23,28 @@ interface SendNotificationPayload {
   title: string;
   message: string;
   data?: Record<string, any>;
+  emailTo?: string;
+  emailSubject?: string;
+  emailHtml?: string;
   priority?: "low" | "normal" | "high" | "urgent";
   category?: string;
 }
 
 export class NotificationsClient {
   private baseUrl: string;
-  private serviceToken: string;
 
   constructor() {
     this.baseUrl = NOTIFICATIONS_SERVICE_URL;
-    this.serviceToken = SERVICE_TOKEN || "";
   }
 
   async sendNotification(payload: SendNotificationPayload): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/notifications/send`, {
+        signal: AbortSignal.timeout(10_000),
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.serviceToken}`,
+          Authorization: `Bearer ${getServiceToken()}`,
         },
         body: JSON.stringify(payload),
       });
@@ -41,19 +53,13 @@ export class NotificationsClient {
         const error = await response
           .json()
           .catch(() => ({ message: "Error desconocido" }));
-        console.error(
-          "[NotificationsClient] Error enviando notificación:",
-          error
-        );
+        logger.error('Error enviando notificacion', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
         return null;
       }
 
       return await response.json();
     } catch (error) {
-      console.error(
-        "[NotificationsClient] Error de conexión con notifications-service:",
-        error
-      );
+      logger.error('Error de conexion con notifications-service', 'NOTIFICATIONS_CLIENT', { error: typeof error === 'string' ? error : (error as any)?.message });
       return null;
     }
   }

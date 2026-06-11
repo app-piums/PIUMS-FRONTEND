@@ -3,10 +3,14 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
 import { resolveArtistId } from '../utils/artist-resolver';
 
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
+  process.exit(1);
+}
+
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
     role?: string;
   };
   body: any;
@@ -17,17 +21,17 @@ export interface AuthRequest extends Request {
 
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // Obtener token de cookie o header
-    const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
+    // Obtener token de cookie (auth_token o token) o header Authorization
+    const token = req.cookies?.auth_token || req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })()) as any;
     let userId = decoded.id || decoded.userId;
 
-    if (decoded.role === 'artista' || decoded.role === 'artist') {
+    if (decoded.role === 'artista' || decoded.role === 'artist' || decoded.role === 'ambos') {
       const profileId = await resolveArtistId(token);
       if (profileId) {
         userId = profileId;
@@ -36,7 +40,6 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
     req.user = {
       id: userId,
-      email: decoded.email,
       role: decoded.role,
     };
 
@@ -48,12 +51,12 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 };
 
 // Verificar token de WebSocket
-export const verifySocketToken = async (token: string): Promise<{ id: string; email: string; role?: string } | null> => {
+export const verifySocketToken = async (token: string): Promise<{ id: string; role?: string } | null> => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })()) as any;
     let userId = decoded.id || decoded.userId;
 
-    if (decoded.role === 'artista' || decoded.role === 'artist') {
+    if (decoded.role === 'artista' || decoded.role === 'artist' || decoded.role === 'ambos') {
       const profileId = await resolveArtistId(token);
       if (profileId) {
         userId = profileId;
@@ -62,7 +65,6 @@ export const verifySocketToken = async (token: string): Promise<{ id: string; em
 
     return {
       id: userId,
-      email: decoded.email,
       role: decoded.role,
     };
   } catch (error) {

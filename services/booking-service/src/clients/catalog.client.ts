@@ -12,6 +12,7 @@ interface PriceCalculationInput {
   durationMinutes?: number;
   selectedAddonIds?: string[];
   distanceKm?: number;
+  scheduledDate?: string; // "YYYY-MM-DD"
 }
 
 interface PriceItem {
@@ -30,6 +31,7 @@ interface PriceQuote {
   subtotalCents: number;
   totalCents: number;
   depositRequiredCents?: number;
+  offerLabel?: string;
   breakdown: {
     baseCents: number;
     addonsCents: number;
@@ -86,7 +88,7 @@ export class CatalogClient {
   async getService(serviceId: string): Promise<any | null> {
     try {
       const response = await axios.get(
-        `${this.baseUrl}/api/catalog/services/${serviceId}`,
+        `${this.baseUrl}/api/services/${serviceId}`,
         {
           timeout: 5000,
         }

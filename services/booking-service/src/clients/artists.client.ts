@@ -9,9 +9,11 @@ export interface ArtistProfile {
   email: string;
   category: string;
   avatar?: string;
+  city?: string;
   baseLocationLabel?: string;
   baseLocationLat?: number;
   baseLocationLng?: number;
+  allowSameDayBooking?: boolean;
 }
 
 export class ArtistsClient {
@@ -62,6 +64,39 @@ export class ArtistsClient {
         authId,
       });
       return null;
+    }
+  }
+
+  async getArtistAvailability(artistId: string): Promise<Array<{ dayOfWeek: string; startTime: string; endTime: string }>> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/artists/${artistId}`, { timeout: 5000 });
+      if (response.status === 200 && response.data?.artist?.availabilityRules) {
+        return (response.data.artist.availabilityRules as any[])
+          .filter((r: any) => r.isActive !== false)
+          .map((r: any) => ({ dayOfWeek: r.dayOfWeek, startTime: r.startTime, endTime: r.endTime }));
+      }
+      return [];
+    } catch (error: any) {
+      logger.error('Error fetching artist availability rules', 'ARTISTS_CLIENT', { error: error.message, artistId });
+      return [];
+    }
+  }
+
+  async shadowBan(authId: string, reason: string, banned = true): Promise<boolean> {
+    try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      await axios.patch(
+        `${this.baseUrl}/artists/internal/by-auth/${authId}/shadow-ban`,
+        { banned, reason },
+        { timeout: 5000, headers: { 'x-internal-secret': internalSecret } }
+      );
+      return true;
+    } catch (error: any) {
+      logger.error('Error calling shadow-ban on artist', 'ARTISTS_CLIENT', {
+        error: error.message,
+        authId,
+      });
+      return false;
     }
   }
 }

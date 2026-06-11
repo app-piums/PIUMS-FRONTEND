@@ -27,6 +27,7 @@ async function createUserAndRespond(
   extra?: {
     ciudad?: string;
     birthDate?: string;
+    avatarUrl?: string;
     documentType?: string;
     documentNumber?: string;
     documentFrontUrl?: string;
@@ -40,18 +41,35 @@ async function createUserAndRespond(
     throw new AppError(409, "Este correo electrónico ya está registrado");
   }
 
-  const passwordHash = await hashPassword(password);
+  // Bloquear re-registro si el documento ya está vinculado a una cuenta baneada/bloqueada
+  if (extra?.documentType && extra?.documentNumber) {
+    const bannedDoc = await prisma.user.findFirst({
+      where: {
+        documentType: extra.documentType,
+        documentNumber: extra.documentNumber,
+        OR: [{ status: 'BANNED' }, { isBlocked: true }],
+      },
+      select: { id: true },
+    });
+    if (bannedDoc) {
+      throw new AppError(403, 'No es posible crear una cuenta con este documento de identidad');
+    }
+  }
+
   const isDev = process.env.NODE_ENV !== 'production';
-  const userStatus = isDev ? 'ACTIVE' : 'PENDING_EMAIL';
+
+  const passwordHash = await hashPassword(password);
 
   const user = await prisma.user.create({
     data: {
       nombre,
       email,
       passwordHash,
-      role,             // ✅ Guardar rol correcto (artista / cliente)
-      emailVerified: isDev,
-      status: userStatus,
+      provider: 'email',
+      role,
+      emailVerified: true,
+      status: 'ACTIVE',
+      avatar: extra?.avatarUrl,
       ciudad: extra?.ciudad,
       birthDate: extra?.birthDate ? new Date(extra.birthDate) : undefined,
       documentType: extra?.documentType,
@@ -62,7 +80,7 @@ async function createUserAndRespond(
     },
   });
 
-  logger.info("Usuario registrado", "AUTH_CONTROLLER", { userId: user.id, email: user.email, role: user.role });
+  logger.info("Usuario registrado", "AUTH_CONTROLLER", { userId: user.id, role: user.role });
 
   // Crear perfil en users-service (fire-and-forget)
   usersClient.createUserProfile({
@@ -71,6 +89,36 @@ async function createUserAndRespond(
     nombre: user.nombre,
     ciudad: extra?.ciudad,
   });
+
+  // Correo de bienvenida (fire-and-forget — no bloquea el registro)
+  notificationsClient.sendWelcomeEmail(user.email, user.nombre, role as any).catch(() => {});
+
+  // For artists, also bootstrap an artist profile and trigger verification when
+  // KYC documents were supplied (required for password-based artist registration).
+  if (role === 'artista') {
+    try {
+      const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+      if (internalSecret) {
+        await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+          body: JSON.stringify({ authId: user.id, email: user.email, nombre: user.nombre }),
+        }).catch(() => {});
+
+        // If docs were provided, auto-verify (dev) / mark pending review (prod).
+        if (extra?.documentFrontUrl && extra?.documentSelfieUrl) {
+          await fetch(`${artistsUrl}/artists/internal/by-auth/${user.id}/verification`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+            body: JSON.stringify({}),
+          }).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      logger.warn(`Artist bootstrap/verification on register failed: ${err.message}`, 'AUTH_CONTROLLER');
+    }
+  }
 
   // Email de verificación solo en producción
   if (!isDev) {
@@ -86,7 +134,7 @@ async function createUserAndRespond(
 
   // Generar tokens
   const jti = crypto.randomUUID();
-  const token = tokenService.signAccessToken({ id: user.id, email: user.email, role: user.role, jti });
+  const token = tokenService.signAccessToken({ id: user.id, role: user.role, jti });
   const refreshToken = tokenService.signRefreshToken({ id: user.id, jti });
 
   await tokenService.createRefreshToken(user.id, refreshToken, req.ip, req.get('user-agent'));
@@ -104,7 +152,7 @@ async function createUserAndRespond(
 
   const redirectUrl = role === 'artista'
     ? (process.env.ARTIST_APP_URL || 'http://localhost:3001')
-    : (process.env.CLIENT_APP_URL || 'http://localhost:3002');
+    : (process.env.CLIENT_APP_URL || 'http://localhost:3000');
 
   const { passwordHash: _, ...userResponse } = user;
 
@@ -132,12 +180,57 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /auth/register/artist  → rol fijo: artista
+// Si el email ya existe como 'cliente', verifica password y upgradea a 'ambos'.
 // ─────────────────────────────────────────────────────────────────────────
 export const registerArtist = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { nombre, email, password, ciudad, birthDate, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl } = registerArtistSchema.parse(req.body);
+    const { nombre, email, password, ciudad, birthDate, avatarUrl, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl } = registerArtistSchema.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+
+    if (existingUser) {
+      if (existingUser.role === 'artista' || existingUser.role === 'ambos') {
+        throw new AppError(409, "Este correo ya está registrado como artista");
+      }
+
+      // El usuario existe como 'cliente' → verificar password y promover a 'ambos'
+      if (existingUser.role === 'cliente') {
+        const validPassword = await comparePassword(password, existingUser.passwordHash ?? '');
+        if (!validPassword) {
+          throw new AppError(409, "Este correo ya está registrado. Usa la misma contraseña de tu cuenta de cliente para vincular tu perfil de artista.");
+        }
+
+        const updatedUser = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: 'ambos' },
+        });
+
+        // Bootstrap artist profile
+        const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+        const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+        if (internalSecret) {
+          await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+            body: JSON.stringify({ authId: updatedUser.id, email: updatedUser.email, nombre: updatedUser.nombre }),
+          }).catch(() => {});
+        }
+
+        const jti = crypto.randomUUID();
+        const token = tokenService.signAccessToken({ id: updatedUser.id, role: 'artista', jti });
+        const refreshToken = tokenService.signRefreshToken({ id: updatedUser.id, jti });
+        await tokenService.createRefreshToken(updatedUser.id, refreshToken, req.ip, req.get('user-agent'));
+        await prisma.session.create({
+          data: { jti, userId: updatedUser.id, ipAddress: req.ip, userAgent: req.get('user-agent'), expiresAt: new Date(Date.now() + 3600 * 1000) },
+        });
+
+        const { passwordHash: _, ...userResponse } = updatedUser;
+        return res.status(201).json({ user: { ...userResponse, role: 'artista' }, token, refreshToken, message: 'Perfil de artista vinculado exitosamente.' });
+      }
+    }
+
     await createUserAndRespond(req, res, nombre, email, password, 'artista', {
-      ciudad, birthDate, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl,
+      ciudad, birthDate, avatarUrl, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl,
     });
   } catch (error: any) {
     logger.error("Error en registro de artista", "AUTH_CONTROLLER", { message: error.message });
@@ -147,10 +240,44 @@ export const registerArtist = async (req: Request, res: Response, next: NextFunc
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /auth/register/client  → rol fijo: cliente
+// Si el email ya existe como 'artista', verifica password y upgradea a 'ambos'.
 // ─────────────────────────────────────────────────────────────────────────
 export const registerClient = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { nombre, email, password, ciudad, birthDate } = registerClientSchema.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+
+    if (existingUser) {
+      if (existingUser.role === 'cliente' || existingUser.role === 'ambos') {
+        throw new AppError(409, "Este correo ya está registrado como cliente");
+      }
+
+      // El usuario existe como 'artista' → verificar password y promover a 'ambos'
+      if (existingUser.role === 'artista') {
+        const validPassword = await comparePassword(password, existingUser.passwordHash ?? '');
+        if (!validPassword) {
+          throw new AppError(409, "Este correo ya está registrado. Usa la misma contraseña de tu cuenta de artista para vincular tu perfil de cliente.");
+        }
+
+        const updatedUser = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: 'ambos' },
+        });
+
+        const jti = crypto.randomUUID();
+        const token = tokenService.signAccessToken({ id: updatedUser.id, role: 'cliente', jti });
+        const refreshToken = tokenService.signRefreshToken({ id: updatedUser.id, jti });
+        await tokenService.createRefreshToken(updatedUser.id, refreshToken, req.ip, req.get('user-agent'));
+        await prisma.session.create({
+          data: { jti, userId: updatedUser.id, ipAddress: req.ip, userAgent: req.get('user-agent'), expiresAt: new Date(Date.now() + 3600 * 1000) },
+        });
+
+        const { passwordHash: _, ...userResponse } = updatedUser;
+        return res.status(201).json({ user: { ...userResponse, role: 'cliente' }, token, refreshToken, message: 'Perfil de cliente vinculado exitosamente.' });
+      }
+    }
+
     await createUserAndRespond(req, res, nombre, email, password, 'cliente', { ciudad, birthDate });
   } catch (error: any) {
     logger.error("Error en registro de cliente", "AUTH_CONTROLLER", { message: error.message });
@@ -170,7 +297,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     });
 
     if (!user) {
-      logger.warn("Intento de login con email no registrado", "AUTH_CONTROLLER", { email });
+      logger.warn("Intento de login con email no registrado", "AUTH_CONTROLLER");
       throw new AppError(401, "Credenciales inválidas");
     }
 
@@ -219,10 +346,9 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         },
       });
 
-      logger.warn("Intento de login con contraseña incorrecta", "AUTH_CONTROLLER", { 
-        userId: user.id, 
-        email,
-        failedAttempts 
+      logger.warn("Intento de login con contraseña incorrecta", "AUTH_CONTROLLER", {
+        userId: user.id,
+        failedAttempts
       });
 
       throw new AppError(401, "Credenciales inválidas");
@@ -238,14 +364,48 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       },
     });
 
-    logger.info("Login exitoso", "AUTH_CONTROLLER", { userId: user.id, email });
+    logger.info("Login exitoso", "AUTH_CONTROLLER", { userId: user.id });
+
+    // Dual-role support: allow role selection only for users who already have that role.
+    // A 'cliente' cannot self-upgrade to 'artista'/'ambos' via the login endpoint.
+    const requestedRole = typeof (req.body as any)?.role === 'string' ? (req.body as any).role : undefined;
+    let effectiveRole = user.role; // DB role is the source of truth
+
+    if (user.role === 'ambos' && requestedRole && ['artista', 'cliente'].includes(requestedRole)) {
+      effectiveRole = requestedRole;
+    }
+
+    // Ensure artist profile exists for users who are already artists or dual-role.
+    // Never bootstrap or upgrade clients who merely sent role: 'artista' in the body.
+    if (user.role === 'artista' || user.role === 'ambos') {
+      try {
+        const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+        const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+        if (internalSecret) {
+          await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': internalSecret,
+            },
+            body: JSON.stringify({
+              authId: user.id,
+              email: user.email,
+              nombre: user.nombre,
+              avatar: user.avatar ?? undefined,
+            }),
+          });
+        }
+      } catch (bootstrapErr: any) {
+        logger.warn(`Artist bootstrap on login failed: ${bootstrapErr.message}`, 'AUTH_CONTROLLER');
+      }
+    }
 
     // Generar tokens JWT
     const jti = crypto.randomUUID();
     const token = tokenService.signAccessToken({
       id: user.id,
-      email: user.email,
-      role: user.role,
+      role: effectiveRole,
       jti,
     });
     const refreshToken = tokenService.signRefreshToken({ id: user.id, jti });
@@ -280,12 +440,12 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       },
     });
 
-    // Determinar URL de redirección basada en el rol del usuario
+    // Determinar URL de redirección basada en el rol efectivo
     let redirectUrl = process.env.CLIENT_APP_URL || 'http://localhost:3000';
-    
-    if (user.role === 'artist') {
+
+    if (effectiveRole === 'artista' || effectiveRole === 'ambos') {
       redirectUrl = process.env.ARTIST_APP_URL || 'http://localhost:3001';
-    } else if (user.role === 'admin') {
+    } else if (effectiveRole === 'admin') {
       redirectUrl = process.env.ADMIN_APP_URL || 'http://localhost:3002';
     }
 
@@ -299,7 +459,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         email: user.email,
         emailVerified: user.emailVerified,
         status: user.status,
-        role: user.role,
+        role: effectiveRole,
       }
     });
   } catch (error: any) {
@@ -341,7 +501,20 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
     // Verificar token
     const decoded = tokenService.verifyAccessToken(token);
 
-    // Buscar usuario
+    // Check JTI/session revocation — only when the token carries a jti claim.
+    // Fail-open if no session record exists (backward compat with tokens issued before
+    // session-tracking was deployed). Only deny when a session EXISTS and is not ACTIVE
+    // (i.e., was explicitly revoked via logout or admin action).
+    if (decoded.jti) {
+      const session = await prisma.session.findFirst({
+        where: { jti: decoded.jti },
+      });
+      if (session && session.status !== 'ACTIVE') {
+        throw new AppError(401, 'Sesión revocada o expirada');
+      }
+    }
+
+    // Buscar usuario — excludes KYC document URLs and document number
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       select: {
@@ -354,11 +527,6 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
         avatar: true,
         ciudad: true,
         birthDate: true,
-        documentType: true,
-        documentNumber: true,
-        documentFrontUrl: true,
-        documentBackUrl: true,
-        documentSelfieUrl: true,
       },
     });
 
@@ -366,7 +534,7 @@ export const verify = async (req: Request, res: Response, next: NextFunction) =>
       throw new AppError(401, "Usuario no encontrado");
     }
 
-    // Retornar información del usuario
+    // Retornar información del usuario (sin campos de documentos KYC)
     res.json(user);
   } catch (error: any) {
     next(error);
@@ -392,19 +560,7 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
       req.get('user-agent')
     );
 
-    // Si el email fue enviado, enviar notificación
-    if (result.emailSent && result.user) {
-      try {
-        await notificationsClient.sendPasswordResetEmail(
-          result.user.email,
-          result.user.nombre,
-          result.token
-        );
-      } catch (emailError: any) {
-        logger.error("Error enviando email de password reset", "AUTH_CONTROLLER", emailError);
-        // No revelamos el error al cliente por seguridad
-      }
-    }
+    // Email is sent inside passwordService.requestPasswordReset — no token handling here
 
     // Siempre devolver mensaje genérico (no revelar si el email existe)
     res.json({
@@ -444,8 +600,7 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 
 export const changePassword = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // @ts-ignore - userId viene del middleware de autenticación
-    const userId = req.userId;
+    const userId = (req as any).user?.id;
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
@@ -454,6 +609,10 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
 
     if (newPassword.length < 8) {
       throw new AppError(400, "La contraseña debe tener al menos 8 caracteres");
+    }
+
+    if (currentPassword === newPassword) {
+      throw new AppError(400, "La nueva contraseña debe ser diferente a la actual");
     }
 
     const result = await passwordService.changePassword(
@@ -579,6 +738,7 @@ export const getMe = async (req: Request, res: Response) => {
       avatar: true,
       ciudad: true,
       birthDate: true,
+      isVerified: true,
       documentType: true,
       documentNumber: true,
       documentFrontUrl: true,
@@ -594,6 +754,20 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
   try {
     const { id } = (req as any).user;
     const { ciudad, birthDate, documentType, documentNumber, documentFrontUrl, documentBackUrl, documentSelfieUrl } = req.body;
+
+    // Snapshot before update — used to detect first-time document submission
+    const before = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        nombre: true,
+        email: true,
+        role: true,
+        documentType: true,
+        documentFrontUrl: true,
+        documentSelfieUrl: true,
+      },
+    });
+    const hadDocsBefore = !!(before?.documentType && before?.documentFrontUrl && before?.documentSelfieUrl);
 
     const updateData: Record<string, unknown> = {};
     if (ciudad !== undefined) updateData.ciudad = ciudad;
@@ -622,6 +796,45 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
       },
     });
 
+    // If all identity documents are present and the user is an artist, notify
+    // artists-service so the artist can be (auto-)verified and surface in search.
+    const hasDocs = Boolean(
+      user.documentType &&
+        user.documentNumber &&
+        user.documentFrontUrl &&
+        user.documentSelfieUrl
+    );
+    if (hasDocs && user.role === 'artista') {
+      try {
+        const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+        const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+        if (internalSecret) {
+          await fetch(`${artistsUrl}/artists/internal/by-auth/${user.id}/verification`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': internalSecret,
+            },
+            body: JSON.stringify({}),
+          });
+        }
+      } catch (err: any) {
+        logger.warn(`Failed to notify artist verification: ${err.message}`, 'AUTH_CONTROLLER');
+      }
+    }
+
+    // First-time document submission → alert the team for manual review
+    if (hasDocs && !hadDocsBefore && before) {
+      notificationsClient.notifyDocumentPendingReview({
+        userId: user.id,
+        userName: before.nombre || user.email,
+        userEmail: user.email,
+        userRole: user.role,
+        documentType: user.documentType!,
+        documentNumber: user.documentNumber!,
+      }).catch(() => {});
+    }
+
     res.json({ user });
   } catch (error: any) {
     next(error);
@@ -630,14 +843,34 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST /auth/firebase  — exchange Firebase ID token for a PIUMS JWT
+//
+// Nota: verificamos el token contra la Identity Toolkit REST API de Google
+// (https://identitytoolkit.googleapis.com/v1/accounts:lookup) en lugar de
+// usar firebase-admin. Ambos caminos verifican la firma del JWT contra el
+// proyecto de Firebase de PIUMS; la REST API no requiere service account
+// (solo FIREBASE_API_KEY pública), pesa ~0 MB adicionales y no necesita
+// distribuir la clave privada del service account en los secrets del
+// contenedor. Google la considera segura para intercambiar ID tokens.
 // ─────────────────────────────────────────────────────────────────────────
+const ALLOWED_FIREBASE_ROLES = ['cliente', 'artista'] as const;
+type FirebaseRole = typeof ALLOWED_FIREBASE_ROLES[number];
+
 export const firebaseLogin = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { idToken, role = 'artista' } = req.body;
+    const { idToken, role: rawRole = 'artista' } = req.body ?? {};
 
     if (!idToken || typeof idToken !== 'string') {
       throw new AppError(400, 'Firebase ID token requerido');
     }
+
+    // Validar role antes de hacer cualquier otro trabajo
+    if (typeof rawRole !== 'string' || !ALLOWED_FIREBASE_ROLES.includes(rawRole as FirebaseRole)) {
+      throw new AppError(
+        400,
+        `Role inválido. Valores permitidos: ${ALLOWED_FIREBASE_ROLES.join(', ')}`
+      );
+    }
+    const role: FirebaseRole = rawRole as FirebaseRole;
 
     // Verify the Firebase ID token using the Identity Toolkit REST API
     const firebaseApiKey = process.env.FIREBASE_API_KEY;
@@ -665,6 +898,11 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
         displayName?: string;
         photoUrl?: string;
         emailVerified?: boolean;
+        providerUserInfo?: Array<{
+          providerId: string;
+          photoUrl?: string;
+          displayName?: string;
+        }>;
       }>;
     };
 
@@ -673,7 +911,15 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
       throw new AppError(401, 'Token de Google inválido o expirado');
     }
 
-    const { localId: googleId, email, displayName: name, photoUrl: picture } = firebaseUser;
+    const { localId: googleId, email, displayName: name } = firebaseUser;
+
+    // Obtener foto de perfil: preferir provider-specific (Google) sobre top-level
+    const googleProviderInfo = firebaseUser.providerUserInfo?.find(
+      (p) => p.providerId === 'google.com'
+    );
+    const rawPicture = googleProviderInfo?.photoUrl || firebaseUser.photoUrl;
+    // Google devuelve fotos con tamaño =s96-c; pedir tamaño mayor para mejor calidad
+    const picture = rawPicture?.replace(/=s\d+-c$/, '=s400-c');
 
     if (!email) {
       throw new AppError(400, 'No se pudo obtener el email desde Google');
@@ -684,15 +930,57 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
       where: { OR: [{ googleId }, { email }] },
     });
 
+    let isRoleUpgrade = false;
+
     if (user) {
-      // Update googleId if not set, and avatar if we have one
-      if (!user.googleId || (picture && !user.avatar)) {
+      // Actualizar googleId y avatar desde Google en cada login
+      const needsUpdate =
+        !user.googleId ||
+        (picture && user.avatar !== picture) ||
+        (name && (!user.nombre || user.nombre === user.email.split('@')[0]));
+
+      // Dual-role upgrade via OAuth: Google already proves identity so no password needed.
+      // cliente → artista app: upgrade to 'ambos'
+      // artista → cliente app: upgrade to 'ambos'
+      const isOppositeRole =
+        (user.role === 'cliente' && role === 'artista') ||
+        (user.role === 'artista' && role === 'cliente');
+
+      if (isOppositeRole) {
+        isRoleUpgrade = true;
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            role: 'ambos',
+            googleId: user.googleId ?? googleId,
+            provider: user.provider ?? 'google',
+            avatar: picture ?? user.avatar ?? undefined,
+          },
+        });
+
+        // Bootstrap artist profile when upgrading to artista
+        if (role === 'artista') {
+          const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+          const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+          if (internalSecret) {
+            await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+              body: JSON.stringify({ authId: user.id, email: user.email, nombre: user.nombre, avatar: user.avatar ?? undefined }),
+            }).catch(() => {});
+          }
+        }
+      } else if (needsUpdate) {
         user = await prisma.user.update({
           where: { id: user.id },
           data: {
             googleId: user.googleId ?? googleId,
             provider: user.provider ?? 'google',
-            avatar: user.avatar ?? picture ?? undefined,
+            avatar: picture ?? user.avatar ?? undefined,
+            nombre:
+              name && (!user.nombre || user.nombre === user.email.split('@')[0])
+                ? name
+                : user.nombre,
           },
         });
       }
@@ -705,7 +993,7 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
         throw new AppError(403, 'Esta cuenta está suspendida temporalmente');
       }
     } else {
-      // Create new artist account automatically via Google
+      // Create new account automatically via Google (role from request context)
       user = await prisma.user.create({
         data: {
           nombre: name ?? email.split('@')[0],
@@ -719,12 +1007,62 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
           passwordHash: null,
         },
       });
-      logger.info('New user via Firebase Google', 'AUTH_CONTROLLER', { userId: user.id, email });
+      logger.info('New user via Firebase Google', 'AUTH_CONTROLLER', { userId: user.id });
+      notificationsClient.sendWelcomeEmail(user.email, user.nombre, role as any).catch(() => {});
     }
 
-    // Issue PIUMS tokens
+    // Sincronizar avatar de Google al users-service (fire-and-forget)
+    if (picture) {
+      usersClient.syncUserAvatar(user.id, picture).catch(() => {});
+    }
+
+    // Ensure artist profile exists for users who are already artists or dual-role.
+    // Only fires if the DB role is 'artista' or 'ambos'; never upgrades clients.
+    if (user.role === 'artista' || user.role === 'ambos') {
+      try {
+        const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+        const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+        if (internalSecret) {
+          const bootstrapRes = await fetch(`${artistsUrl}/artists/internal/bootstrap`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': internalSecret,
+            },
+            body: JSON.stringify({
+              authId: user.id,
+              email: user.email,
+              nombre: user.nombre,
+              avatar: user.avatar ?? undefined,
+            }),
+          });
+          if (!bootstrapRes.ok) {
+            logger.warn(
+              `Artist bootstrap failed: ${bootstrapRes.status}`,
+              'AUTH_CONTROLLER',
+              { userId: user.id }
+            );
+          }
+        } else {
+          logger.warn('INTERNAL_SERVICE_SECRET missing; skipping artist bootstrap', 'AUTH_CONTROLLER');
+        }
+      } catch (bootstrapErr: any) {
+        logger.error(
+          `Artist bootstrap error: ${bootstrapErr.message}`,
+          'AUTH_CONTROLLER',
+          { userId: user.id }
+        );
+      }
+    }
+
+    // Derive effective role from the stored DB role (source of truth).
+    // A 'cliente' cannot self-upgrade to 'artista'/'ambos' via Firebase login.
+    let effectiveRole: string = user.role;
+    if (user.role === 'ambos' && role && ['artista', 'cliente'].includes(role)) {
+      effectiveRole = role;
+    }
     const jti = crypto.randomUUID();
-    const token = tokenService.signAccessToken({ id: user.id, email: user.email, role: user.role, jti });
+    const token = tokenService.signAccessToken({ id: user.id, role: effectiveRole, jti });
     const refreshToken = tokenService.signRefreshToken({ id: user.id, jti });
 
     await tokenService.createRefreshToken(user.id, refreshToken, req.ip, req.get('user-agent'));
@@ -734,11 +1072,21 @@ export const firebaseLogin = async (req: Request, res: Response, next: NextFunct
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), lastLoginIp: req.ip } });
 
-    const { passwordHash: _, ...userResponse } = user;
+    const { passwordHash: _, ...userBase } = user;
+    // Expose the effective role in the response so the frontend opens the
+    // correct dashboard even when the user's stored role differs.
+    // Also expose `_id` (alias de `id`) for iOS/mobile clients que lo esperan.
+    const userResponse = { ...userBase, _id: user.id, role: effectiveRole };
 
-    logger.info('Firebase Google login success', 'AUTH_CONTROLLER', { userId: user.id });
+    logger.info('Firebase Google login success', 'AUTH_CONTROLLER', { userId: user.id, role: effectiveRole });
 
-    return res.json({ user: userResponse, token, refreshToken, isNewUser: !user.lastLoginAt || user.lastLoginAt.getTime() === user.createdAt.getTime() });
+    return res.json({
+      user: userResponse,
+      token,
+      refreshToken,
+      isNewUser: !user.lastLoginAt || user.lastLoginAt.getTime() === user.createdAt.getTime(),
+      isRoleUpgrade,
+    });
   } catch (error: any) {
     next(error);
   }
@@ -763,4 +1111,98 @@ export const completeOnboarding = async (req: Request, res: Response, next: Next
     next(error);
   }
 };
+// ─────────────────────────────────────────────────────────────────────────
+// DELETE /auth/me  — el propio usuario elimina su cuenta
+// ─────────────────────────────────────────────────────────────────────────
+export const deleteSelfAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user!.id;
+    const { password } = req.body;
+
+    if (!password) {
+      throw new AppError(400, 'La contraseña es requerida');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new AppError(404, 'Usuario no encontrado');
+    }
+
+    // Password-less providers (Google-only) have no passwordHash; skip check.
+    if (user.passwordHash) {
+      const valid = await comparePassword(password, user.passwordHash);
+      if (!valid) {
+        throw new AppError(401, 'Contraseña incorrecta');
+      }
+    }
+
+    // Revoke all active sessions and refresh tokens
+    await prisma.session.updateMany({ where: { userId }, data: { status: 'REVOKED' } });
+    await prisma.refreshToken.updateMany({ where: { userId }, data: { isRevoked: true } });
+
+    // Best-effort cascades to artists-service and users-service
+    const internalSecret = process.env.INTERNAL_SERVICE_SECRET;
+    const artistsUrl = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
+    const usersUrl = process.env.USERS_SERVICE_URL || 'http://users-service:4002';
+    if (internalSecret) {
+      Promise.allSettled([
+        fetch(`${artistsUrl}/artists/internal/by-auth/${userId}`, {
+          method: 'DELETE',
+          headers: { 'x-internal-secret': internalSecret },
+        }),
+        fetch(`${usersUrl}/users/internal/by-auth/${userId}`, {
+          method: 'DELETE',
+          headers: { 'x-internal-secret': internalSecret },
+        }),
+      ]).catch(() => {});
+    }
+
+    // Hard delete the auth record
+    await prisma.user.delete({ where: { id: userId } });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'USER_SELF_DELETED',
+          entity: 'User',
+          entityId: userId,
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+          success: true,
+        },
+      });
+    } catch (_auditErr) {
+      // Non-blocking — user row is already gone
+    }
+
+    logger.info('User self-deleted account', 'AUTH_CONTROLLER', { userId });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// PATCH /auth/fcm-token  — registra o actualiza el FCM token del dispositivo
+// ─────────────────────────────────────────────────────────────────────────
+export const registerFCMToken = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = (req as any).user;
+    const { fcmToken } = req.body;
+
+    if (!fcmToken || typeof fcmToken !== 'string') {
+      return res.status(400).json({ error: 'fcmToken es requerido' });
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: { fcmToken },
+    });
+
+    res.json({ ok: true });
+  } catch (error: any) {
+    next(error);
+  }
 };

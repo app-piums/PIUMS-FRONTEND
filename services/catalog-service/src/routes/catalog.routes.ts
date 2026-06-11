@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { catalogController } from "../controller/catalog.controller";
-import { authenticateToken } from "../middleware/auth.middleware";
+import { authenticateToken, requireActiveSession } from "../middleware/auth.middleware";
 import {
   createServiceLimiter,
   updateLimiter,
@@ -33,6 +33,7 @@ router.get("/categories/:id", catalogController.getCategoryById.bind(catalogCont
 router.post(
   "/categories",
   authenticateToken,
+  requireActiveSession,
   createServiceLimiter,
   catalogController.createCategory.bind(catalogController)
 );
@@ -45,6 +46,7 @@ router.post(
 router.put(
   "/categories/:id",
   authenticateToken,
+  requireActiveSession,
   updateLimiter,
   catalogController.updateCategory.bind(catalogController)
 );
@@ -57,6 +59,7 @@ router.put(
 router.delete(
   "/categories/:id",
   authenticateToken,
+  requireActiveSession,
   catalogController.deleteCategory.bind(catalogController)
 );
 
@@ -68,6 +71,18 @@ router.delete(
  * Público
  */
 router.get("/services", searchLimiter, catalogController.searchServices.bind(catalogController));
+
+/**
+ * GET /api/services/mine
+ * Obtener todos mis servicios (activos e inactivos)
+ * Requiere autenticación (artista)
+ */
+router.get(
+  "/services/mine",
+  authenticateToken,
+  requireActiveSession,
+  catalogController.getMyServices.bind(catalogController)
+);
 
 /**
  * GET /api/services/:id
@@ -84,6 +99,7 @@ router.get("/services/:id", catalogController.getServiceById.bind(catalogControl
 router.post(
   "/services",
   authenticateToken,
+  requireActiveSession,
   createServiceLimiter,
   catalogController.createService.bind(catalogController)
 );
@@ -96,6 +112,7 @@ router.post(
 router.put(
   "/services/:id",
   authenticateToken,
+  requireActiveSession,
   updateLimiter,
   catalogController.updateService.bind(catalogController)
 );
@@ -108,6 +125,7 @@ router.put(
 router.delete(
   "/services/:id",
   authenticateToken,
+  requireActiveSession,
   catalogController.deleteService.bind(catalogController)
 );
 
@@ -119,7 +137,19 @@ router.delete(
 router.patch(
   "/services/:id/toggle-status",
   authenticateToken,
+  requireActiveSession,
   catalogController.toggleServiceStatus.bind(catalogController)
+);
+
+/**
+ * PATCH /api/services/:id/toggle-sale
+ * Activar/Desactivar etiqueta de oferta en el servicio
+ */
+router.patch(
+  "/services/:id/toggle-sale",
+  authenticateToken,
+  requireActiveSession,
+  catalogController.toggleServiceSale.bind(catalogController)
 );
 
 /**
@@ -130,6 +160,7 @@ router.patch(
 router.patch(
   "/services/:id/set-main",
   authenticateToken,
+  requireActiveSession,
   updateLimiter,
   catalogController.setMainService.bind(catalogController)
 );
@@ -144,6 +175,7 @@ router.patch(
 router.post(
   "/services/:serviceId/addons",
   authenticateToken,
+  requireActiveSession,
   createServiceLimiter,
   catalogController.createAddon.bind(catalogController)
 );
@@ -156,6 +188,7 @@ router.post(
 router.put(
   "/addons/:addonId",
   authenticateToken,
+  requireActiveSession,
   updateLimiter,
   catalogController.updateAddon.bind(catalogController)
 );
@@ -168,6 +201,7 @@ router.put(
 router.delete(
   "/addons/:addonId",
   authenticateToken,
+  requireActiveSession,
   catalogController.deleteAddon.bind(catalogController)
 );
 
@@ -181,6 +215,7 @@ router.delete(
 router.post(
   "/packages",
   authenticateToken,
+  requireActiveSession,
   createServiceLimiter,
   catalogController.createPackage.bind(catalogController)
 );
@@ -200,6 +235,7 @@ router.get("/artists/:artistId/packages", catalogController.getPackagesByArtist.
 router.put(
   "/packages/:id",
   authenticateToken,
+  requireActiveSession,
   updateLimiter,
   catalogController.updatePackage.bind(catalogController)
 );
@@ -212,6 +248,7 @@ router.put(
 router.delete(
   "/packages/:id",
   authenticateToken,
+  requireActiveSession,
   catalogController.deletePackage.bind(catalogController)
 );
 

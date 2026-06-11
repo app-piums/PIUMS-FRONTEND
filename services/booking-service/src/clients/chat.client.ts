@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { logger } from "../utils/logger";
 
 const CHAT_SERVICE_URL = process.env.CHAT_SERVICE_URL || 'http://chat-service:4010';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_CHANGE_IN_PRODUCTION';
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 interface CreateConversationPayload {
   artistId: string;
@@ -31,6 +31,7 @@ export class ChatClient {
   async createConversation(userId: string, artistId: string, bookingId: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/chat/conversations`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -53,11 +54,39 @@ export class ChatClient {
   }
 
   /**
+   * Cerrar conversación cuando se cancela una reserva confirmada
+   */
+  async closeConversation(bookingId: string, userId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat/conversations/booking/${bookingId}/close`, {
+        signal: AbortSignal.timeout(10_000),
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.getServiceToken(userId)}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' })) as any;
+        logger.error('[ChatClient] Error cerrando conversación', 'CHAT_CLIENT', { error: error.message });
+        return null;
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      logger.error('[ChatClient] Error de conexión con chat-service', 'CHAT_CLIENT', { error: error.message });
+      return null;
+    }
+  }
+
+  /**
    * Activar una conversación cuando se confirma la reserva
    */
   async activateConversation(bookingId: string, userId: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/chat/conversations/booking/${bookingId}/activate`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -75,6 +104,59 @@ export class ChatClient {
     } catch (error: any) {
       logger.error('[ChatClient] Error de conexión con chat-service', 'CHAT_CLIENT', { error: error.message });
       return null;
+    }
+  }
+
+  private getInternalSecret(): string {
+    return process.env.INTERNAL_SERVICE_SECRET || '';
+  }
+
+  async createOrGetGroupConversation(params: {
+    bookingId?: string;
+    eventId?: string;
+    createdBy: string;
+    participantIds: string[];
+    name?: string;
+  }): Promise<{ group: any } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/internal/group-conversations`, {
+        signal: AbortSignal.timeout(10_000),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': this.getInternalSecret(),
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Error desconocido' })) as any;
+        logger.error('[ChatClient] Error creando grupo', 'CHAT_CLIENT', { error: error.message });
+        return null;
+      }
+
+      return (await response.json()) as { group: any };
+    } catch (error: any) {
+      logger.error('[ChatClient] Error de conexión con chat-service (grupo)', 'CHAT_CLIENT', { error: error.message });
+      return null;
+    }
+  }
+
+  async addParticipantToGroup(groupId: string, userId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/internal/group-conversations/add-participant`, {
+        signal: AbortSignal.timeout(10_000),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': this.getInternalSecret(),
+        },
+        body: JSON.stringify({ groupId, userId }),
+      });
+      return response.ok;
+    } catch (error: any) {
+      logger.error('[ChatClient] Error añadiendo participante al grupo', 'CHAT_CLIENT', { error: error.message });
+      return false;
     }
   }
 }

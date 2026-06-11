@@ -3,14 +3,15 @@
 // ============================================================================
 
 export const CURRENCY = {
-  CODE: 'GTQ',
-  SYMBOL: 'Q',
-  LOCALE: 'es-GT',
+  CODE: 'USD',
+  SYMBOL: '$',
+  LOCALE: 'en-US',
   TIMEZONE: 'America/Guatemala',
   DECIMAL_SEPARATOR: '.',
   THOUSANDS_SEPARATOR: ',',
-  PLATFORM_FEE_PERCENT: 10,
-  MIN_BOOKING_AMOUNT: 10000, // Q 100.00 in centavos
+  // NOTE: Actual platform fee is set via PLATFORM_FEE_PERCENTAGE env var in payments-service (production: 18%)
+  PLATFORM_FEE_PERCENT: 18,
+  MIN_BOOKING_AMOUNT: 1000, // $10.00 in cents
 } as const;
 
 export const LOCALE = {

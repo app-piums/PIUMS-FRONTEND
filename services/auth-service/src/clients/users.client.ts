@@ -13,6 +13,7 @@ export class UsersClient {
     email: string;
     nombre: string;
     ciudad?: string;
+    avatar?: string;
   }) {
     try {
       await axios.post(`${USERS_SERVICE_URL}/api/users`, {
@@ -20,6 +21,7 @@ export class UsersClient {
         email: data.email,
         nombre: data.nombre,
         ciudad: data.ciudad,
+        avatar: data.avatar,
         pais: 'Guatemala',
       }, {
         timeout: 5000,
@@ -34,6 +36,18 @@ export class UsersClient {
         authId: data.authId,
         message: error.message,
       });
+    }
+  }
+
+  async syncUserAvatar(authId: string, avatar: string) {
+    try {
+      await axios.patch(
+        `${USERS_SERVICE_URL}/api/users/internal/by-auth/${authId}/avatar`,
+        { avatar },
+        { timeout: 3000, headers: { 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET || '' } }
+      );
+    } catch {
+      // fire-and-forget — no bloquea el login
     }
   }
 }

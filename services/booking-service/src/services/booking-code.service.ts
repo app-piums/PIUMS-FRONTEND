@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
@@ -113,7 +114,7 @@ export const generateCodesForExistingBookings = async () => {
     },
   });
 
-  console.log(`Found ${bookingsWithoutCode.length} bookings without codes`);
+  logger.info(`Found ${bookingsWithoutCode.length} bookings without codes`, 'BOOKING_CODE');
 
   for (const booking of bookingsWithoutCode) {
     const code = await generateBookingCode();
@@ -121,8 +122,8 @@ export const generateCodesForExistingBookings = async () => {
       where: { id: booking.id },
       data: { code },
     });
-    console.log(`Generated code ${code} for booking ${booking.id}`);
+    logger.info(`Generated code for booking`, 'BOOKING_CODE');
   }
 
-  console.log('✅ All bookings now have codes');
+  logger.info('All bookings now have codes', 'BOOKING_CODE');
 };

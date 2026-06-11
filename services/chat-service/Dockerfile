@@ -14,4 +14,5 @@ RUN npm run build
 
 EXPOSE 4010
 
+USER node
 CMD ["npm", "start"]

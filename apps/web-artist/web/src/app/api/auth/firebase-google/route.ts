@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.HTTPS_ENABLED === 'true',
       sameSite: 'strict',
-      maxAge: 3600,
+      maxAge: 604800,
       path: '/',
     });
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.HTTPS_ENABLED === 'true',
       sameSite: 'strict',
-      maxAge: 3600,
+      maxAge: 604800,
       path: '/',
     });
 
@@ -55,14 +55,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Reset onboarding so middleware checks profile before allowing dashboard
-    response.cookies.set('onboarding_completed', 'false', {
-      httpOnly: false,
-      secure: process.env.HTTPS_ENABLED === 'true',
-      sameSite: 'strict',
-      maxAge: 86400,
-      path: '/',
-    });
+    // Set onboarding cookie to false for new users or role upgrades (cliente→artista),
+    // since they haven't completed the artist onboarding yet.
+    if (data.isNewUser || data.isRoleUpgrade) {
+      response.cookies.set('onboarding_completed', 'false', {
+        httpOnly: false,
+        secure: process.env.HTTPS_ENABLED === 'true',
+        sameSite: 'strict',
+        maxAge: 86400,
+        path: '/',
+      });
+    }
 
     return response;
   } catch (error) {

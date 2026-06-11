@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { catalogService } from "../services/catalog.service";
 import { AuthRequest } from "../middleware/auth.middleware";
+import { AppError } from "../middleware/errorHandler";
+import { artistsClient } from "../clients/artists.client";
 import {
   createCategorySchema,
   updateCategorySchema,
@@ -12,6 +14,14 @@ import {
 } from "../schemas/catalog.schema";
 
 export class CatalogController {
+  private async resolveArtistId(authId: string): Promise<string> {
+    const artistId = await artistsClient.getArtistIdByAuthId(authId);
+    if (!artistId) {
+      throw new AppError(404, 'Perfil de artista no encontrado para este usuario');
+    }
+    return artistId;
+  }
+
   // ==================== CATEGORÍAS ====================
 
   async getAllCategories(req: Request, res: Response, next: NextFunction) {
@@ -67,6 +77,16 @@ export class CatalogController {
 
   // ==================== SERVICIOS ====================
 
+  async getMyServices(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const artistId = await this.resolveArtistId(req.user!.id);
+      const result = await catalogService.getMyServices(artistId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async searchServices(req: Request, res: Response, next: NextFunction) {
     try {
       const query = {
@@ -113,11 +133,7 @@ export class CatalogController {
   async updateService(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const { artistId } = req.body;
-      
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       const validatedData = updateServiceSchema.parse(req.body);
       const service = await catalogService.updateService(id, artistId, validatedData);
@@ -130,11 +146,7 @@ export class CatalogController {
   async deleteService(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const artistId = req.query.artistId as string;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       await catalogService.deleteService(id, artistId);
       res.status(204).send();
@@ -146,13 +158,21 @@ export class CatalogController {
   async toggleServiceStatus(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const { artistId } = req.body;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       const service = await catalogService.toggleServiceStatus(id, artistId);
+      res.json(service);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async toggleServiceSale(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const artistId = await this.resolveArtistId(req.user!.id);
+
+      const service = await catalogService.toggleServiceSale(id, artistId);
       res.json(service);
     } catch (error) {
       next(error);
@@ -162,11 +182,7 @@ export class CatalogController {
   async setMainService(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const { artistId } = req.body;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       const service = await catalogService.setMainService(id, artistId);
       res.json(service);
@@ -180,11 +196,7 @@ export class CatalogController {
   async createAddon(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const serviceId = req.params.serviceId as string;
-      const { artistId } = req.body;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       const validatedData = addonSchema.parse(req.body);
       const addon = await catalogService.createAddon(serviceId, artistId, validatedData);
@@ -197,11 +209,8 @@ export class CatalogController {
   async updateAddon(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const addonId = req.params.addonId as string;
-      const { artistId, ...data } = req.body;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
+      const data = addonSchema.parse(req.body);
 
       const addon = await catalogService.updateAddon(addonId, artistId, data);
       res.json(addon);
@@ -213,11 +222,7 @@ export class CatalogController {
   async deleteAddon(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const addonId = req.params.addonId as string;
-      const artistId = req.query.artistId as string;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       await catalogService.deleteAddon(addonId, artistId);
       res.status(204).send();
@@ -257,11 +262,8 @@ export class CatalogController {
   async updatePackage(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const { artistId, ...data } = req.body;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
+      const data = req.body;
 
       const pkg = await catalogService.updatePackage(id, artistId, data);
       res.json(pkg);
@@ -273,11 +275,7 @@ export class CatalogController {
   async deletePackage(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const artistId = req.query.artistId as string;
-
-      if (!artistId) {
-        return res.status(400).json({ message: "artistId es requerido" });
-      }
+      const artistId = await this.resolveArtistId(req.user!.id);
 
       await catalogService.deletePackage(id, artistId);
       res.status(204).send();

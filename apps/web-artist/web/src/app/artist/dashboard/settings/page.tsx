@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { PageHelpButton } from '@/components/PageHelpButton';
-import Image from 'next/image';
+import { cImg } from '@/lib/cloudinaryImg';
 import { useRouter } from 'next/navigation';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
 import { sdk, ArtistProfile } from '@piums/sdk';
@@ -10,6 +10,7 @@ import { getErrorMessage, isUnauthorizedError, isArtistNotFoundError } from '@/l
 import { LocationPickerMap } from '@/components/LocationPickerMap';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { Globe, Star, Trophy, Lightbulb, CreditCard, CheckCircle } from 'lucide-react';
 
 function LegalAccordion({ section }: { section: { id: string; title: string; icon: React.ReactNode; content: React.ReactNode } }) {
   const [open, setOpen] = React.useState(false);
@@ -21,7 +22,7 @@ function LegalAccordion({ section }: { section: { id: string; title: string; ico
         className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <span className="text-[#FF6A00]">{section.icon}</span>
+          <span className="text-[#FF6B35]">{section.icon}</span>
           <span className="font-semibold text-gray-900 text-sm">{section.title}</span>
         </div>
         <svg
@@ -43,35 +44,30 @@ function LegalAccordion({ section }: { section: { id: string; title: string; ico
 }
 
 const ARTIST_CATEGORIES: { value: string; label: string }[] = [
-  { value: 'MUSICO',     label: 'Músico' },
-  { value: 'DJ',         label: 'DJ / Productor' },
-  { value: 'FOTOGRAFO',  label: 'Fotógrafo' },
-  { value: 'VIDEOGRAFO', label: 'Videógrafo / Filmmaker' },
-  { value: 'DISENADOR',  label: 'Diseñador Gráfico' },
-  { value: 'BAILARIN',   label: 'Bailarín / Coreógrafo' },
-  { value: 'ANIMADOR',   label: 'Animador / MC' },
-  { value: 'TATUADOR',   label: 'Tatuador' },
-  { value: 'MAQUILLADOR',label: 'Maquillador / FX' },
-  { value: 'PINTOR',     label: 'Pintor / Ilustrador' },
-  { value: 'ESCULTOR',   label: 'Escultor' },
-  { value: 'ESCRITOR',   label: 'Escritor / Letrista' },
-  { value: 'MAGO',       label: 'Mago / Ilusionista' },
-  { value: 'ACROBATA',   label: 'Acróbata / Circo' },
-  { value: 'OTRO',       label: 'Otro' },
+  { value: 'MUSICO',            label: 'Músico' },
+  { value: 'FOTOGRAFO',         label: 'Fotógrafo' },
+  { value: 'VIDEOGRAFO',        label: 'Videógrafo' },
+  { value: 'ANIMADOR',          label: 'Animador' },
 ];
 
 type ArtistFormData = {
   nombre: string;
   email: string;
+  telefono: string;
   bio: string;
   ciudad: string;
-  experienceYears: number;
+  yearsExperience: number;
   baseLocationLabel: string;
   baseLocationLat: number | null;
   baseLocationLng: number | null;
   category: string;
   secondaryCategory: string;
 };
+
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
 
 export default function ArtistSettingsPage() {
   const router = useRouter();
@@ -82,6 +78,31 @@ export default function ArtistSettingsPage() {
   const currentTab = activeTab ?? 'personal';
   const [artist, setArtist] = useState<ArtistProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Google Calendar integration state
+  const [calendarEnabled, setCalendarEnabled] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+
+  useEffect(() => {
+    sdk.getCalendarStatus().then(({ enabled }) => setCalendarEnabled(enabled)).catch(() => {});
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendarConnected') === 'true') {
+      setCalendarEnabled(true);
+      setActiveTab('integraciones');
+      toast.success('Google Calendar conectado correctamente');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    const calendarError = params.get('error');
+    if (calendarError === 'calendar_denied' || calendarError === 'calendar_failed' || calendarError === 'calendar_invalid') {
+      setActiveTab('integraciones');
+      const msg = calendarError === 'calendar_denied'
+        ? 'Conexion con Google Calendar cancelada'
+        : 'Error al conectar Google Calendar';
+      toast.error(msg);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // Verification form state
   const [verifyData, setVerifyData] = useState({
@@ -101,9 +122,10 @@ export default function ArtistSettingsPage() {
   const [formData, setFormData] = useState<ArtistFormData>({
     nombre: '',
     email: '',
+    telefono: '',
     bio: '',
     ciudad: '',
-    experienceYears: 0,
+    yearsExperience: 0,
     baseLocationLabel: '',
     baseLocationLat: null,
     baseLocationLng: null,
@@ -112,7 +134,13 @@ export default function ArtistSettingsPage() {
   });
 
   // Cobertura / pricing state
-  const [coverageData, setCoverageData] = useState({
+  const [coverageData, setCoverageData] = useState<{
+    coverageRadius: number | null;
+    hourlyRateMin: number;
+    hourlyRateMax: number;
+    requiresDeposit: boolean;
+    depositPercentage: number;
+  }>({
     coverageRadius: 10,
     hourlyRateMin: 0,
     hourlyRateMax: 0,
@@ -123,6 +151,21 @@ export default function ArtistSettingsPage() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
+  const [localCoverPhoto, setLocalCoverPhoto] = useState<string | null>(null);
+  const [socialData, setSocialData] = useState({
+    instagram: '',
+    facebook: '',
+    youtube: '',
+    tiktok: '',
+    website: '',
+  });
+  const [isSavingSocial, setIsSavingSocial] = useState(false);
+  const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioUploading, setPortfolioUploading] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [youtubeTitle, setYoutubeTitle] = useState('');
+  const [youtubeAdding, setYoutubeAdding] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -154,23 +197,41 @@ export default function ArtistSettingsPage() {
       setIsLoading(true);
       setError(null);
 
-      const artistProfile = await sdk.getArtistProfile();
+      const [artistProfile] = await Promise.all([
+        sdk.getArtistProfile(),
+        // Fetch cover photo from users-service (not stored in artists-service)
+        fetch('/api/users/me', { credentials: 'include' })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            const cover = data?.profile?.coverPhoto;
+            if (cover) setLocalCoverPhoto(cover);
+          })
+          .catch(() => {}),
+      ]);
       setArtist(artistProfile);
 
       setFormData({
         nombre: artistProfile.nombre || '',
         email: artistProfile.email || '',
+        telefono: artistProfile.telefono || '',
         bio: artistProfile.bio || '',
         ciudad: artistProfile.ciudad || '',
-        experienceYears: artistProfile.experienceYears || 0,
+        yearsExperience: artistProfile.yearsExperience || 0,
         baseLocationLabel: artistProfile.baseLocationLabel || '',
         baseLocationLat: artistProfile.baseLocationLat ?? null,
         baseLocationLng: artistProfile.baseLocationLng ?? null,
         category: artistProfile.category || '',
         secondaryCategory: artistProfile.specialties?.[0] || '',
       });
+      setSocialData({
+        instagram: artistProfile.instagram || '',
+        facebook: artistProfile.facebook || '',
+        youtube: artistProfile.youtube || '',
+        tiktok: artistProfile.tiktok || '',
+        website: artistProfile.website || '',
+      });
       setCoverageData({
-        coverageRadius: artistProfile.coverageRadius ?? 10,
+        coverageRadius: artistProfile.coverageRadius ?? null,
         hourlyRateMin: artistProfile.hourlyRateMin ?? 0,
         hourlyRateMax: artistProfile.hourlyRateMax ?? 0,
         requiresDeposit: artistProfile.requiresDeposit ?? false,
@@ -232,6 +293,18 @@ export default function ArtistSettingsPage() {
       toast.error(getErrorMessage(err) || 'Error al guardar');
     } finally {
       setIsSavingCoverage(false);
+    }
+  };
+
+  const handleSaveSocial = async () => {
+    try {
+      setIsSavingSocial(true);
+      await sdk.updateArtistProfile(socialData);
+      toast.success('Redes sociales actualizadas');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Error al guardar');
+    } finally {
+      setIsSavingSocial(false);
     }
   };
 
@@ -323,12 +396,23 @@ export default function ArtistSettingsPage() {
   ) => {
     setVerifyUploading((prev) => ({ ...prev, [folder]: true }));
     try {
+      const urlKey = folder === 'front' ? 'documentFrontUrl' : folder === 'back' ? 'documentBackUrl' : 'documentSelfieUrl';
+      const existingUrl = verifyData[urlKey];
+
+      // Delete the previous Cloudinary asset before uploading the replacement
+      if (existingUrl) {
+        await fetch('/api/users/documents/upload', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: existingUrl }),
+        });
+      }
+
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(`/api/users/documents/upload?folder=${folder}`, { method: 'POST', body: fd });
       if (!res.ok) throw new Error('Error al subir imagen');
       const data = await res.json();
-      const urlKey = folder === 'front' ? 'documentFrontUrl' : folder === 'back' ? 'documentBackUrl' : 'documentSelfieUrl';
       setVerifyData((prev) => ({ ...prev, [urlKey]: data.url }));
       setVerifyPreviews((prev) => ({ ...prev, [folder]: URL.createObjectURL(file) }));
     } catch (err: unknown) {
@@ -390,6 +474,12 @@ export default function ArtistSettingsPage() {
       fd.append('avatar', file);
       const res = await fetch('/api/users/avatar', { method: 'POST', body: fd, credentials: 'include' });
       if (!res.ok) throw new Error();
+      const data = await res.json();
+      const avatarUrl: string | undefined = data?.avatar;
+      // Persist directly to artists-service — don't rely on fire-and-forget background sync
+      if (avatarUrl) {
+        await sdk.updateArtistProfile({ avatar: avatarUrl });
+      }
       toast.success('Foto actualizada');
       await loadProfile();
     } catch {
@@ -402,6 +492,7 @@ export default function ArtistSettingsPage() {
     setAvatarUploading(true);
     try {
       await fetch('/api/users/avatar', { method: 'DELETE', credentials: 'include' });
+      await sdk.updateArtistProfile({ avatar: '' });
       setLocalAvatar(null);
       toast.success('Foto eliminada');
       await loadProfile();
@@ -419,6 +510,12 @@ export default function ArtistSettingsPage() {
       fd.append('cover', file);
       const res = await fetch('/api/users/cover', { method: 'POST', body: fd, credentials: 'include' });
       if (!res.ok) throw new Error();
+      const data = await res.json();
+      const coverUrl: string | undefined = data?.coverPhoto;
+      if (coverUrl) {
+        setLocalCoverPhoto(coverUrl);
+        await sdk.updateArtistProfile({ coverPhoto: coverUrl });
+      }
       toast.success('Portada actualizada');
       await loadProfile();
     } catch {
@@ -426,13 +523,99 @@ export default function ArtistSettingsPage() {
     } finally { setCoverUploading(false); }
   };
 
+  const loadPortfolio = useCallback(async () => {
+    setPortfolioLoading(true);
+    try {
+      const res = await fetch('/api/portafolio/items', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPortfolioItems(data.portfolio ?? data.items ?? []);
+    } catch { /* ignore */ }
+    finally { setPortfolioLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (currentTab === 'portfolio') void loadPortfolio();
+  }, [currentTab, loadPortfolio]);
+
+  const handlePortfolioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    setPortfolioUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append('image', file);
+        const uploadRes = await fetch('/api/portafolio/upload', { method: 'POST', body: fd, credentials: 'include' });
+        if (!uploadRes.ok) throw new Error('Error al subir imagen');
+        const { url } = await uploadRes.json();
+        const addRes = await fetch('/api/portafolio/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ url, title: file.name.replace(/\.[^/.]+$/, ''), type: 'image' }),
+        });
+        if (!addRes.ok) throw new Error('Error al guardar en portafolio');
+      }
+      toast.success('Foto(s) añadida(s) al portafolio');
+      await loadPortfolio();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al subir');
+    } finally { setPortfolioUploading(false); }
+  };
+
+  const handlePortfolioDelete = async (itemId: string) => {
+    try {
+      const res = await fetch(`/api/portafolio/items/${itemId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error();
+      setPortfolioItems(prev => prev.filter((i: any) => i.id !== itemId));
+      toast.success('Elemento eliminado');
+    } catch {
+      toast.error('Error al eliminar');
+    }
+  };
+
+  const handleAddYouTubeVideo = async () => {
+    const videoId = extractYouTubeId(youtubeUrl.trim());
+    if (!videoId) {
+      toast.error('URL de YouTube no válida');
+      return;
+    }
+    setYoutubeAdding(true);
+    try {
+      const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      const res = await fetch('/api/portafolio/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          url: youtubeUrl.trim(),
+          title: youtubeTitle.trim() || 'Video',
+          type: 'video',
+          thumbnailUrl,
+        }),
+      });
+      if (!res.ok) throw new Error('Error al guardar video');
+      toast.success('Video añadido al portafolio');
+      setYoutubeUrl('');
+      setYoutubeTitle('');
+      await loadPortfolio();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al añadir video');
+    } finally {
+      setYoutubeAdding(false);
+    }
+  };
+
   const tabs = [
     { id: 'personal',      label: 'Datos Personales',    icon: <ArtistUserIcon className="h-4 w-4" /> },
     { id: 'verificar',     label: 'Verificar identidad', icon: <ArtistShieldIcon className="h-4 w-4" />, badge: needsVerification },
     { id: 'coverage',      label: 'Cobertura',           icon: <ArtistMapPinIcon className="h-4 w-4" /> },
     { id: 'profile',       label: 'Perfil Público',      icon: <ArtistPencilIcon className="h-4 w-4" /> },
+    { id: 'portfolio',     label: 'Portafolio',          icon: <ArtistPhotoIcon className="h-4 w-4" /> },
     { id: 'notifications', label: 'Notificaciones',      icon: <ArtistBellIcon className="h-4 w-4" /> },
     { id: 'payments',      label: 'Pagos',               icon: <ArtistCardIcon className="h-4 w-4" /> },
+    { id: 'integraciones', label: 'Integraciones',       icon: <ArtistLinkIcon className="h-4 w-4" /> },
     { id: 'legal',         label: 'Legal',               icon: <ArtistScaleIcon className="h-4 w-4" /> },
   ];
 
@@ -541,13 +724,13 @@ export default function ArtistSettingsPage() {
                   </div>
 
                   {!needsVerification && (
-                    <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
-                      <svg className="h-5 w-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-start gap-3 bg-orange-50 border border-[#FF6B35]/30 rounded-xl p-4">
+                      <svg className="h-5 w-5 text-[#FF6B35] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <div>
-                        <p className="text-sm font-semibold text-green-800">Identidad verificada</p>
-                        <p className="text-sm text-green-700 mt-0.5">Tu información está completa. Puedes actualizarla en cualquier momento.</p>
+                        <p className="text-sm font-semibold text-[#FF6B35]">Identidad verificada</p>
+                        <p className="text-sm text-orange-900 mt-0.5">Tu información está completa. Puedes actualizarla en cualquier momento.</p>
                       </div>
                     </div>
                   )}
@@ -573,7 +756,7 @@ export default function ArtistSettingsPage() {
                         value={verifyData.ciudad}
                         onChange={(e) => setVerifyData((p) => ({ ...p, ciudad: e.target.value }))}
                         placeholder="Guatemala, Quetzaltenango..."
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm text-gray-900"
                       />
                     </div>
                     <div>
@@ -583,7 +766,7 @@ export default function ArtistSettingsPage() {
                         value={verifyData.birthDate}
                         onChange={(e) => setVerifyData((p) => ({ ...p, birthDate: e.target.value }))}
                         max={MAX_BIRTH_DATE}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm text-gray-900"
                       />
                       <p className="text-xs text-gray-400 mt-1">Debes ser mayor de 18 años.</p>
                     </div>
@@ -596,7 +779,7 @@ export default function ArtistSettingsPage() {
                       <select
                         value={verifyData.documentType}
                         onChange={(e) => setVerifyData((p) => ({ ...p, documentType: e.target.value as 'DPI' | 'PASSPORT' | 'RESIDENCE_CARD', documentBackUrl: '' }))}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm bg-white"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm text-gray-900 bg-white"
                       >
                         <option value="DPI">DPI (Guatemala)</option>
                         <option value="PASSPORT">Pasaporte</option>
@@ -610,7 +793,7 @@ export default function ArtistSettingsPage() {
                         value={verifyData.documentNumber}
                         onChange={(e) => setVerifyData((p) => ({ ...p, documentNumber: e.target.value }))}
                         placeholder="1234567890101"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 text-sm text-gray-900"
                       />
                     </div>
                   </div>
@@ -694,7 +877,7 @@ export default function ArtistSettingsPage() {
                       type="text"
                       value={formData.nombre}
                       onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                     />
                   </div>
 
@@ -706,7 +889,20 @@ export default function ArtistSettingsPage() {
                       type="email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Número de contacto
+                    </label>
+                    <input
+                      type="tel"
+                      value={formData.telefono}
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                      placeholder="+502 1234 5678"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                     />
                   </div>
 
@@ -718,7 +914,7 @@ export default function ArtistSettingsPage() {
                       type="text"
                       value={formData.ciudad}
                       onChange={(e) => setFormData({ ...formData, ciudad: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                     />
                   </div>
 
@@ -728,9 +924,9 @@ export default function ArtistSettingsPage() {
                     </label>
                     <input
                       type="number"
-                      value={formData.experienceYears}
-                      onChange={(e) => setFormData({ ...formData, experienceYears: parseInt(e.target.value) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      value={formData.yearsExperience}
+                      onChange={(e) => setFormData({ ...formData, yearsExperience: parseInt(e.target.value) || 0 })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                     />
                   </div>
                 </div>
@@ -743,7 +939,7 @@ export default function ArtistSettingsPage() {
                     value={formData.bio}
                     onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                     rows={4}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                     placeholder="Cuéntanos sobre ti y tu experiencia..."
                   />
                 </div>
@@ -789,7 +985,7 @@ export default function ArtistSettingsPage() {
                           if (locationError) setLocationError(null);
                         }}
                         placeholder="Zona 10, Ciudad de Guatemala"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Puedes escribir la colonia, zona o referencia que mejor describa tu punto base.
@@ -804,7 +1000,7 @@ export default function ArtistSettingsPage() {
                           step="0.00001"
                           value={formData.baseLocationLat ?? ''}
                           onChange={(e) => handleCoordinateChange('baseLocationLat', e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                           placeholder="14.6349"
                         />
                       </div>
@@ -815,7 +1011,7 @@ export default function ArtistSettingsPage() {
                           step="0.00001"
                           value={formData.baseLocationLng ?? ''}
                           onChange={(e) => handleCoordinateChange('baseLocationLng', e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                           placeholder="-90.5069"
                         />
                       </div>
@@ -890,7 +1086,9 @@ export default function ArtistSettingsPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">Zona de cobertura sin costo</h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        Dentro de <span className="font-bold text-orange-600">{coverageData.coverageRadius} km</span> desde tu ciudad base, el traslado es gratuito para el cliente.
+                        {coverageData.coverageRadius === null
+                          ? 'Cobertura nacional — trabajas en cualquier ciudad del país. No se cobra viáticos ni traslado al cliente.'
+                          : <>Dentro de <span className="font-bold text-orange-600">{coverageData.coverageRadius} km</span> desde tu ciudad base, el traslado es gratuito para el cliente.</>}
                       </p>
                     </div>
                   </div>
@@ -904,8 +1102,8 @@ export default function ArtistSettingsPage() {
                       <div
                         className="absolute rounded-full bg-orange-100 border-2 border-orange-400 transition-all duration-300"
                         style={{
-                          width: `${Math.min(100, (coverageData.coverageRadius / 100) * 100)}%`,
-                          height: `${Math.min(100, (coverageData.coverageRadius / 100) * 100)}%`,
+                          width: coverageData.coverageRadius === null ? '100%' : `${Math.min(100, (coverageData.coverageRadius / 100) * 100)}%`,
+                          height: coverageData.coverageRadius === null ? '100%' : `${Math.min(100, (coverageData.coverageRadius / 100) * 100)}%`,
                           top: '50%',
                           left: '50%',
                           transform: 'translate(-50%, -50%)',
@@ -918,26 +1116,35 @@ export default function ArtistSettingsPage() {
                         <span className="text-xs text-gray-500">Tu ciudad</span>
                       </div>
                       <div className="absolute top-1/2 right-0 transform -translate-y-1/2 translate-x-full pl-2">
-                        <span className="text-xs font-medium text-orange-600">{coverageData.coverageRadius} km</span>
+                        <span className="text-xs font-medium text-orange-600">
+                          {coverageData.coverageRadius === null ? 'Nacional' : `${coverageData.coverageRadius} km`}
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Slider */}
-                  <div className="mb-4">
-                    <input
-                      type="range"
-                      min={1}
-                      max={200}
-                      value={coverageData.coverageRadius}
-                      onChange={(e) => setCoverageData({ ...coverageData, coverageRadius: parseInt(e.target.value) })}
-                      className="w-full accent-orange-500"
-                    />
-                    <div className="flex justify-between text-xs text-gray-400 mt-1">
-                      <span>1 km</span>
-                      <span>200 km</span>
+                  {/* Slider — hidden when Nacional is selected */}
+                  {coverageData.coverageRadius !== null && (
+                    <div className="mb-4">
+                      <input
+                        type="range"
+                        min={1}
+                        max={200}
+                        value={coverageData.coverageRadius}
+                        onChange={(e) => setCoverageData({ ...coverageData, coverageRadius: parseInt(e.target.value) })}
+                        className="w-full accent-orange-500"
+                      />
+                      <div className="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>1 km</span>
+                        <span>200 km</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {coverageData.coverageRadius === null && (
+                    <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+                      Sin restricción geográfica — trabajas en cualquier ciudad del país. No se cobran viáticos ni traslado al cliente.
+                    </div>
+                  )}
 
                   {/* Quick presets */}
                   <div className="flex flex-wrap gap-2">
@@ -955,14 +1162,15 @@ export default function ArtistSettingsPage() {
                       </button>
                     ))}
                     <button
-                      onClick={() => setCoverageData({ ...coverageData, coverageRadius: 999 })}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                        !RADIUS_PRESETS.includes(coverageData.coverageRadius) && coverageData.coverageRadius >= 200
+                      onClick={() => setCoverageData({ ...coverageData, coverageRadius: null })}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1 ${
+                        coverageData.coverageRadius === null
                           ? 'bg-orange-500 text-white'
                           : 'bg-white border border-gray-300 text-gray-700 hover:border-orange-400 hover:text-orange-600'
                       }`}
                     >
-                      Sin límite
+                      <Globe size={14} />
+                      Nacional
                     </button>
                   </div>
                 </div>
@@ -983,7 +1191,7 @@ export default function ArtistSettingsPage() {
                           min={0}
                           value={coverageData.hourlyRateMin}
                           onChange={(e) => setCoverageData({ ...coverageData, hourlyRateMin: parseInt(e.target.value) || 0 })}
-                          className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                           placeholder="0"
                         />
                       </div>
@@ -1000,7 +1208,7 @@ export default function ArtistSettingsPage() {
                           min={0}
                           value={coverageData.hourlyRateMax}
                           onChange={(e) => setCoverageData({ ...coverageData, hourlyRateMax: parseInt(e.target.value) || 0 })}
-                          className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                           placeholder="0"
                         />
                       </div>
@@ -1085,19 +1293,19 @@ export default function ArtistSettingsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-lg font-bold text-gray-900">{artist.nombre || 'Tu nombre'}</h3>
                           {artist.isVerified && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">✓ Verificado</span>
+                            <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium"><CheckCircle size={11} /> Verificado</span>
                           )}
                           {artist.isPremium && (
-                            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">⭐ Premium</span>
+                            <span className="inline-flex items-center gap-1 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium"><Star size={11} /> Premium</span>
                           )}
                         </div>
                         <p className="text-sm text-gray-500 mt-0.5">{artist.category || artist.categoria || 'Categoría'} · {artist.ciudad || 'Ciudad'}</p>
                         {artist.bio && <p className="text-sm text-gray-600 mt-2 line-clamp-2">{artist.bio}</p>}
                         <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
                           {artist.rating !== undefined && (
-                            <span>⭐ {artist.rating.toFixed(1)} ({artist.reviewsCount || 0} reseñas)</span>
+                            <span className="flex items-center gap-1"><Star size={12} className="text-yellow-500" /> {artist.rating.toFixed(1)} ({artist.reviewsCount || 0} reseñas)</span>
                           )}
-                          {artist.experienceYears ? <span>🏆 {artist.experienceYears} años de exp.</span> : null}
+                          {artist.yearsExperience ? <span className="flex items-center gap-1"><Trophy size={12} className="text-orange-400" /> {artist.yearsExperience} años de exp.</span> : null}
                         </div>
                       </div>
                     </div>
@@ -1110,7 +1318,7 @@ export default function ArtistSettingsPage() {
                   <div className="flex items-center gap-6">
                     <div className="w-20 h-20 rounded-full overflow-hidden shrink-0 bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
                       {(localAvatar || artist?.avatar) ? (
-                        <Image src={localAvatar || artist!.avatar!} alt="Avatar" width={80} height={80} className="object-cover w-full h-full" unoptimized />
+                        <img src={cImg(localAvatar || artist!.avatar!)} alt="Avatar" className="object-cover w-full h-full" />
                       ) : (
                         <span className="text-white text-3xl font-bold">{(artist?.nombre || 'A').charAt(0).toUpperCase()}</span>
                       )}
@@ -1136,14 +1344,12 @@ export default function ArtistSettingsPage() {
                 <div className="border border-gray-200 rounded-xl p-6 space-y-4">
                   <h3 className="font-semibold text-gray-900">Foto de portada</h3>
                   <label className={`block cursor-pointer ${coverUploading ? 'opacity-60 pointer-events-none' : ''}`}>
-                    {artist?.coverPhoto ? (
+                    {(localCoverPhoto || artist?.coverPhoto) ? (
                       <div className="relative w-full h-32 rounded-lg overflow-hidden border-2 border-dashed border-gray-300">
-                        <Image
-                          src={artist.coverPhoto}
+                        <img
+                          src={cImg(localCoverPhoto || artist!.coverPhoto!)}
                           alt="Foto de portada"
-                          fill
-                          sizes="600px"
-                          className="object-cover"
+                          className="absolute inset-0 w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                           <span className="text-white text-sm font-semibold">Cambiar portada</span>
@@ -1156,6 +1362,43 @@ export default function ArtistSettingsPage() {
                     )}
                     <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} disabled={coverUploading} />
                   </label>
+                </div>
+
+                {/* Social links */}
+                <div className="border border-gray-200 rounded-xl p-6 space-y-4">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Redes sociales</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Aparecerán en tu perfil público para que los clientes puedan seguirte.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {([
+                      { key: 'instagram' as const, label: 'Instagram', placeholder: '@tuusuario o https://instagram.com/...' },
+                      { key: 'facebook' as const, label: 'Facebook', placeholder: 'https://facebook.com/...' },
+                      { key: 'youtube' as const, label: 'YouTube', placeholder: 'https://youtube.com/...' },
+                      { key: 'tiktok' as const, label: 'TikTok', placeholder: '@tuusuario o https://tiktok.com/...' },
+                      { key: 'website' as const, label: 'Sitio web', placeholder: 'https://tuweb.com' },
+                    ] as const).map(({ key, label, placeholder }) => (
+                      <div key={key}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                        <input
+                          type="text"
+                          value={socialData[key]}
+                          onChange={(e) => setSocialData((prev) => ({ ...prev, [key]: e.target.value }))}
+                          placeholder={placeholder}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={handleSaveSocial}
+                      disabled={isSavingSocial}
+                      className="px-6 py-2.5 bg-[#FF6B35] text-white rounded-lg hover:bg-[#e05e00] transition-colors text-sm font-semibold disabled:opacity-60"
+                    >
+                      {isSavingSocial ? 'Guardando...' : 'Guardar redes sociales'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Category & specialties */}
@@ -1204,18 +1447,151 @@ export default function ArtistSettingsPage() {
                 </div>
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-                  <strong>💡 Consejo:</strong> Los artistas con foto de perfil y portada reciben hasta 3x más visitas en su perfil. ¡Complétalo!
+                  <strong className="flex items-center gap-1.5"><Lightbulb size={14} className="text-blue-600" /> Consejo:</strong> Los artistas con foto de perfil y portada reciben hasta 3x más visitas en su perfil. ¡Complétalo!
                 </div>
 
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="px-6 py-2.5 bg-[#FF6A00] text-white rounded-lg hover:bg-[#e05e00] transition-colors text-sm font-semibold disabled:opacity-60"
+                    className="px-6 py-2.5 bg-[#FF6B35] text-white rounded-lg hover:bg-[#e05e00] transition-colors text-sm font-semibold disabled:opacity-60"
                   >
                     {isSaving ? 'Guardando...' : 'Guardar cambios'}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {currentTab === 'portfolio' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">Portafolio</h2>
+                  <p className="text-sm text-gray-500">Sube fotos de tu trabajo para que los clientes puedan ver tu estilo.</p>
+                </div>
+
+                {/* Upload button */}
+                <label className={`flex items-center justify-center gap-3 w-full py-4 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${portfolioUploading ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' : 'border-[#FF6B35]/40 hover:border-[#FF6B35] hover:bg-orange-50'}`}>
+                  {portfolioUploading ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-[#FF6B35]" />
+                  ) : (
+                    <svg className="h-5 w-5 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  )}
+                  <span className="text-sm font-semibold text-[#FF6B35]">
+                    {portfolioUploading ? 'Subiendo...' : 'Añadir fotos'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handlePortfolioUpload}
+                    disabled={portfolioUploading}
+                  />
+                </label>
+
+                {/* YouTube section */}
+                <div className="border border-gray-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5 text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                    <h3 className="text-sm font-semibold text-gray-800">Agregar video de YouTube</h3>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={e => setYoutubeUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-[#FF6B35] bg-gray-50"
+                    />
+                    {extractYouTubeId(youtubeUrl) && (
+                      <img
+                        src={`https://img.youtube.com/vi/${extractYouTubeId(youtubeUrl)}/default.jpg`}
+                        alt="preview"
+                        className="h-10 w-16 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                      />
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={youtubeTitle}
+                      onChange={e => setYoutubeTitle(e.target.value)}
+                      placeholder="Titulo del video"
+                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-[#FF6B35] bg-gray-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddYouTubeVideo}
+                      disabled={!extractYouTubeId(youtubeUrl) || youtubeAdding}
+                      className="px-4 py-2 bg-[#FF6B35] text-white text-sm font-semibold rounded-xl hover:bg-[#e55a24] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      {youtubeAdding ? 'Agregando...' : 'Agregar'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid */}
+                {portfolioLoading ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="aspect-square rounded-xl bg-gray-100 animate-pulse" />
+                    ))}
+                  </div>
+                ) : portfolioItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-16 w-16 rounded-full bg-orange-50 flex items-center justify-center mb-4">
+                      <ArtistPhotoIcon className="h-8 w-8 text-[#FF6B35]" />
+                    </div>
+                    <p className="text-gray-700 font-medium mb-1">Sin fotos aún</p>
+                    <p className="text-sm text-gray-400">Sube fotos de tu trabajo para destacar tu talento</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {portfolioItems.map((item: any) => (
+                      <div key={item.id} className="relative group aspect-square rounded-xl overflow-hidden bg-gray-100">
+                        <img
+                          src={item.type === 'video' ? (item.thumbnailUrl ?? item.url) : (item.url ?? item.imageUrl)}
+                          alt={item.title ?? 'Portfolio'}
+                          className="w-full h-full object-cover"
+                        />
+                        {item.type === 'video' && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="bg-black/50 rounded-full p-2">
+                              <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z"/>
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => handlePortfolioDelete(item.id)}
+                            className="p-2 bg-red-500 rounded-full text-white hover:bg-red-600 transition-colors"
+                            aria-label="Eliminar"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                        {item.title && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1.5">
+                            <p className="text-white text-xs font-medium truncate">{item.title}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-400">
+                  {portfolioItems.length} elemento{portfolioItems.length !== 1 ? 's' : ''} en tu portafolio
+                </p>
               </div>
             )}
 
@@ -1280,7 +1656,7 @@ export default function ArtistSettingsPage() {
                 ] as { section: string; icon: React.ReactNode; items: { id: string; label: string; desc: string; defaultOn: boolean }[] }[]).map((group) => (
                   <div key={group.section} className="border border-gray-200 rounded-xl overflow-hidden">
                     <div className="bg-gray-50 px-5 py-3 flex items-center gap-2 border-b border-gray-200">
-                      <span className="text-[#FF6A00]">{group.icon}</span>
+                      <span className="text-[#FF6B35]">{group.icon}</span>
                       <span className="font-semibold text-gray-800 text-sm">{group.section}</span>
                     </div>
                     <div className="divide-y divide-gray-100">
@@ -1310,7 +1686,7 @@ export default function ArtistSettingsPage() {
 
             {currentTab === 'payments' && (
               <div className="text-center py-12">
-                <div className="text-6xl mb-4">💳</div>
+                <CreditCard size={56} className="mx-auto mb-4 text-gray-300" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
                   Métodos de Pago
                 </h3>
@@ -1320,6 +1696,68 @@ export default function ArtistSettingsPage() {
                 <p className="text-sm text-gray-500 mt-4">
                   (Próximamente: Stripe Connect, cuentas bancarias, historial de pagos)
                 </p>
+              </div>
+            )}
+
+            {currentTab === 'integraciones' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">Integraciones</h2>
+                  <p className="text-sm text-gray-500">Conecta tu cuenta con servicios externos.</p>
+                </div>
+
+                <div className="border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+                  <div className="shrink-0 w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
+                      <path d="M6 2v6l2.5 2.5L6 13v6l6-3 6 3v-6l-2.5-2.5L18 8V2l-6 3-6-3z" fill="#4285F4" fillOpacity=".15" stroke="#4285F4" strokeWidth="1.5" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 text-sm">Google Calendar</h3>
+                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                      Sincroniza tus reservas automaticamente. Cuando un cliente confirme una reserva contigo, el evento se creara en tu Google Calendar. Las reprogramaciones y cancelaciones tambien se actualizan automaticamente.
+                    </p>
+                    {calendarEnabled ? (
+                      <div className="mt-3 flex items-center gap-3">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          Conectado
+                        </span>
+                        <button
+                          type="button"
+                          disabled={calendarLoading}
+                          onClick={async () => {
+                            setCalendarLoading(true);
+                            try {
+                              await sdk.disconnectGoogleCalendar();
+                              setCalendarEnabled(false);
+                              toast.success('Google Calendar desconectado');
+                            } catch {
+                              toast.error('Error al desconectar');
+                            } finally {
+                              setCalendarLoading(false);
+                            }
+                          }}
+                          className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                        >
+                          Desconectar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={calendarLoading}
+                        onClick={() => {
+                          window.location.href = '/api/auth/google/calendar-connect';
+                        }}
+                        className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-white bg-[#4285F4] hover:bg-[#3367D6] px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white"><path d="M6 2v6l2.5 2.5L6 13v6l6-3 6 3v-6l-2.5-2.5L18 8V2l-6 3-6-3z"/></svg>
+                        Conectar Google Calendar
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1372,7 +1810,7 @@ export default function ArtistSettingsPage() {
                           <li>Ubicación base para cálculo de cobertura y traslados</li>
                         </ul>
                         <p className="font-medium text-gray-800 mt-2">Tus derechos</p>
-                        <p>Puedes solicitar acceso, rectificación o eliminación de tus datos escribiéndonos a <span className="font-medium text-orange-600">privacidad@piums.com</span>.</p>
+                        <p>Puedes solicitar acceso, rectificación o eliminación de tus datos escribiéndonos a <span className="font-medium text-orange-600">soporte@piums.io</span>.</p>
                       </>
                     ),
                   },
@@ -1406,13 +1844,13 @@ export default function ArtistSettingsPage() {
                             <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
-                            <span className="font-medium text-orange-600">soporte@piums.com</span>
+                            <span className="font-medium text-orange-600">soporte@piums.io</span>
                           </div>
                           <div className="flex items-center gap-2 text-sm">
                             <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
                             </svg>
-                            <span className="font-medium text-orange-600">privacidad@piums.com</span>
+                            <span className="font-medium text-orange-600">soporte@piums.io</span>
                           </div>
                           <div className="flex items-center gap-2 text-sm">
                             <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1437,16 +1875,6 @@ export default function ArtistSettingsPage() {
             </div>
           </div>
 
-          {/* Artist ID Info (for developers) */}
-          {artist && (
-            <div className="mt-6 bg-gray-100 rounded-lg p-4 text-xs text-gray-600 font-mono">
-              <p>Artist ID: {artist.id}</p>
-              <p>User ID: {artist.userId || 'N/A'}</p>
-              <p>Slug: {artist.slug || 'N/A'}</p>
-              <p>Verified: {artist.isVerified ? '✓' : '✗'}</p>
-              <p>Active: {artist.isActive ? '✓' : '✗'}</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -1474,4 +1902,10 @@ function ArtistCardIcon({ className }: { className?: string }) {
 }
 function ArtistScaleIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" /></svg>;
+}
+function ArtistLinkIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>;
+}
+function ArtistPhotoIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>;
 }

@@ -8,15 +8,20 @@ import { setupRoutes } from "./routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { logger } from "./utils/logger";
 import { globalRateLimiter } from "./middleware/rateLimiter";
+import { requestId } from "./middleware/requestId";
 import { createProxyMiddleware } from "http-proxy-middleware";
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1); // Confiar en el primer proxy (ingress de K8s) para obtener IP real del cliente
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
+
+// Correlation ID — genera x-request-id si no viene del cliente; se propaga downstream via proxy
+app.use(requestId);
 
 // Security headers
 app.use(helmet());
@@ -41,7 +46,8 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-request-id"],
+    exposedHeaders: ["x-request-id"],
   })
 );
 
@@ -57,7 +63,10 @@ if (process.env.NODE_ENV === "development") {
 app.use(globalRateLimiter);
 app.use((req, res, next) => {
   if (!req.url.includes('health')) {
-    logger.info(`[GATEWAY_DEBUG] Request: ${req.method} ${req.url} (Original: ${req.originalUrl})`, "GATEWAY");
+    logger.info(`${req.method} ${req.url}`, "GATEWAY", {
+      requestId: req.headers['x-request-id'],
+      ip: req.ip,
+    });
   }
   next();
 });

@@ -1,9 +1,12 @@
-/**
- * Stripe Provider - Integración con Stripe API
- */
-
 import Stripe from "stripe";
 import { logger } from "../utils/logger";
+import type {
+  IPaymentProvider,
+  CheckoutParams,
+  CheckoutResult,
+  RefundPaymentParams,
+  RefundPaymentResult,
+} from "./payment-provider.interface";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -11,13 +14,16 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 if (!STRIPE_SECRET_KEY) {
   logger.warn("STRIPE_SECRET_KEY no configurada", "STRIPE_PROVIDER");
 }
+if (!STRIPE_WEBHOOK_SECRET) {
+  logger.warn("STRIPE_WEBHOOK_SECRET no configurada — los webhooks de Stripe serán rechazados", "STRIPE_PROVIDER");
+}
 
 export const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2025-02-24.acacia",
   typescript: true,
 });
 
-export class StripeProvider {
+export class StripeProvider implements IPaymentProvider {
   /**
    * Crear Payment Intent
    */
@@ -27,6 +33,7 @@ export class StripeProvider {
     description?: string;
     metadata?: Record<string, string>;
     paymentMethodTypes?: string[];
+    captureMethod?: "automatic" | "manual";
   }): Promise<Stripe.PaymentIntent> {
     try {
       const paymentIntent = await stripe.paymentIntents.create({
@@ -35,10 +42,7 @@ export class StripeProvider {
         description: params.description,
         metadata: params.metadata || {},
         payment_method_types: params.paymentMethodTypes || ["card"],
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: "never",
-        },
+        capture_method: params.captureMethod || "automatic",
       });
 
       logger.info("Payment Intent creado", "STRIPE_PROVIDER", {
@@ -123,6 +127,28 @@ export class StripeProvider {
       return paymentIntent;
     } catch (error: any) {
       logger.error("Error cancelando Payment Intent", "STRIPE_PROVIDER", {
+        paymentIntentId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Capturar Payment Intent (capture_method=manual)
+   */
+  async capturePaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent> {
+    try {
+      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+
+      logger.info("Payment Intent capturado", "STRIPE_PROVIDER", {
+        paymentIntentId,
+        status: paymentIntent.status,
+      });
+
+      return paymentIntent;
+    } catch (error: any) {
+      logger.error("Error capturando Payment Intent", "STRIPE_PROVIDER", {
         paymentIntentId,
         error: error.message,
       });
@@ -443,6 +469,53 @@ export class StripeProvider {
       });
       throw error;
     }
+  }
+
+  // ==================== IPaymentProvider ====================
+
+  async createCheckout(params: CheckoutParams): Promise<CheckoutResult> {
+    const isManual = params.captureMode !== 'automatic';
+    const intent = await this.createPaymentIntent({
+      amount: params.amount,
+      currency: params.currency,
+      description: params.description,
+      metadata: {
+        bookingId: params.bookingId,
+        userId: params.userId,
+        captureMode: isManual ? "MANUAL" : "AUTOMATIC",
+        ...params.metadata,
+      },
+      paymentMethodTypes: ["card"],
+      captureMethod: isManual ? "manual" : "automatic",
+    });
+
+    return {
+      providerRef: intent.id,
+      clientSecret: intent.client_secret ?? undefined,
+      requiresAction: intent.status === "requires_action",
+      status:
+        intent.status === "succeeded"
+          ? "succeeded"
+          : intent.status === "requires_action"
+          ? "requires_action"
+          : "pending",
+      provider: "STRIPE",
+    };
+  }
+
+  async refundPayment(params: RefundPaymentParams): Promise<RefundPaymentResult> {
+    const refund = await this.createRefund({
+      paymentIntentId: params.providerRef,
+      amount: params.amount,
+      reason: (params.reason as Stripe.RefundCreateParams.Reason) || "requested_by_customer",
+      metadata: params.metadata,
+    });
+
+    return {
+      refundId: refund.id,
+      status: refund.status ?? "pending",
+      amount: refund.amount,
+    };
   }
 }
 

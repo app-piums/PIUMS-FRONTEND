@@ -43,8 +43,8 @@ export interface Artist {
   baseLocationLabel?: string;
   baseLocationLat?: number;
   baseLocationLng?: number;
-  coverageRadius?: number;
-  experienceYears?: number;
+  coverageRadius?: number | null;
+  yearsExperience?: number;
   rating?: number;
   reviewsCount?: number;
   bookingsCount?: number;
@@ -60,6 +60,11 @@ export interface ArtistProfile extends Artist {
   certifications?: Certification[];
   services?: Service[];
   reviews?: Review[];
+  instagram?: string;
+  facebook?: string;
+  youtube?: string;
+  tiktok?: string;
+  website?: string;
 }
 
 export interface PortfolioItem {
@@ -67,7 +72,10 @@ export interface PortfolioItem {
   artistId: string;
   title: string;
   description?: string;
-  imageUrl: string;
+  type?: string;         // "image" | "video" | "audio"
+  url?: string;          // campo real en DB
+  imageUrl?: string;     // alias legacy
+  thumbnailUrl?: string; // thumbnail para videos
   category?: string;
   order: number;
   createdAt: string;
@@ -92,7 +100,17 @@ export interface Service {
   categoryId?: string;
   basePrice: number;
   duration: number;
+  durationMin?: number;
   isActive: boolean;
+  isMainService?: boolean;
+  isOnSale?: boolean;
+  currency?: string;
+  whatIsIncluded?: string[];
+  minGuests?: number;
+  maxGuests?: number;
+  pricingType?: string;
+  status?: string;
+  requiresProductDelivery?: boolean;
   createdAt: string;
 }
 
@@ -102,20 +120,44 @@ export interface Booking {
   code: string;
   userId: string;
   artistId: string;
+  serviceId?: string;
   status: BookingStatus;
+  paymentStatus?: string;
   scheduledAt: string;
+  scheduledDate?: string;
+  durationMinutes?: number;
+  location?: string;
+  clientNotes?: string;
   totalAmount: number;
+  totalPrice?: number;
+  servicePrice?: number;
+  addonsPrice?: number;
   currency: string;
+  anticipoRequired?: boolean;
+  anticipoAmount?: number;
   quoteSnapshot?: any;
   createdAt: string;
+  // Código de asistencia y entrega de producto
+  attendanceCode?: string;
+  attendanceCodeUsedAt?: string | null;
+  requiresProductDelivery?: boolean;
+  productDeliveryUrl?: string | null;
 }
 
 export enum BookingStatus {
   PENDING = 'PENDING',
   CONFIRMED = 'CONFIRMED',
+  PAYMENT_PENDING = 'PAYMENT_PENDING',
+  PAYMENT_COMPLETED = 'PAYMENT_COMPLETED',
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
+  DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
+  CANCELLED_CLIENT = 'CANCELLED_CLIENT',
+  CANCELLED_ARTIST = 'CANCELLED_ARTIST',
+  REJECTED = 'REJECTED',
+  NO_SHOW = 'NO_SHOW',
+  RESCHEDULED = 'RESCHEDULED',
 }
 
 export interface CreateBookingRequest {
@@ -199,12 +241,40 @@ export interface Category {
 
 export type EventStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 
+export type EventType =
+  | 'CUMPLEANOS'
+  | 'BODA'
+  | 'GRADUACION'
+  | 'QUINCEANERA'
+  | 'CORPORATIVO'
+  | 'CONCIERTO'
+  | 'FIESTA'
+  | 'BABY_SHOWER'
+  | 'BAUTIZO'
+  | 'ANIVERSARIO'
+  | 'OTRO';
+
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  CUMPLEANOS:  'Cumpleaños',
+  BODA:        'Boda',
+  GRADUACION:  'Graduación',
+  QUINCEANERA: 'Quinceañera',
+  CORPORATIVO: 'Evento Corporativo',
+  CONCIERTO:   'Concierto / Festival',
+  FIESTA:      'Fiesta / Celebración',
+  BABY_SHOWER: 'Baby Shower',
+  BAUTIZO:     'Bautizo / Bienvenida',
+  ANIVERSARIO: 'Aniversario',
+  OTRO:        'Otro',
+};
+
 export interface PiumsEvent {
   id: string;
   code: string;
   clientId: string;
   name: string;
   description?: string;
+  eventType?: EventType;
   location?: string;
   locationLat?: number;
   locationLng?: number;
@@ -229,6 +299,7 @@ export interface EventBookingRef {
 export interface CreateEventPayload {
   name: string;
   description?: string;
+  eventType?: EventType;
   location?: string;
   locationLat?: number;
   locationLng?: number;
@@ -238,6 +309,7 @@ export interface CreateEventPayload {
 export interface UpdateEventPayload {
   name?: string;
   description?: string;
+  eventType?: EventType;
   location?: string;
   locationLat?: number;
   locationLng?: number;

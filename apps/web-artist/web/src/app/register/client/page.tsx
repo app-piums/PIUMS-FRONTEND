@@ -7,5 +7,6 @@ export default async function RegisterClientPage() {
   const headersList = await headers();
   const host = headersList.get('host') || 'localhost:3001';
   const hostname = host.split(':')[0];
-  redirect(`http://${hostname}:3000/register`);
+  const clientUrl = process.env.NEXT_PUBLIC_CLIENT_URL || `http://${hostname}:3000`;
+  redirect(`${clientUrl}/register`);
 }

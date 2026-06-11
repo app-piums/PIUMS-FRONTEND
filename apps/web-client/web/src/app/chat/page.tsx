@@ -12,8 +12,9 @@ import ClientSidebar from '@/components/ClientSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loading } from '@/components/Loading';
 
-const CHAT_SOCKET_URL =
-  process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010';
+const CHAT_SOCKET_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'https://backend.piums.io')
+  : (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010');
 
 function ChatPageInner() {
   const router = useRouter();
@@ -28,6 +29,7 @@ function ChatPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const socketRef = useRef<Socket | null>(null);
+  const currentConversationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/chat');
@@ -37,57 +39,61 @@ function ChatPageInner() {
   useEffect(() => {
     if (!user || !isAuthenticated) return;
 
-    // Fetch token from server to use for socket auth (httpOnly cookie)
-    fetch('/api/chat/token', { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (!data?.token) return;
+    const socket = io(CHAT_SOCKET_URL, {
+      path: '/socket.io/',
+      auth: (cb: (data: object) => void) => {
+        fetch('/api/chat/token', { credentials: 'include' })
+          .then(res => res.ok ? res.json() : null)
+          .then(data => cb({ token: data?.token || '' }))
+          .catch(() => cb({ token: '' }));
+      },
+      transports: ['polling', 'websocket'],
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.5,
+    });
 
-        const socket = io(CHAT_SOCKET_URL, {
-          path: '/socket.io/',
-          auth: { token: data.token },
-          transports: ['websocket'],
-        });
+    socket.on('connect', () => {
+      if (currentConversation) {
+        socket.emit('conversation:join', { conversationId: currentConversation.id });
+      }
+    });
 
-        socket.on('connect', () => {
-          // Join current conversation if one is selected
-          if (currentConversation) {
-            socket.emit('conversation:join', { conversationId: currentConversation.id });
-          }
-        });
+    socket.on('message:received', (msg: Message) => {
+      setMessages(prev => {
+        if (prev.find(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      setConversations(prev =>
+        prev.map(c =>
+          c.id === msg.conversationId
+            ? { ...c, lastMessageAt: msg.createdAt, unreadCount: c.id === currentConversationIdRef.current ? 0 : (c.unreadCount ?? 0) + 1 }
+            : c
+        )
+      );
+    });
 
-        socket.on('message:received', (msg: Message) => {
-          setMessages(prev => {
-            // Avoid duplicates
-            if (prev.find(m => m.id === msg.id)) return prev;
-            return [...prev, msg];
-          });
-          setConversations(prev =>
-            prev.map(c =>
-              c.id === msg.conversationId
-                ? { ...c, lastMessageAt: msg.createdAt, unreadCount: c.id === currentConversation?.id ? 0 : (c.unreadCount ?? 0) + 1 }
-                : c
-            )
-          );
-        });
+    socket.on('typing:start', ({ userId, conversationId }: { userId: string; conversationId?: string }) => {
+      if (userId !== user.id && (!conversationId || conversationId === currentConversationIdRef.current)) setIsTyping(true);
+    });
 
-        socket.on('typing:start', ({ userId }: { userId: string }) => {
-          if (userId !== user.id) setIsTyping(true);
-        });
+    socket.on('typing:stop', ({ userId, conversationId }: { userId: string; conversationId?: string }) => {
+      if (userId !== user.id && (!conversationId || conversationId === currentConversationIdRef.current)) setIsTyping(false);
+    });
 
-        socket.on('typing:stop', ({ userId }: { userId: string }) => {
-          if (userId !== user.id) setIsTyping(false);
-        });
-
-        socketRef.current = socket;
-      })
-      .catch(() => {});
+    socketRef.current = socket;
 
     return () => {
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
   }, [user, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ref in sync so socket handlers always see the current conversation
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversation?.id ?? null;
+    setIsTyping(false);
+  }, [currentConversation?.id]);
 
   // Join conversation room when selection changes
   useEffect(() => {
@@ -250,7 +256,7 @@ function ChatPageInner() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
                   </svg>
                 </button>
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF6A00] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF6B35] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
                   {(currentConversation.artistName ?? 'A').charAt(0)}
                 </div>
                 <div>
@@ -285,8 +291,8 @@ function ChatPageInner() {
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <div className="h-20 w-20 rounded-full bg-[#FF6A00]/10 flex items-center justify-center mx-auto mb-4">
-                  <svg className="h-10 w-10 text-[#FF6A00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="h-20 w-20 rounded-full bg-[#FF6B35]/10 flex items-center justify-center mx-auto mb-4">
+                  <svg className="h-10 w-10 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                 </div>

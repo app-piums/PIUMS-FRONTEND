@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       if (response.status === 409) {
         return NextResponse.json(
-          { message: "Este correo electrónico ya está registrado" },
+          { message: data.message || "Este correo electrónico ya está registrado" },
           { status: 409 }
         );
       }
@@ -153,8 +153,8 @@ export async function POST(request: NextRequest) {
     );
 
     if (data.token) {
-      result.cookies.set("auth_token", data.token, { ...COOKIE_OPTIONS, maxAge: 3600 });
-      result.cookies.set("user_role", "artista", { ...COOKIE_OPTIONS, maxAge: 3600 });
+      result.cookies.set("auth_token", data.token, { ...COOKIE_OPTIONS, maxAge: 604800 });
+      result.cookies.set("user_role", "artista", { ...COOKIE_OPTIONS, maxAge: 604800 });
     }
 
     if (data.refreshToken) {

@@ -3,8 +3,10 @@ import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { bookingClient } from "../clients/booking.client";
 import { notificationsClient } from "../clients/notifications.client";
+import { ModerationClient } from "../clients/moderation.client";
 
 const prisma = new PrismaClient();
+const moderationClient = new ModerationClient();
 
 export class ReviewService {
   // ==================== REVIEWS ====================
@@ -26,11 +28,10 @@ export class ReviewService {
       throw new AppError(404, "Booking no encontrado");
     }
 
-    // Verificar que el booking esté en un estado que permita reseña
-    // Permitimos CONFIRMED, ACCEPTED (según UI) y COMPLETED
-    const allowedStatuses = ["CONFIRMED", "ACCEPTED", "PAYMENT_COMPLETED", "COMPLETED"];
+    // Only allow reviews on bookings where the service was actually delivered
+    const allowedStatuses = ["COMPLETED", "PAYMENT_COMPLETED", "FULLY_PAID"];
     if (!allowedStatuses.includes(booking.status)) {
-      throw new AppError(400, `Solo puedes dejar una reseña en reservas confirmadas o completadas (Estado actual: ${booking.status})`);
+      throw new AppError(400, `Solo puedes dejar una reseña en reservas completadas (Estado actual: ${booking.status})`);
     }
 
     // Verificar que el booking pertenezca al cliente
@@ -49,6 +50,28 @@ export class ReviewService {
 
     if (existingReview) {
       throw new AppError(409, "Ya existe una reseña para este booking");
+    }
+
+    // Moderar contenido del comentario antes de guardar
+    if (data.comment) {
+      const modResult = await moderationClient.check({
+        userId: data.clientId,
+        contentType: 'REVIEW',
+        content: data.comment,
+        service: 'reviews-service',
+      });
+
+      if (
+        modResult.action === 'REJECT' ||
+        modResult.action === 'STRIKE' ||
+        modResult.action === 'MANUAL_REVIEW'
+      ) {
+        throw new AppError(400, modResult.rejectMessage);
+      }
+
+      if (modResult.action === 'CENSOR') {
+        data.comment = modResult.censored ?? data.comment;
+      }
     }
 
     // Crear la reseña
@@ -266,11 +289,10 @@ export class ReviewService {
   /**
    * Eliminar una reseña (soft delete)
    */
-  async deleteReview(id: string, userId: string) {
+  async deleteReview(id: string, userId: string, isAdmin = false) {
     const review = await this.getReviewById(id, false);
 
-    // Solo el cliente puede eliminar su propia reseña
-    if (review.clientId !== userId) {
+    if (!isAdmin && review.clientId !== userId) {
       throw new AppError(403, "No tienes permiso para eliminar esta reseña");
     }
 
@@ -308,11 +330,32 @@ export class ReviewService {
       throw new AppError(409, "Ya has respondido a esta reseña");
     }
 
+    // Moderar respuesta del artista antes de guardar
+    let finalMessage = message;
+    const modResult = await moderationClient.check({
+      userId: artistId,
+      contentType: 'REVIEW_RESPONSE',
+      content: message,
+      service: 'reviews-service',
+    });
+
+    if (
+      modResult.action === 'REJECT' ||
+      modResult.action === 'STRIKE' ||
+      modResult.action === 'MANUAL_REVIEW'
+    ) {
+      throw new AppError(400, modResult.rejectMessage);
+    }
+
+    if (modResult.action === 'CENSOR') {
+      finalMessage = modResult.censored ?? message;
+    }
+
     const response = await prisma.reviewResponse.create({
       data: {
         reviewId,
         artistId,
-        message,
+        message: finalMessage,
       },
     });
 
@@ -410,23 +453,26 @@ export class ReviewService {
   async markHelpful(reviewId: string, userId: string, isHelpful: boolean) {
     await this.getReviewById(reviewId, false);
 
-    // TODO: Implementar sistema para evitar votos duplicados (requiere tabla adicional)
-    // Por ahora, incrementamos directamente
+    const existing = await prisma.reviewHelpfulVote.findUnique({
+      where: { reviewId_userId: { reviewId, userId } },
+    });
+
+    if (existing) {
+      throw new AppError(409, 'Ya registraste tu voto en esta reseña');
+    }
+
+    await prisma.reviewHelpfulVote.create({
+      data: { reviewId, userId, isHelpful },
+    });
 
     const field = isHelpful ? "helpfulCount" : "notHelpfulCount";
 
     const updated = await prisma.review.update({
       where: { id: reviewId },
-      data: {
-        [field]: { increment: 1 },
-      },
+      data: { [field]: { increment: 1 } },
     });
 
-    logger.info("Voto registrado en reseña", "REVIEW_SERVICE", {
-      reviewId,
-      userId,
-      isHelpful,
-    });
+    logger.info("Voto registrado en reseña", "REVIEW_SERVICE", { reviewId, userId, isHelpful });
 
     return updated;
   }

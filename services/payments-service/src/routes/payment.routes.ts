@@ -1,13 +1,33 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { paymentController } from "../controller/payment.controller";
-import { authenticateToken } from "../middleware/auth.middleware";
+import { authenticateToken, requireActiveSession } from "../middleware/auth.middleware";
 import { createPaymentLimiter, refundLimiter } from "../middleware/rateLimiter";
 
 const router: Router = Router();
 
+// ==================== CHECKOUT UNIFICADO (Tilopay / Stripe) ====================
+
+// Inicia checkout enrutando al proveedor correcto según país del usuario
+router.post(
+  "/checkout",
+  authenticateToken,
+  requireActiveSession,
+  createPaymentLimiter,
+  paymentController.initCheckout.bind(paymentController)
+);
+
+// Inicia checkout para compra de boletos (ticketMode — sin ownership check de booking)
+router.post(
+  "/ticket-checkout",
+  authenticateToken,
+  requireActiveSession,
+  createPaymentLimiter,
+  paymentController.initTicketCheckout.bind(paymentController)
+);
+
 // ==================== PAYMENT INTENTS ====================
 
-// Crear payment intent
+// Crear payment intent (Stripe legacy)
 router.post(
   "/payment-intents",
   authenticateToken,
@@ -38,6 +58,13 @@ router.post(
 
 // ==================== PAYMENTS ====================
 
+// Estadísticas (debe ir ANTES de /:id para evitar route shadowing)
+router.get(
+  "/payments/stats",
+  authenticateToken,
+  paymentController.getPaymentStats.bind(paymentController)
+);
+
 // Buscar pagos
 router.get(
   "/payments",
@@ -52,11 +79,13 @@ router.get(
   paymentController.getPaymentById.bind(paymentController)
 );
 
-// Estadísticas
-router.get(
-  "/payments/stats",
+// ==================== TILOPAY REDIRECT CONFIRM ====================
+
+// Confirmar pago Tilopay recibido via redirect (frontend llama tras volver de Tilopay)
+router.post(
+  "/tilopay/confirm",
   authenticateToken,
-  paymentController.getPaymentStats.bind(paymentController)
+  paymentController.confirmTilopayRedirect.bind(paymentController)
 );
 
 // ==================== REFUNDS ====================
@@ -74,6 +103,37 @@ router.get(
   "/refunds/:id",
   authenticateToken,
   paymentController.getRefundById.bind(paymentController)
+);
+
+// ==================== INTERNAL: CAPTURE / VOID (inter-servicio) ====================
+
+const internalAuth = (req: Request, res: Response, next: NextFunction) => {
+  const secret = req.headers["x-internal-secret"];
+  if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  return next();
+};
+
+// Cobrar saldo restante con tarjeta guardada (cron 72h pre-evento)
+router.post(
+  "/internal/charge-remaining/:bookingId",
+  internalAuth,
+  paymentController.chargeRemainingBalance.bind(paymentController)
+);
+
+// Capturar pago pre-autorizado (artista confirmó la reserva)
+router.post(
+  "/internal/capture-booking/:bookingId",
+  internalAuth,
+  paymentController.captureBookingPayment.bind(paymentController)
+);
+
+// Liberar pre-autorización (artista rechazó o no confirmó)
+router.post(
+  "/internal/void-booking/:bookingId",
+  internalAuth,
+  paymentController.voidBookingPayment.bind(paymentController)
 );
 
 export default router;

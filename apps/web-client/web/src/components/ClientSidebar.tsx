@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Image from 'next/image';
+import { io } from 'socket.io-client';
 import { useAuth } from '../contexts/AuthContext';
+
+const CHAT_SOCKET_URL =
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'https://backend.piums.io')
+    : (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010');
 
 interface Props {
   userName: string;
@@ -32,15 +38,49 @@ type SidebarContentProps = {
 export default function ClientSidebar({ userName, onNavigateAttempt }: Props) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const { logout } = useAuth();
+
+  useEffect(() => {
+    fetch('/api/chat/conversations', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        const convs = data?.conversations ?? data ?? [];
+        setUnreadMessages(convs.reduce((s: number, c: any) => s + (c.unreadCount ?? 0), 0));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const socket = io(CHAT_SOCKET_URL, {
+      path: '/socket.io/',
+      transports: ['polling', 'websocket'],
+      auth: (cb: (data: object) => void) => {
+        fetch('/api/chat/token', { credentials: 'include' })
+          .then(r => (r.ok ? r.json() : null))
+          .then(data => cb({ token: data?.token || '' }))
+          .catch(() => cb({ token: '' }));
+      },
+    });
+    socket.on('message:received', () => setUnreadMessages(prev => prev + 1));
+    return () => { socket.disconnect(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (pathname === '/chat') setUnreadMessages(0);
+  }, [pathname]);
 
   const navItems: NavItem[] = [
     { href: '/dashboard',        icon: HomeIcon,     label: 'Inicio' },
     { href: '/artists',          icon: SearchIcon,   label: 'Artistas' },
     { href: '/bookings',         icon: CalIcon,      label: 'Reservas' },
     { href: '/events',           icon: EventsIcon,   label: 'Eventos' },
+    { href: '/tickets',          icon: TicketIcon,   label: 'Conciertos' },
+    { href: '/mis-tickets',      icon: TicketIcon,   label: 'Mis Boletos' },
     { href: '/bookmarks',        icon: HeartIcon,    label: 'Favoritos' },
-    { href: '/chat',             icon: ChatIcon,     label: 'Mensajes', badge: 3 },
+    { href: '/coupons',          icon: TicketIcon,   label: 'Cupones' },
+    { href: '/chat',             icon: ChatIcon,     label: 'Mensajes', badge: unreadMessages > 0 ? unreadMessages : undefined },
+    { href: '/notifications',    icon: BellIcon,     label: 'Notificaciones' },
     { href: '/quejas',           icon: AlertIcon,    label: 'Quejas' },
     { href: '/tutorial',         icon: TutorialIcon, label: 'Tutorial' },
   ];
@@ -132,15 +172,15 @@ function SidebarContent({ userName, pathname, navItems, onLinkClick, onClose, on
                 href={href}
                 onClick={(event) => onLinkClick(event, href)}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  active ? 'bg-[#FF6A00]/10 text-[#FF6A00]' : 'text-gray-700 hover:bg-gray-50'
+                  active ? 'bg-[#FF6B35]/10 text-[#FF6B35]' : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#FF6A00]' : 'text-gray-400'}`} />
+                  <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#FF6B35]' : 'text-gray-400'}`} />
                   {label}
                 </div>
                 {badge && (
-                  <span className="bg-[#FF6A00] text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-[#FF6B35] text-white text-xs font-bold px-2 py-0.5 rounded-full">
                     {badge}
                   </span>
                 )}
@@ -157,10 +197,10 @@ function SidebarContent({ userName, pathname, navItems, onLinkClick, onClose, on
               href="/profile"
               onClick={(event) => onLinkClick(event, '/profile')}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                pathname.startsWith('/profile') ? 'bg-[#FF6A00]/10 text-[#FF6A00]' : 'text-gray-700 hover:bg-gray-50'
+                pathname.startsWith('/profile') ? 'bg-[#FF6B35]/10 text-[#FF6B35]' : 'text-gray-700 hover:bg-gray-50'
               }`}
             >
-              <SettingsIcon className={`h-5 w-5 shrink-0 ${pathname.startsWith('/profile') ? 'text-[#FF6A00]' : 'text-gray-400'}`} />
+              <SettingsIcon className={`h-5 w-5 shrink-0 ${pathname.startsWith('/profile') ? 'text-[#FF6B35]' : 'text-gray-400'}`} />
               Configuración
             </Link>
             <button
@@ -185,7 +225,7 @@ function SidebarContent({ userName, pathname, navItems, onLinkClick, onClose, on
           onClick={(event) => onLinkClick(event, '/profile')}
           className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-gray-50 transition-colors"
         >
-          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF6A00] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF6B35] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
             {userName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -225,4 +265,10 @@ function SettingsIcon({ className }: { className?: string }) {
 }
 function TutorialIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>;
+}
+function BellIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>;
+}
+function TicketIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>;
 }

@@ -1,4 +1,4 @@
-name: CI - Build and Test
+name: Frontend CI - Build and Test
 
 on:
   push:
@@ -7,11 +7,22 @@ on:
       - dave
       - develop
       - 'feature/**'
+    paths:
+      - 'apps/web-client/**'
+      - 'apps/web-artist/**'
+      - 'apps/web-admin/**'
+      - '.github/workflows/ci.yml'
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches:
       - main
       - dave
       - develop
+    paths:
+      - 'apps/web-client/**'
+      - 'apps/web-artist/**'
+      - 'apps/web-admin/**'
 
 env:
   REGISTRY: ghcr.io
@@ -27,21 +38,13 @@ jobs:
     runs-on: ubuntu-latest
     
     strategy:
+      fail-fast: false
       matrix:
         service:
-          - auth-service
-          - users-service
-          - artists-service
-          - catalog-service
-          - booking-service
-          - payments-service
-          - reviews-service
-          - notifications-service
-          - search-service
-          - chat-service
           - web-client
           - web-artist
-    
+          - web-admin
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -55,40 +58,60 @@ jobs:
           elif [[ "${{ matrix.service }}" == "web-artist" ]]; then
             echo "dir=apps/web-artist/web" >> $GITHUB_OUTPUT
             echo "lockfile=apps/web-artist/web/pnpm-lock.yaml" >> $GITHUB_OUTPUT
-          else
-            echo "dir=services/${{ matrix.service }}" >> $GITHUB_OUTPUT
-            echo "lockfile=services/${{ matrix.service }}/pnpm-lock.yaml" >> $GITHUB_OUTPUT
+          elif [[ "${{ matrix.service }}" == "web-admin" ]]; then
+            echo "dir=apps/web-admin/web" >> $GITHUB_OUTPUT
+            echo "lockfile=apps/web-admin/web/package-lock.json" >> $GITHUB_OUTPUT
           fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: ${{ steps.path.outputs.lockfile }}
 
       - name: Install pnpm
+        if: matrix.service != 'web-admin'
         uses: pnpm/action-setup@v2
         with:
           version: 8
 
-      - name: Install dependencies
+      - name: Install dependencies (pnpm)
+        if: matrix.service != 'web-admin'
         working-directory: ${{ steps.path.outputs.dir }}
         run: pnpm install --frozen-lockfile
 
+      - name: Install dependencies (npm)
+        if: matrix.service == 'web-admin'
+        working-directory: ${{ steps.path.outputs.dir }}
+        run: npm ci
+
       - name: Run lint
         working-directory: ${{ steps.path.outputs.dir }}
-        run: pnpm run lint || true
+        run: |
+          if [[ "${{ matrix.service }}" == "web-admin" ]]; then
+            npm run lint || true
+          else
+            pnpm run lint || true
+          fi
         continue-on-error: true
 
       - name: Run tests
         working-directory: ${{ steps.path.outputs.dir }}
-        run: pnpm test || true
+        run: |
+          if [[ "${{ matrix.service }}" == "web-admin" ]]; then
+            npm test || true
+          else
+            pnpm test || true
+          fi
         continue-on-error: true
 
       - name: Build TypeScript
         working-directory: ${{ steps.path.outputs.dir }}
-        run: pnpm run build
+        run: |
+          if [[ "${{ matrix.service }}" == "web-admin" ]]; then
+            npm run build
+          else
+            pnpm run build
+          fi
 
   # ============================================================================
   # Build Docker Images
@@ -105,38 +128,25 @@ jobs:
       packages: write
     
     strategy:
+      fail-fast: false
       matrix:
-        service:
-          - auth-service
-          - users-service
-          - artists-service
-          - catalog-service
-          - booking-service
-          - payments-service
-          - reviews-service
-          - notifications-service
-          - search-service
-          - chat-service
-          - web-client
-          - web-artist
-    
+        include:
+          - service: web-client
+            context: ./apps/web-client/web
+            dockerfile: ./apps/web-client/web/Dockerfile
+            app_url: https://client.piums.io
+          - service: web-artist
+            context: ./apps/web-artist/web
+            dockerfile: ./apps/web-artist/web/Dockerfile
+            app_url: https://artist.piums.io
+          - service: web-admin
+            context: .
+            dockerfile: ./apps/web-admin/web/Dockerfile
+            app_url: https://admin.piums.io
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Determine service path
-        id: path
-        run: |
-          if [[ "${{ matrix.service }}" == "web-client" ]]; then
-            echo "context=./apps/web-client/web" >> $GITHUB_OUTPUT
-            echo "dockerfile=./apps/web-client/web/Dockerfile" >> $GITHUB_OUTPUT
-          elif [[ "${{ matrix.service }}" == "web-artist" ]]; then
-            echo "context=./apps/web-artist/web" >> $GITHUB_OUTPUT
-            echo "dockerfile=./apps/web-artist/web/Dockerfile" >> $GITHUB_OUTPUT
-          else
-            echo "context=./services/${{ matrix.service }}" >> $GITHUB_OUTPUT
-            echo "dockerfile=./services/${{ matrix.service }}/Dockerfile" >> $GITHUB_OUTPUT
-          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -164,109 +174,35 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ steps.path.outputs.context }}
-          file: ${{ steps.path.outputs.dockerfile }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # ============================================================================
-  # Build Gateway
-  # ============================================================================
-  
-  build-gateway:
-    name: Build Gateway Image
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-    if: github.event_name == 'push'
-    
-    permissions:
-      contents: read
-      packages: write
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/gateway
-          file: ./apps/gateway/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ============================================================================
-  # Security Scan
-  # ============================================================================
-  
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    needs: build-images
-    if: github.event_name == 'push'
-    
-    strategy:
-      matrix:
-        service:
-          - auth-service
-          - users-service
-          - artists-service
-          - catalog-service
-          - booking-service
-          - payments-service
-    
-    steps:
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ github.ref_name }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ matrix.app_url }}
+            NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
 
   # ============================================================================
   # Notification
   # ============================================================================
+
+  # Note: Backend CI/CD is handled by backend-ci.yml, backend-deploy-staging.yml
+  # and backend-deploy-prod.yml workflows.
   
   notify:
     name: Send Notification
     runs-on: ubuntu-latest
-    needs: [build-images, build-gateway]
+    needs: [build-images]
     if: always()
     
     steps:

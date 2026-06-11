@@ -1,10 +1,10 @@
 # AGENT.MD — Contexto Completo PIUMS Platform
 
-**Fecha de última actualización**: 8 de abril de 2026
-**Último commit**: `dave` branch — fix: resize search bar and shrink count text in buscar-artistas (`f623985`)
+**Fecha de última actualización**: 22 de mayo de 2026
+**Último commit**: `dave` branch — `0982cbd` chore: --frozen-lockfile en todos los Dockerfiles de servicios
 **Branch activo**: `dave`
 **Repo**: `github.com:app-piums/piums-platform.git`
-**Credenciales de prueba**: `artista@piums.com` / `Test1234!`
+**Credenciales de prueba**: `xdave418@gmail.com` (role: ambos — cliente Y artista) / `xdave687@gmail.com` (role: cliente) / `artist02@piums.com` (artista seed) / `client01@piums.com` (cliente seed, pass: `Test1234!`)
 
 ---
 
@@ -50,24 +50,41 @@ Opera bajo la **moneda GTQ (Quetzal guatemalteco)**. Locale: `es-GT`. Símbolo: 
 
 ## 3. Puertos y Servicios
 
-| Servicio | Puerto | Base de datos |
-|---|---|---|
-| API Gateway | 3000 | — |
-| auth-service | 4001 | piums_auth |
-| users-service | 4002 | piums_users |
-| artists-service | 4003 | piums_artists |
-| catalog-service | 4004 | piums_catalog |
-| payments-service | 4005 | piums_payments |
-| reviews-service | 4006 | piums_reviews |
-| notifications-service | 4007 | piums_notifications |
-| booking-service | 4008 | piums_bookings |
-| search-service | 4009 | piums_search |
-| web-client | 3002 | — |
-| web-artist | 3001 | — |
-| PostgreSQL | 5432 | — |
-| Redis | 6379 | — |
+> Stack dev real: **Kubernetes (Docker Desktop)** para todos los microservicios. Las apps web (`web-artist`, `web-client`) corren en Docker Compose y llaman al K8s gateway vía `host.docker.internal:80`. Los manifiestos K8s están en `infra/k8s/overlays/local/`. Ver sección 19 para detalles.
 
-Punto de entrada único: `http://localhost:3000` (API Gateway)
+### Backend (Docker Compose — mapeo `host:container`)
+
+| Servicio | Host | Container | Base de datos |
+|---|---|---|---|
+| **gateway** | **3005** | 3000 | — |
+| auth-service | 4001 | 4001 | piums_auth |
+| users-service | 4002 | 4002 | piums_users |
+| artists-service | 4003 | 4003 | piums_artists |
+| catalog-service | 4004 | 4004 | piums_catalog |
+| payments-service | 4005 | 4005 | piums_payments |
+| reviews-service | 4006 | 4006 | piums_reviews |
+| notifications-service | 4007 | 4007 | piums_notifications |
+| booking-service | 4008 | 4008 | piums_bookings |
+| search-service | 4009 | 4009 | piums_search |
+| chat-service | 4010 | 4010 | — |
+| postgres | 5432 | 5432 | — |
+| redis | 6379 | 6379 | — |
+
+**Punto de entrada único al backend**: `http://localhost:80` (K8s gateway LoadBalancer) — antes era `localhost:3005` en Docker Compose.
+
+**Desde containers Docker Compose** (web-artist, web-client): `http://host.docker.internal:80` (build ARG `GATEWAY_INTERNAL_URL`).
+
+**Acceso público via Cloudflare Tunnel**: `https://backend.piums.io → localhost:80 → K8s gateway`.
+
+### Frontends (Docker Compose — mapeo `host:container`)
+
+| App | Host | Container | Dominio público |
+|---|---|---|---|
+| web-client | 3000 | 3000 | `https://client.piums.io` |
+| web-artist | 3001 | 3001 | `https://artist.piums.io` |
+| web-admin | 3002 | 3003 | — |
+
+> Las apps web se prueban en `https://artist.piums.io` y `https://client.piums.io` (Cloudflare Tunnel), no en localhost.
 
 ---
 
@@ -91,16 +108,31 @@ App para **artistas registrados**. Requiere autenticación. La cookie `onboardin
 /artist/dashboard/calendar → Vista de calendario de disponibilidad
 /artist/dashboard/services → CRUD completo de servicios del catálogo
 /artist/dashboard/reviews  → Reseñas recibidas
-/artist/dashboard/settings → Configuración con 5 pestañas:
+/artist/dashboard/settings → Configuración con 9 pestañas:
                                - personal: nombre, email, ciudad, bio, experiencia
+                               - verificar: verificación de identidad (DPI/Pasaporte/Cédula de residencia)
                                - coverage: radio cobertura (1-200km), tarifas, depósito
-                               - profile: perfil público, avatar, cover photo
+                               - profile: perfil público, avatar, cover photo, redes sociales
+                               - portfolio: portafolio de trabajos (subida de imágenes/videos)
                                - notifications: toggles por categoría
-                               - payments: Stripe Connect (placeholder)
+                               - payments: Stripe Connect / Tilopay
+                               - integraciones: Google Calendar OAuth
+                               - legal: términos y política de cancelación
+/artist/dashboard/disponibilidad → Configurar horarios disponibles por día de semana
+/artist/dashboard/coupons     → Crear y gestionar cupones de descuento
+/artist/dashboard/eventos     → Lista de eventos del artista (TicketEvents)
+/artist/dashboard/eventos/[id]/check-in → Check-in de asistentes a evento
+/artist/dashboard/postulaciones → Mis postulaciones a vacantes de otros artistas
+/artist/dashboard/postulaciones/tablero → Tablero de oportunidades (ArtistPostings abiertas)
+/artist/dashboard/quejas      → Disputas/quejas donde el artista es parte
+/artist/dashboard/quejas/[id] → Detalle de queja
+/artist/dashboard/notifications → Centro de notificaciones
+/artist/dashboard/invoices    → Facturas generadas
+/chat/grupo                   → Chat de grupo (colaboración entre artistas)
 ```
 
 **Componentes clave:**
-- `DashboardSidebar.tsx` — Navegación: Inicio, Reservas, Mensajes, Agenda, Servicios | Billetera, Facturas | Configuración
+- `DashboardSidebar.tsx` — Navegación: Inicio, Reservas, Mensajes, Agenda, Servicios, Horarios, Ausencias/Viajes, Notificaciones, Tutorial | Billetera, Facturas, Cupones, Mis Eventos, Postulaciones | Configuración
 - `StatsCards.tsx` — Ingresos Totales, Pagos Pendientes, Vistas del Perfil (con `Q` prefix, locale `es-GT`)
 - `BookingCard.tsx` — Tarjeta de reserva con estado y precio
 - `CalendarPicker.tsx` — Selector de fecha/hora con slots disponibles
@@ -130,19 +162,42 @@ App para **clientes** que contratan artistas.
 /artists/[id]              → Perfil público del artista (servicios, reviews, disponibilidad)
 /booking                   → Flujo de booking: selección servicio → fecha → confirmación
 /booking/checkout          → Pago con Stripe (formulario de tarjeta)
-/booking/confirmation/[id] → Confirmación y detalles de la reserva
+/booking/confirmation/[id] → Confirmación y detalles de la reserva (procesa resultado Tilopay redirect)
+/booking/reschedule/confirm → Confirmar solicitud de reschedule
 /bookings                  → Mis reservas como cliente
+/bookings/[id]             → Detalle de reserva individual
 /dashboard                 → Panel del cliente (stats, bookings recientes)
-/search                    → Búsqueda avanzada con filtros
+/search                    → Búsqueda avanzada con filtros (sinónimos inteligentes)
 /services                  → Catálogo de servicios
+/services/[id]             → Detalle de servicio
 /chat                      → Mensajería con artistas
+/notifications             → Centro de notificaciones
 /profile                   → Mi perfil
 /profile/personal          → Editar datos personales
 /profile/notifications     → Preferencias de notificaciones
-/profile/payments          → Métodos de pago
+/profile/payments          → Métodos de pago guardados (Tilopay tokens)
 /profile/security          → Contraseña y 2FA
 /profile/delete            → Eliminar cuenta
+/profile/legal             → Términos y privacidad
 /bookmarks                 → Artistas guardados/favoritos
+/coupons                   → Mis cupones disponibles
+/tickets                   → Listado de eventos con tickets disponibles
+/tickets/[id]              → Detalle de evento y compra de tickets
+/tickets/confirmacion/[purchaseId] → Confirmación de compra de ticket
+/mis-tickets               → Mis tickets comprados
+/quejas                    → Mis disputas/quejas
+/quejas/[id]               → Detalle de queja
+/events                    → Eventos creados (multi-artista)
+/events/[id]               → Detalle de evento multi-artista
+/categorias                → Categorías de artistas
+/ayuda                     → Centro de ayuda
+/blog                      → Blog
+/nosotros                  → Página de equipo
+/contacto                  → Formulario de contacto
+/terminos                  → Términos de servicio
+/privacidad                → Política de privacidad
+/cookies                   → Política de cookies
+/tutorial                  → Tutorial interactivo
 /auth                      → Callback OAuth
 ```
 
@@ -156,6 +211,51 @@ App para **clientes** que contratan artistas.
 - `bookings/ModifyDateModal.tsx` — Modificar fecha de reserva
 - `chat/ConversationList.tsx`, `MessageBubble.tsx` — Mensajería
 - `admin/` — Panel de administración
+
+---
+
+### 4.3 Apps Móviles (`/apps/mobile/`)
+
+Existen **cuatro apps nativas** — cliente y artista para iOS y Android. Toda la documentación detallada está en `apps/mobile/AGENT.md`.
+
+| App | Plataforma | Repo | Tech stack | Estado contexto |
+|---|---|---|---|---|
+| Piums Client | iOS | `piums-ios-client` | Swift + SwiftUI + URLSession | ✅ documentado en `apps/mobile/AGENT.md` |
+| Piums Artist | iOS | `piums-ios-artist` | Swift + SwiftUI + URLSession | ✅ documentado en `apps/mobile/AGENT.md` |
+| Piums Client | Android | `piums-android-client` | Kotlin + Jetpack Compose + Retrofit | ✅ documentado en `apps/mobile/AGENT.md` |
+| Piums Artist | Android | `piums-android-artist` | Kotlin + Jetpack Compose + Retrofit | ✅ documentado en `apps/mobile/AGENT.md` |
+
+**Arquitectura**: MVVM + Clean Architecture en ambas plataformas. Admin nunca en mobile.
+
+**Piums Client** (iOS + Android) — equivalente móvil de `web-client`:
+- Onboarding, login/registro de cliente
+- Descubrimiento y búsqueda de artistas
+- Perfil del artista + servicios + reviews
+- Flujo de reserva + pago con Stripe
+- Mis reservas, historial, cancelación
+- Chat con artistas
+- Notificaciones push
+
+**Piums Artist** (iOS + Android) — ✅ contexto completo en `apps/mobile/AGENT.md`:
+- Onboarding, login/registro de artista (email + Google Sign-In)
+- Dashboard: stats, reservas hoy, fuerza de perfil
+- CRUD de servicios del catálogo (toggle optimista)
+- Gestión de solicitudes de reserva (aceptar/rechazar/completar/cancelar)
+- Calendario mensual + bloqueo de días y ausencias
+- Mensajes: inbox (polling 15 s iOS / 15 s Android) + chat activo (polling 3 s iOS / 8 s Android)
+- Wallet: historial de pagos y payouts
+- Reviews recibidas, cupones, disputas, verificación de identidad
+- Notificaciones push (APNs iOS, FCM Android)
+- Configuración: modo oscuro, cambiar contraseña, eliminar cuenta
+
+**Backend URL en dev**:
+- iOS Simulator: `http://localhost:80/api`
+- Android Emulator: `http://10.0.2.2:80/api` (`10.0.2.2` = localhost del host)
+- Dispositivo físico: `http://<IP-LAN>:80/api`
+
+**Autenticación**: Bearer token (JWT). iOS guarda tokens en Keychain; Android en EncryptedSharedPreferences.
+
+**Push notifications**: APNs (iOS) + FCM (Android). Registro del token vía `POST /api/notifications/push-token`.
 
 ---
 
@@ -212,35 +312,56 @@ Usa `credentials: 'include'` para enviar cookies automáticamente.
 - Dashboard del artista (stats, bookings, earnings)
 - Disponibilidad y calendario
 - Campos de cobertura: `coverageRadius`, `hourlyRateMin`, `hourlyRateMax`, `requiresDeposit`, `depositPercentage`
+- Campo `telefono` (añadido mayo 2026), `coverPhotoUrl`
 - Integra con payments-service para estadísticas de earnings
-- **Schema**: `Artist`, `ArtistAvailability`, `BlockedDate`
-- `searchArtists()`: acepta `q` (búsqueda full-text por nombre, case-insensitive), `category` (enum), `city` (string), `minRating`, geo params
-- `searchArtistsSchema`: campo `q: z.string().optional()` para búsqueda full-text
+- **Schema**: `Artist`, `PortfolioItem`, `Certification`, `ArtistAvailabilityRule`, `ArtistBlackout`
+  - `ArtistAvailabilityRule`: horarios por día de semana (reemplaza BlockedDate)
+  - `ArtistBlackout`: fechas bloqueadas/ausencias
+  - `PortfolioItem`: items de portafolio del artista (imagen/video/audio)
+  - `Certification`: certificaciones y credenciales
+- `searchArtists()`: acepta `q` (búsqueda OR en nombre, artistName, bio, city), `category` (enum), `city` (string), `minRating`, geo params
+- Endpoint interno `GET /artists/internal/by-auth/:authId` para resolver authId → artistId en booking-service
 
 ### catalog-service (4004) — `piums_catalog`
 - CRUD de servicios del artista
 - Sistema de categorías jerárquico (`ServiceCategory`)
 - Pricing avanzado: `ServicePricing` (FIXED / BASE_PLUS_HOURLY / PACKAGE), `ServiceAddons`, `ServiceTravelRules`
+- `ServiceDayOffer`: ofertas/descuentos diarios en servicios
+- `ServicePackage`: paquetes de servicio con precio único
+- **Postulaciones entre artistas**: `ArtistPosting` (vacante) + `PostingApplication` (solicitud); permite a artistas buscar colaboradores para eventos
 - Ciudades y zonas geográficas: `Country`, `State`, `City`
 - Media assets polimórficos: `MediaAsset` (IMAGE, VIDEO, AUDIO, DOCUMENT)
 - Moneda por defecto: `GTQ`
 
 ### booking-service (4008) — `piums_bookings`
-- Ciclo de vida de reservas: PENDING → CONFIRMED → COMPLETED / CANCELLED
+- Ciclo de vida de reservas: PENDING → CONFIRMED → COMPLETED / CANCELLED / REJECTED
 - Códigos únicos legibles: formato `PIU-YYYY-NNNNNN` (ej. `PIU-2026-000123`)
 - Quote snapshot: JSON inmutable con breakdown de precios al momento de crear
 - `BookingItems`: líneas de detalle (BASE, ADDON, TRAVEL, DISCOUNT)
+- `dayOfferDiscountAmount`: descuento de day-offer aplicado al precio
 - Sistema de disputas: `Dispute`, `DisputeMessage` con 8 tipos y múltiples resoluciones
+- `RescheduleRequest`: solicitudes formales de cambio de fecha (cliente o artista)
+- `BookingCollaborator`: artistas secundarios colaborando en una reserva (Flujo A/B)
+- `BookingFunnelEvent`: tracking de analytics del embudo de conversión
+- **Sistema de tickets de eventos** (`TicketEvent`, `TicketTier`, `TicketPurchase`): venta de entradas con QR, check-in, múltiples niveles de precio
+- `BlockedSlot` / `AvailabilityConfig` / `AvailabilityReservation`: gestión fina de disponibilidad
+- Integra con Google Calendar para sync de reservas confirmadas
 - Integra con catalog-service para pricing y con payments-service para cobros
 - Moneda: `GTQ`
 
 ### payments-service (4005) — `piums_payments`
-- Stripe PaymentIntents
+- Dos proveedores de pago: **Tilopay** (primario, Guatemala/LATAM — redirect flow) y **Stripe** (internacional — PaymentIntents)
+- `initCheckout` enruta automáticamente: Tilopay para LATAM, Stripe para internacional
+- Tilopay: flujo redirect → `confirmTilopayRedirect()` procesa resultado en página de confirmación
+- Tokens de tarjeta Tilopay guardados en `PaymentMethod` (tokenización con `subscription=1`)
 - Sistema de payouts a artistas vía Stripe Connect
 - Fee de plataforma: 15%
 - `Payout` con estados: PENDING → SCHEDULED → PROCESSING → IN_TRANSIT → COMPLETED / FAILED
-- 4 tipos: BOOKING_PAYMENT, MANUAL, ADJUSTMENT, BONUS, REFUND_REVERSAL
 - Reembolsos (`Refund`)
+- `Credit` — créditos de plataforma para usuarios
+- `CommissionRule` — reglas de comisión configurables
+- `Coupon` / `CouponUse` — sistema de cupones de descuento
+- Webhooks (Stripe + Tilopay callback)
 - Moneda por defecto: `GTQ`
 
 ### reviews-service (4006) — `piums_reviews`
@@ -259,12 +380,20 @@ Usa `credentials: 'include'` para enviar cookies automáticamente.
 ### search-service (4009) — `piums_search`
 - Búsqueda full-text de artistas y servicios
 - Filtros por categoría, ciudad, precio, rating
-- Indexación de artistas activos
+- Indexación de artistas activos (`ArtistIndex`, `ServiceIndex`)
+- `SearchQuery` / `PopularSearch`: tracking de búsquedas populares
+- `IndexStatus`: control de estado del índice de búsqueda
+- Endpoint `suggest-synonym` para sugerencias inteligentes de términos de búsqueda
+- Solo artistas con `servicesCount > 0` e `isVerified=true` aparecen en búsqueda pública
 
-### chat-service — (sin puerto dedicado aún, usa booking-service internamente)
-- Conversaciones entre clientes y artistas
+### chat-service (4010) — `piums_chat`
+- Conversaciones entre clientes y artistas (1:1) y grupos de colaboración (artista:artistas)
 - Mensajes con estado de lectura
-- Integrable con WebSocket (pendiente)
+- **Socket.IO en tiempo real** — completamente funcional (mayo 2026)
+- Redis adapter (`@socket.io/redis-adapter`) para soporte multi-réplica futuro
+- Auth vía JWT en `socket.handshake.auth.token`
+- Filtro de palabras inapropiadas (`profanity.ts`)
+- Resolución de identidad para artistas y usuarios en mensajes de grupo
 
 ---
 
@@ -346,13 +475,13 @@ Al finalizar: `localStorage.setItem('piums_onboarding_done', '1')` → redirect 
 |---|---|
 | auth | User, Session, RefreshToken, PasswordReset, EmailVerification, AuditLog |
 | users | User, Profile (ProfileType: CLIENT/ARTIST/ADMIN) |
-| artists | Artist, ArtistAvailability, BlockedDate |
-| catalog | Service, ServiceCategory, ServicePricing, ServiceAddon, ServiceTravelRules, Country, State, City, MediaAsset |
-| booking | Booking, BookingItem, Dispute, DisputeMessage |
-| payments | Payment, PaymentIntent, Refund, Payout |
+| artists | Artist, PortfolioItem, Certification, ArtistAvailabilityRule, ArtistBlackout |
+| catalog | Service, ServiceCategory, ServicePricing, ServiceAddon, ServicePackage, ServiceTravelRules, ServiceDayOffer, ArtistPosting, PostingApplication, Country, State, City, MediaAsset |
+| booking | Booking, BookingItem, BookingStatusChange, BlockedSlot, AvailabilityConfig, AvailabilityReservation, RescheduleRequest, BookingCollaborator, BookingFunnelEvent, Dispute, DisputeMessage, TicketEvent, TicketTier, TicketPurchase, Event |
+| payments | Payment, PaymentIntent, PaymentMethod, Refund, Payout, Credit, CommissionRule, Coupon, CouponUse, WebhookEvent |
 | reviews | Review, ReviewResponse, ReviewReport |
 | notifications | Notification, NotificationPreference |
-| search | SearchIndex (artistas + servicios indexados) |
+| search | ArtistIndex, ServiceIndex, SearchQuery, PopularSearch, IndexStatus |
 
 Todos los schemas tienen `@default("GTQ")` para el campo `currency`.
 
@@ -364,13 +493,13 @@ Todos los schemas tienen `@default("GTQ")` para el campo `currency`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  FRONTEND  →  Vercel                                            │
-│  ├─ web-client  →  piums.com          (Next.js)                 │
-│  ├─ web-artist  →  artist.piums.com   (Next.js)                 │
-│  └─ web-admin   →  admin.piums.com    (Next.js)                 │
+│  FRONTEND  →  Vercel / Cloudflare Tunnel                        │
+│  ├─ web-client  →  client.piums.io    (Next.js)                 │
+│  ├─ web-artist  →  artist.piums.io    (Next.js)                 │
+│  └─ web-admin   →  admin.piums.io     (Next.js)                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  BACKEND   →  VPS (Ubuntu 22.04, Docker Compose + Nginx)        │
-│  ├─ API Gateway       :3000  →  api.piums.com                   │
+│  BACKEND   →  Kubernetes (Docker Desktop, namespace: piums)     │
+│  ├─ API Gateway       :80   →  backend.piums.io (CF Tunnel)     │
 │  ├─ auth-service      :4001                                     │
 │  ├─ users-service     :4002                                     │
 │  ├─ artists-service   :4003                                     │
@@ -541,7 +670,7 @@ Cada servicio tiene su propio conjunto de docs:
 
 ---
 
-## 15. Estado Actual (30 marzo 2026)
+## 15. Estado Actual (22 mayo 2026)
 
 ### ✅ Completado (actualizado)
 - Arquitectura de microservicios completa (9 servicios)
@@ -671,12 +800,106 @@ Flujo OAuth 2.0 PKCE a través del **TikTok Login Kit v2**. No usa Passport.js (
 
 **Variables de entorno (ya configuradas en docker-compose.dev.yml):**
 ```env
-TIKTOK_CLIENT_KEY=REDACTED_TIKTOK_CLIENT_KEY
-TIKTOK_CLIENT_SECRET=REDACTED_TIKTOK_CLIENT_SECRET
+TIKTOK_CLIENT_KEY=REDACTED
+TIKTOK_CLIENT_SECRET=REDACTED
 TIKTOK_CALLBACK_URL=http://localhost:4001/auth/tiktok/callback
 ```
 
 **Pendiente para producción**: registrar `https://api.piums.com/auth/tiktok/callback` como Redirect URI en el portal TikTok Developer. En sandbox solo pueden autenticarse cuentas de prueba registradas en el portal.
+
+---
+
+### Completado (mayo 2026) — branch `dave`
+
+#### Backend migrado a Kubernetes (Docker Desktop)
+- **K8s es ahora el backend activo** para desarrollo local. Docker Compose postgres/redis son sandbox independiente.
+- Web apps (web-artist, web-client) llaman al K8s gateway mediante `GATEWAY_INTERNAL_URL=http://host.docker.internal:80` (build ARG).
+- Cloudflare Tunnel: `backend.piums.io → localhost:80 → K8s gateway`.
+
+#### Chat en tiempo real — Socket.IO completamente funcional
+- Fix gateway: `pathRewrite: { "^/": "/socket.io/" }` + sin `ws: true` en proxy de ruta.
+- Fix web apps: `transports: ['polling', 'websocket']` + `auth` como callback async.
+- Fix K8s: HPA `minReplicas` forzado a 1 en `infra/k8s/overlays/local/kustomization.yaml`.
+
+#### Firebase Push Notifications — advertencia K8s
+`FIREBASE_SERVICE_ACCOUNT_JSON` **NO** va en `dev-secrets.yaml`. Parchear vía `kubectl patch secret` después de cada `kubectl apply -k`.
+
+#### Tilopay — Proveedor de pagos principal (Guatemala/LATAM)
+- `TilopayProvider` implementa `IPaymentProvider` con redirect flow
+- `initCheckout` enruta automáticamente según región
+- Confirmación en `/booking/confirmation/[id]` via query params
+- Tarjetas tokenizadas guardadas en `PaymentMethod` (`PaymentMethod.token`)
+
+#### Sistema de Tickets de Eventos
+- `TicketEvent`, `TicketTier`, `TicketPurchase` en booking-service
+- Páginas en web-client: `/tickets`, `/tickets/[id]`, `/mis-tickets`, `/tickets/confirmacion/[purchaseId]`
+- Check-in en web-artist: `/artist/dashboard/eventos/[id]/check-in`
+
+#### Day Offers — Descuentos diarios
+- `ServiceDayOffer` en catalog-service
+- `dayOfferDiscountAmount` guardado en el booking snapshot
+
+#### Google Calendar — Integración OAuth
+- `google-calendar.service.ts` en auth-service
+- OAuth flow via settings > Integraciones en web-artist
+- Sync automático de reservas confirmadas al calendario del artista
+
+#### Reschedule Requests — Solicitudes de reprogramación
+- `RescheduleRequest` model en booking-service
+- Flujo: cliente solicita → artista acepta/rechaza → email de confirmación
+
+#### Postulaciones entre Artistas
+- `ArtistPosting` (vacante) + `PostingApplication` (solicitud) en catalog-service
+- Estados de vacante: OPEN / CLOSED / FILLED / CANCELLED
+- Estados de solicitud: PENDING / REVIEWED / ACCEPTED / REJECTED / WITHDRAWN
+- Roles disponibles: Guitarrista, Bajista, DJ, Fotógrafo, Videógrafo, MC, etc.
+- Páginas: `/artist/dashboard/postulaciones` (mis vacantes) + `/tablero` (oportunidades abiertas)
+
+#### Colaboración entre Artistas
+- `BookingCollaborator`: artistas secundarios en una reserva (Flujo A/B)
+- `/chat/grupo` en web-artist: chat de grupo entre colaboradores
+- Componentes: `CollaborationPanel.tsx`, `InviteCollaboratorModal.tsx`
+
+#### Cupones y Créditos
+- `Coupon` / `CouponUse` en payments-service (CRUD completo con controller/service/routes)
+- `Credit` en payments-service: créditos de plataforma para usuarios
+- `CommissionRule`: reglas de comisión configurables por admin
+- Panel admin: `/coupons`, `/credits` pages
+
+#### Política de cancelación
+- Texto de política mostrado en el flujo de booking y en la página de términos del artista
+
+#### Portafolio en Settings del Artista
+- Tab "Portafolio" en settings: upload de imágenes/videos/audio
+- `PortfolioItem` en artists-service
+- API routes: `/api/portafolio/upload`, `/api/portafolio/items`, `/api/portafolio/items/[itemId]`
+
+#### Verificación de identidad en Settings
+- Tab "Verificar identidad" con badge si hay documentos pendientes
+- Tipos: DPI, Pasaporte, Cédula de Residencia
+- Upload de frente, reverso y selfie
+- Admin: página `/verificaciones` para gestionar solicitudes
+
+#### CI/CD — GitHub Actions completo
+- `.github/workflows/backend-ci.yml` — lint + test en PR
+- `.github/workflows/backend-deploy-staging.yml` — deploy automático a staging
+- `.github/workflows/backend-deploy-prod.yml` — deploy a producción con aprobación manual
+
+#### Backup y Restauración
+- `BACKUP_AND_RESTORE.md` — guía completa
+- `scripts/restore-databases.sh` — restauración interactiva
+- Backups en `backups/piums_*-baseline.sql`
+
+#### Datos de prueba completos
+- `client01@piums.com` / `Test1234!` — Ana Cifuentes (cliente)
+- `artist02@piums.com` / `Test1234!` — Rob Photography
+- `artist03@piums.com` / `Test1234!` — DJ Alex
+- `artist05@piums.com` / `Test1234!` — Diego Ink (tatuajes)
+- 7 reservas en distintos estados, 3 reviews, 3 conversaciones con historial
+
+#### Dockerfiles — --frozen-lockfile
+- Todos los Dockerfiles de servicios usan `--frozen-lockfile` para reproducibilidad
+- `prisma migrate deploy` en servicios con migraciones (reemplaza `db push`)
 
 ---
 
@@ -712,10 +935,14 @@ TIKTOK_CALLBACK_URL=http://localhost:4001/auth/tiktok/callback
 - Mini-tours específicos por página (2-3 pasos) añadidos a `tours.ts` de ambas apps
 - Fix: botones "Omitir" en onboarding ahora setean cookie `onboarding_completed` antes de redirigir
 
-### ⚠️ Pendiente / Incompleto
-- Stripe Connect: configuración de cuenta bancaria en Settings > Pagos (placeholder)
-- Unit/integration tests
-- Seed data completo (`scripts/seed.sh`) ✅ implementado — ejecutar cuando los servicios estén corriendo
+### Pendiente / Incompleto
+- **Stripe** en Guatemala: Tilopay es el proveedor primario; Stripe sigue pendiente para pagos internacionales reales (llave live)
+- `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` reales en K8s secret (aún en placeholder)
+- `FIREBASE_SERVICE_ACCOUNT_JSON` real — parchear con `kubectl patch secret` después de cada `kubectl apply -k`
+- `sessionAffinity: ClientIP` en K8s Services de gateway y chat-service para escalar a >1 réplica
+- Dark mode completo en web-client (el provider existe pero la mayoría de componentes sin clases `dark:`)
+- Unit/integration tests automatizados
+- `metrics-server` y `nginx-ingress-controller` en K8s para que HPAs y Ingress funcionen en producción
 
 ### ✅ Histórico (antes de 27 marzo)
 - **Dockerfiles**: Todos los 8 servicios tienen Dockerfile ✅
@@ -1165,10 +1392,138 @@ Vercel se encarga automáticamente del deploy de frontends sin necesidad de conf
 ## 18. Convenciones del Código
 
 - **Moneda**: siempre `GTQ`, locale `es-GT`, símbolo `Q`
-- **Precios en backend**: centavos enteros (GTQ cents)
+- **Precios en backend**: centavos enteros (GTQ cents). Tilopay espera monto en dólares con 2 decimales (dividir /100)
 - **Precios en frontend**: `Q{amount.toLocaleString('es-GT')}` o `Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' })`
 - **Fechas**: `toLocaleDateString('es-ES', {...})` para display
 - **Auth en SDK**: `credentials: 'include'` (cookies automáticas)
 - **Rutas de API**: todas pasan por Gateway en `/api/*`
 - **Rutas protegidas** en web-artist: manejadas por `src/middleware.ts`
 - **Rutas protegidas** en web-client: manejadas por `src/proxy.ts`
+- **Pagos**: `initCheckout()` retorna `{ provider: 'tilopay' | 'stripe', redirectUrl? }`. Si `provider=tilopay`, redirigir al URL. Si `provider=stripe`, mostrar formulario Stripe Elements
+- **Toasts**: usar `toast.success/error/warning/info('msg')` de `src/lib/toast.ts` — nunca `alert()`
+- **URLs de apps**: `NEXT_PUBLIC_CLIENT_URL` = `https://client.piums.io`, `NEXT_PUBLIC_ARTIST_URL` = `https://artist.piums.io`
+
+### Variables de entorno nuevas requeridas (mayo 2026)
+
+```env
+# Tilopay (payments-service)
+TILOPAY_API_URL=https://app.tilopay.com/api/v1
+TILOPAY_API_KEY=...
+TILOPAY_API_SECRET=...
+TILOPAY_API_USER=...
+TILOPAY_WEBHOOK_SECRET=...
+
+# Google Calendar (auth-service)
+GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+GOOGLE_CALENDAR_CALLBACK_URL=https://backend.piums.io/api/auth/google/calendar/callback
+
+# URLs públicas (K8s configmap)
+NEXT_PUBLIC_CLIENT_URL=https://client.piums.io
+NEXT_PUBLIC_ARTIST_URL=https://artist.piums.io
+```
+
+---
+
+## 19. Kubernetes — Docker Desktop (Local)
+
+**Fecha de implementación**: 20 de abril de 2026 | **Activo como backend principal**: mayo 2026
+
+### 19.1 Estado actual
+
+Kubernetes (Docker Desktop, Kubeadm v1.34.1) es el **backend activo** para desarrollo local. Las apps web corren en Docker Compose y se conectan al K8s gateway.
+
+| Rol | Entorno | Acceso |
+|---|---|---|
+| Backend (microservicios + BD + Redis) | **Kubernetes** | `http://localhost:80` |
+| Web apps (Next.js) | Docker Compose | `http://localhost:3000/3001` |
+| Túnel externo | Cloudflare | `https://backend.piums.io → localhost:80` |
+
+**Usuarios activos en K8s** (todos en `piums_auth`):
+- `xdave418@gmail.com` — role `ambos` (cliente Y artista; artistId `5e83275d`)
+- `xdave687@gmail.com` — role `cliente`
+- `artist01–10@piums.com` — role `artista` (seed; solo 02, 05, 08, 10 tienen perfil en `piums_artists`)
+
+### 19.2 Archivos K8s
+
+```
+infra/k8s/
+├─ base/                        # Manifiestos base (producción-ready)
+│  ├─ namespace.yaml
+│  ├─ configmap.yaml            # Variables de entorno comunes (REDIS_HOST, URLs, etc.)
+│  ├─ secrets.yaml              # Placeholders CHANGE_ME (no comitear valores reales)
+│  ├─ deployments.yaml          # 11 Deployments (gateway + 10 microservicios)
+│  ├─ services.yaml             # 13 Services (ClusterIP + LoadBalancer para gateway)
+│  ├─ ingress.yaml              # Nginx ingress → api.piums.app + sticky sessions
+│  └─ hpa.yaml                  # HPAs para 6 servicios críticos
+├─ overlays/
+│  ├─ local/                    # ← Overlay para Docker Desktop K8s
+│  │  ├─ kustomization.yaml     # Patches: imágenes locales, 1 réplica, puertos, DB URLs
+│  │  ├─ infra.yaml             # Postgres StatefulSet + Redis Deployment + PVC
+│  │  └─ dev-secrets.yaml       # Credenciales de desarrollo (piums_dev_password)
+│  ├─ staging/                  # Overlay staging (1 réplica por servicio)
+│  └─ production/               # Overlay producción (2-8 réplicas + HPA activo)
+```
+
+### 19.3 Comandos principales
+
+```bash
+# Aplicar/actualizar todo el stack
+kubectl apply -k infra/k8s/overlays/local/
+
+# ⚠️ IMPORTANTE: después de cada apply, re-parchear Firebase (kustomize sobreescribe el secret)
+kubectl patch secret piums-secrets -n piums --type merge \
+  -p "{\"stringData\":{\"FIREBASE_SERVICE_ACCOUNT_JSON\":\"$(cat firebase-key.json | jq -c .)\"}}"
+
+# Ver estado
+kubectl get pods -n piums
+kubectl get svc -n piums
+kubectl get hpa -n piums      # todos deben mostrar minReplicas:1
+
+# Logs de un servicio
+kubectl logs -n piums -l app=chat-service --tail=30
+
+# Eliminar todo el stack K8s
+kubectl delete namespace piums
+```
+
+### 19.4 Chat Service — Socket.IO y réplicas
+
+El `chat-service` corre con **1 réplica** en K8s local (forzado por el kustomize overlay). Razón: Engine.IO almacena sesiones de polling en memoria del proceso; con 2 pods y sin sticky sessions, el pod B rechaza sesiones creadas en pod A con 400 "Session ID unknown".
+
+El `@socket.io/redis-adapter` está instalado y configurado condicionalmente en `chat.gateway.ts`:
+- Si `REDIS_HOST` definido (K8s) → Redis adapter activo (prepara escala futura)
+- Si no (Docker Compose) → in-memory adapter
+
+**Para escalar a >1 réplica en producción**: añadir `sessionAffinity: ClientIP` en el K8s Service del chat-service (y del gateway si actúa como proxy WebSocket).
+
+### 19.5 Correcciones de puertos (K8s vs código fuente)
+
+Los servicios tienen puertos por defecto en código que **no coinciden** con los números en `deployments.yaml`. El overlay local los corrige con patches `env.PORT`:
+
+| Servicio | Puerto en código | Puerto en K8s manifesto | Fix |
+|---|---|---|---|
+| payments-service | 4007 | 4005 | `PORT=4005` patch |
+| reviews-service | 4008 | 4006 | `PORT=4006` patch |
+| notifications-service | 4006 | 4007 | `PORT=4007` patch |
+| booking-service | 4005 | 4008 | `PORT=4008` patch |
+| gateway | `/health` 404 | `/api/health` | probe path patch |
+
+### 19.6 Pendiente para producción
+
+- Instalar `metrics-server` para que los HPAs funcionen (actualmente muestran `<unknown>`):
+  ```bash
+  kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+  ```
+- Instalar `nginx-ingress-controller` para que el Ingress resuelva el dominio público
+- Configurar `REDIS_PASSWORD` real en el Secret de producción
+- Añadir `sessionAffinity: ClientIP` en los Services de `gateway` y `chat-service` antes de escalar a >1 réplica
+- `FIREBASE_SERVICE_ACCOUNT_JSON` real (parchear con `kubectl patch`, **nunca** editar `dev-secrets.yaml`)
+- `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` reales
+- `TILOPAY_API_KEY`, `TILOPAY_API_SECRET`, `TILOPAY_API_USER`, `TILOPAY_WEBHOOK_SECRET` en el Secret
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` para Calendar OAuth
+- Push de imágenes al registry antes de desplegar en producción:
+  ```bash
+  docker tag docker-chat-service:latest ghcr.io/app-piums/piums-platform/chat-service:latest
+  docker push ghcr.io/app-piums/piums-platform/chat-service:latest
+  ```

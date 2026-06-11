@@ -1,6 +1,20 @@
 import { z } from "zod";
 
 // Enums
+export const EventTypeEnum = z.enum([
+  "CUMPLEANOS",
+  "BODA",
+  "GRADUACION",
+  "QUINCEANERA",
+  "CORPORATIVO",
+  "CONCIERTO",
+  "FIESTA",
+  "BABY_SHOWER",
+  "BAUTIZO",
+  "ANIVERSARIO",
+  "OTRO",
+]);
+
 export const BookingStatusEnum = z.enum([
   "PENDING",
   "CONFIRMED",
@@ -8,23 +22,29 @@ export const BookingStatusEnum = z.enum([
   "PAYMENT_COMPLETED",
   "IN_PROGRESS",
   "COMPLETED",
+  "DELIVERED",
   "CANCELLED_CLIENT",
   "CANCELLED_ARTIST",
   "REJECTED",
   "NO_SHOW",
+  "RESCHEDULED",
+  "RESCHEDULE_PENDING_ARTIST",
+  "RESCHEDULE_PENDING_CLIENT",
 ]);
 
 export const PaymentStatusEnum = z.enum([
   "PENDING",
-  "DEPOSIT_PAID",
+  "ANTICIPO_PAID",
+  "DEPOSIT_PAID", // legacy — alias
   "FULLY_PAID",
   "REFUNDED",
   "PARTIALLY_REFUNDED",
+  "CHARGING_REMAINING",
+  "FROZEN",
 ]);
 
 // Schema para crear reserva
 export const createBookingSchema = z.object({
-  clientId: z.string().min(1, "clientId es requerido"),
   artistId: z.string().min(1, "artistId es requerido"),
   serviceId: z.string().uuid("serviceId inválido"),
   
@@ -36,10 +56,12 @@ export const createBookingSchema = z.object({
   locationLng: z.number().min(-180).max(180).optional(),
   
   selectedAddons: z.array(z.string().uuid()).optional(),
-  
+
+  eventType: EventTypeEnum.optional(),
   clientNotes: z.string().max(1000).optional(),
-  
+
   eventId: z.string().uuid().optional(),
+  couponCode: z.string().optional(),
 });
 
 // Schema para actualizar reserva
@@ -74,7 +96,6 @@ export const confirmBookingSchema = z.object({
 // Schema para rechazar reserva
 export const rejectBookingSchema = z.object({
   reason: z.string().min(10, "La razón debe tener al menos 10 caracteres").max(500),
-});
 });
 
 // Schema para marcar pago
@@ -125,4 +146,9 @@ export const searchBookingsSchema = z.object({
   endDate: z.string().datetime().optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(1).max(100).optional(),
+});
+
+
+export const verifyAttendanceCodeSchema = z.object({
+  code: z.string().length(6, 'El código debe tener exactamente 6 dígitos').regex(/^\d{6}$/, 'El código debe ser numérico'),
 });

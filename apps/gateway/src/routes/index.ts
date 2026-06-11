@@ -3,7 +3,7 @@ import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
 import { authMiddleware } from "../middleware/auth";
 import { healthRouter } from "./health";
 import { logger } from "../utils/logger";
-import { authRateLimiter } from "../middleware/rateLimiter";
+import { authRateLimiter, oauthRateLimiter, refreshRateLimiter, uploadRateLimiter } from "../middleware/rateLimiter";
 
 // Middleware para transformar cookie en header Authorization
 const cookieToAuthHeader = (req: Request, res: Response, next: NextFunction) => {
@@ -61,6 +61,14 @@ export const setupRoutes = (app: Express) => {
   // Authentication Service (PUBLIC - sin auth middleware)
   // ============================================================================
   
+  // Refresh de token — aplica limiter permisivo, luego cae al proxy principal de /api/auth
+  app.use("/api/auth/refresh", refreshRateLimiter);
+
+  // OAuth routes — aplica limiter permisivo, luego cae al proxy principal de /api/auth
+  app.use("/api/auth/google", oauthRateLimiter);
+  app.use("/api/auth/facebook", oauthRateLimiter);
+  app.use("/api/auth/tiktok", oauthRateLimiter);
+
   app.use(
     "/api/auth",
     authRateLimiter,
@@ -89,21 +97,30 @@ export const setupRoutes = (app: Express) => {
                 logger.debug(`[GATEWAY] Auth body received: ${bodyStr.substring(0, 100)}...`, "GATEWAY");
                 const data = JSON.parse(bodyStr);
                 
-                if (data.user && data.user.role === 'artista') {
-                  logger.info(`[GATEWAY] Artist detected: ${data.user.email}. Starting translation...`, "GATEWAY");
+                const isArtistRole = data.user && (data.user.role === 'artista' || data.user.role === 'ambos');
+                if (isArtistRole) {
+                  logger.info(`[GATEWAY] Artist detected (role=${data.user.role}, id=${data.user.id}). Fetching artist profile...`, "GATEWAY");
                   const token = req.headers.authorization?.substring(7);
                   if (token) {
                     const ARTISTS_SERVICE_URL = process.env.ARTISTS_SERVICE_URL || 'http://artists-service:4003';
                     const profileRes = await fetch(`${ARTISTS_SERVICE_URL}/artists/dashboard/me`, {
                       headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    
+
                     if (profileRes.ok) {
                       const profileData = await profileRes.json() as any;
                       if (profileData.artist?.id) {
                         data.user.authId = data.user.id;
-                        data.user.id = profileData.artist.id;
-                        logger.info(`[GATEWAY] IDENTITY TRANSLATED: ${data.user.authId} -> ${data.user.id}`, "GATEWAY");
+                        if (data.user.role === 'ambos') {
+                          // Dual-role: keep auth user ID as main id (for client ops),
+                          // add artistId as a separate field (for artist ops).
+                          data.user.artistId = profileData.artist.id;
+                          logger.info(`[GATEWAY] DUAL-ROLE: authId=${data.user.authId}, artistId=${data.user.artistId}`, "GATEWAY");
+                        } else {
+                          // Pure artist: replace id with artist profile id (existing behavior).
+                          data.user.id = profileData.artist.id;
+                          logger.info(`[GATEWAY] IDENTITY TRANSLATED: ${data.user.authId} -> ${data.user.id}`, "GATEWAY");
+                        }
                       } else {
                         logger.warn(`[GATEWAY] Artist profile ID not found in response`, "GATEWAY");
                       }
@@ -143,13 +160,17 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
-  // Document upload (PÚBLICO - llamado durante registro, antes de tener auth)
+  // Document upload (PROTEGIDO - users-service exige authenticateToken; el
+  // proxy dedicado existe para no pasar el multipart por fixRequestBody)
   // ============================================================================
   app.use(
     "/api/users/documents/upload",
+    uploadRateLimiter,
+    authMiddleware,
     createProxyMiddleware({
       target: process.env.USERS_SERVICE_URL || "http://localhost:4002",
       changeOrigin: true,
+      pathRewrite: { "^/": "/api/users/documents/upload" },
     })
   );
 
@@ -190,6 +211,16 @@ export const setupRoutes = (app: Express) => {
       target: process.env.ARTISTS_SERVICE_URL || "http://localhost:4003",
       changeOrigin: true,
       pathRewrite: { "^": "/artists" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  app.use(
+    "/api/bands",
+    createProxyMiddleware({
+      target: process.env.ARTISTS_SERVICE_URL || "http://localhost:4003",
+      changeOrigin: true,
+      pathRewrite: { "^": "/bands" },
       on: { proxyReq: fixRequestBody },
     })
   );
@@ -255,6 +286,34 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
+  // Reschedule: email confirmation link (PÚBLICO — sin auth, viene del correo)
+  // ============================================================================
+  app.use(
+    "/api/reschedule-requests/confirm",
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/reschedule-requests/confirm" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
+  // Reschedule: respuestas del artista (PROTEGIDO)
+  // booking-service handles /api/reschedule-requests/*
+  // ============================================================================
+  app.use(
+    "/api/reschedule-requests",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/reschedule-requests" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
   // Disputes (PROTEGIDO) — booking-service handles /api/disputes/*
   // ============================================================================
   app.use(
@@ -283,9 +342,47 @@ export const setupRoutes = (app: Express) => {
   );
 
   // ============================================================================
+  // Analytics (PROTEGIDO) — booking-service handles /api/analytics/*
+  // ============================================================================
+  app.use(
+    "/api/analytics",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/analytics" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
+  // Ticket Events & Purchases — booking-service, auth required at gateway
+  // ============================================================================
+  app.use(
+    "/api/ticket-events",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/ticket-events" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+  app.use(
+    "/api/ticket-purchases",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.BOOKING_SERVICE_URL || "http://localhost:4008",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/ticket-purchases" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
   // Payments Service (PROTEGIDO)
   // ============================================================================
-  
+
   app.use(
     "/api/payments",
     authMiddleware,
@@ -293,6 +390,65 @@ export const setupRoutes = (app: Express) => {
       target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
       changeOrigin: true,
       pathRewrite: { "^": "/api/payments" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // Credits — montados en /api/credits dentro de payments-service
+  app.use(
+    "/api/credits",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/credits" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // Coupons — montados en /api/coupons dentro de payments-service
+  app.use(
+    "/api/coupons",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/coupons" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // Payouts — montados en /api/payouts dentro de payments-service
+  app.use(
+    "/api/payouts",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/payouts" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // Commissions — montados en /api/commissions dentro de payments-service
+  app.use(
+    "/api/commissions",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/commissions" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // Stripe webhook — sin auth middleware, Stripe firma con su propio secret
+  app.use(
+    "/api/webhooks",
+    createProxyMiddleware({
+      target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/webhooks" },
       on: { proxyReq: fixRequestBody },
     })
   );
@@ -306,7 +462,7 @@ export const setupRoutes = (app: Express) => {
     createProxyMiddleware({
       target: process.env.REVIEWS_SERVICE_URL || "http://localhost:4006",
       changeOrigin: true,
-      pathRewrite: { "^/api/reviews": "/api/reviews" },
+      pathRewrite: { "^": "/api/reviews" },
       on: { proxyReq: fixRequestBody },
     })
   );
@@ -332,8 +488,38 @@ export const setupRoutes = (app: Express) => {
     createProxyMiddleware({
       target: process.env.CHAT_SERVICE_URL || "http://localhost:4010",
       changeOrigin: true,
+      ws: true,
       pathRewrite: { "^": "/api/chat" },
-      on: { proxyReq: fixRequestBody },
+      on: {
+        proxyReq: (proxyReq, req) => {
+          fixRequestBody(proxyReq, req);
+          try {
+            const cookie = (req as any).headers.cookie || '';
+            const authToken = cookie.split(';').reduce((acc: any, c: string) => {
+              const [k, ...v] = c.trim().split('=');
+              if (k === 'auth_token') acc = v.join('=');
+              return acc;
+            }, '');
+            if (authToken) {
+              proxyReq.setHeader('Authorization', `Bearer ${authToken}`);
+            }
+          } catch {
+            // headers already sent — skip injection, request proceeds without auth header
+          }
+        },
+      },
+    })
+  );
+
+  // Socket.io HTTP handshake — proxy without prefix stripping fix
+  // WebSocket upgrades are handled by httpServer.on('upgrade') in index.ts.
+  // pathRewrite restores the /socket.io prefix that Express strips on app.use().
+  app.use(
+    "/socket.io",
+    createProxyMiddleware({
+      target: process.env.CHAT_SERVICE_URL || "http://localhost:4010",
+      changeOrigin: true,
+      pathRewrite: { "^/": "/socket.io/" },
     })
   );
 
@@ -362,6 +548,33 @@ export const setupRoutes = (app: Express) => {
       target: process.env.AUTH_SERVICE_URL || "http://localhost:4001",
       changeOrigin: true,
       pathRewrite: { "^": "/admin" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
+  // Tilopay Callbacks (PUBLIC — no auth, llamado por Tilopay server-to-server)
+  // ============================================================================
+  app.use(
+    "/callbacks",
+    createProxyMiddleware({
+      target: process.env.PAYMENTS_SERVICE_URL || "http://localhost:4005",
+      changeOrigin: true,
+      pathRewrite: { "^": "/callbacks" },
+      on: { proxyReq: fixRequestBody },
+    })
+  );
+
+  // ============================================================================
+  // Moderation Service (PROTEGIDO — admin + service tokens internos)
+  // ============================================================================
+  app.use(
+    "/api/moderation",
+    authMiddleware,
+    createProxyMiddleware({
+      target: process.env.MODERATION_SERVICE_URL || "http://localhost:4011",
+      changeOrigin: true,
+      pathRewrite: { "^": "/api/moderation" },
       on: { proxyReq: fixRequestBody },
     })
   );

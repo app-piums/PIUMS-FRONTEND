@@ -1,10 +1,13 @@
 import { Router } from "express";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 import { 
-  register, 
+  register,
   registerArtist,
   registerClient,
-  login, 
-  refreshToken, 
+  login,
+  refreshToken,
   verify,
   forgotPassword,
   resetPassword,
@@ -16,6 +19,8 @@ import {
   updateProfile,
   firebaseLogin,
   completeOnboarding,
+  registerFCMToken,
+  deleteSelfAccount,
 } from "../controller/auth.controller";
 import { isAdmin } from "../middleware/isAdmin";
 import { authenticate } from "../middleware/authenticate";
@@ -51,8 +56,47 @@ router.post("/resend-verification", resendVerificationLimiter, resendVerificatio
 
 // Get current authenticated user (any authenticated user)
 router.get("/me", authenticate, getMe);
+router.delete("/me", authenticate, deleteSelfAccount);
 router.patch("/profile", authenticate, updateProfile);
 router.patch("/complete-onboarding", authenticate, completeOnboarding);
+router.patch("/fcm-token", authenticate, registerFCMToken);
+
+// Internal endpoint — solo para llamadas inter-servicio con x-internal-secret
+router.get("/internal/fcm-token/:userId", async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET;
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.userId },
+      select: { fcmToken: true },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.json({ fcmToken: user.fcmToken ?? null });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// Internal endpoint — verifica si un JTI de sesión sigue activo
+// Usado por otros servicios para revocación de sesiones (PII-M6)
+router.get("/internal/sessions/:jti", async (req, res) => {
+  const secret = process.env.INTERNAL_SERVICE_SECRET || "";
+  if (!secret || req.headers['x-internal-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    const { jti } = req.params;
+    const session = await prisma.session.findFirst({ where: { jti } });
+    // Fail-open when no session record exists (pre-session-tracking tokens).
+    // Only deny when a session EXISTS and is explicitly not ACTIVE.
+    const active = !session || session.status === 'ACTIVE';
+    return res.json({ active });
+  } catch {
+    return res.status(500).json({ error: 'Internal error' });
+  }
+});
 
 export default router;
 

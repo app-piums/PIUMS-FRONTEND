@@ -12,7 +12,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Loading } from '@/components/Loading';
 import { getErrorMessage } from '@/lib/errors';
 
-const CHAT_SOCKET_URL = process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010';
+// En producción el socket.io va a backend.piums.io (gateway K8s → chat-service).
+// En dev local conecta directo al chat-service en 4010.
+const CHAT_SOCKET_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'https://backend.piums.io')
+  : (process.env.NEXT_PUBLIC_CHAT_SERVICE_URL || 'http://localhost:4010');
 
 export default function ChatPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -31,60 +35,61 @@ export default function ChatPage() {
   useEffect(() => {
     if (!user || !isAuthenticated) return;
 
-    fetch('/api/chat/token', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => {
-        if (!data?.token) return;
+    const socket: Socket = io(CHAT_SOCKET_URL, {
+      path: '/socket.io/',
+      auth: (cb: (data: object) => void) => {
+        fetch('/api/chat/token', { credentials: 'include' })
+          .then(res => (res.ok ? res.json() : null))
+          .then(data => cb({ token: data?.token || '' }))
+          .catch(() => cb({ token: '' }));
+      },
+      transports: ['polling', 'websocket'],
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.5,
+    });
 
-        const socket: Socket = io(CHAT_SOCKET_URL, {
-          path: '/socket.io/',
-          auth: { token: data.token },
-          transports: ['websocket'],
-        });
+    socket.on('connect', () => {
+      if (currentConversationIdRef.current) {
+        socket.emit('conversation:join', { conversationId: currentConversationIdRef.current });
+      }
+    });
 
-        socket.on('connect', () => {
-          if (currentConversationIdRef.current) {
-            socket.emit('conversation:join', { conversationId: currentConversationIdRef.current });
-          }
-        });
+    socket.on('message:received', (msg: Message) => {
+      setConversations(prev =>
+        prev.map(c =>
+          c.id === msg.conversationId
+            ? {
+                ...c,
+                lastMessageAt: msg.createdAt,
+                unreadCount:
+                  msg.conversationId === currentConversationIdRef.current
+                    ? 0
+                    : (c.unreadCount ?? 0) + 1,
+                messages: [msg, ...(c.messages ?? []).filter(m => m.id !== msg.id)],
+              }
+            : c
+        )
+      );
 
-        socket.on('message:received', (msg: Message) => {
-          setConversations(prev =>
-            prev.map(c =>
-              c.id === msg.conversationId
-                ? {
-                    ...c,
-                    lastMessageAt: msg.createdAt,
-                    unreadCount:
-                      msg.conversationId === currentConversationIdRef.current
-                        ? 0
-                        : (c.unreadCount ?? 0) + 1,
-                    messages: [msg, ...(c.messages ?? []).filter(m => m.id !== msg.id)],
-                  }
-                : c
-            )
-          );
+      if (msg.conversationId === currentConversationIdRef.current) {
+        setMessages(prev => (prev.find(m => m.id === msg.id) ? prev : [...prev, msg]));
+      }
+    });
 
-          if (msg.conversationId === currentConversationIdRef.current) {
-            setMessages(prev => (prev.find(m => m.id === msg.id) ? prev : [...prev, msg]));
-          }
-        });
+    socket.on('typing:start', ({ conversationId }: { conversationId: string }) => {
+      if (conversationId === currentConversationIdRef.current) {
+        setIsTyping(true);
+      }
+    });
 
-        socket.on('typing:start', ({ conversationId }: { conversationId: string }) => {
-          if (conversationId === currentConversationIdRef.current) {
-            setIsTyping(true);
-          }
-        });
+    socket.on('typing:stop', ({ conversationId }: { conversationId: string }) => {
+      if (conversationId === currentConversationIdRef.current) {
+        setIsTyping(false);
+      }
+    });
 
-        socket.on('typing:stop', ({ conversationId }: { conversationId: string }) => {
-          if (conversationId === currentConversationIdRef.current) {
-            setIsTyping(false);
-          }
-        });
-
-        socketRef.current = socket;
-      })
-      .catch(() => {});
+    socketRef.current = socket;
 
     return () => {
       socketRef.current?.disconnect();
@@ -108,6 +113,7 @@ export default function ChatPage() {
   }, [authLoading, isAuthenticated, router]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     const fetchConversations = async () => {
       setIsLoadingConversations(true);
       setError(null);
@@ -150,7 +156,7 @@ export default function ChatPage() {
       }
     };
     fetchConversations();
-  }, []);
+  }, [isAuthenticated]);
 
   const selectConversation = (conversationId: string) => {
       const conv = conversations.find(c => c.id === conversationId) ?? null;
@@ -296,7 +302,7 @@ export default function ChatPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF6A00] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF6B35] to-pink-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
                   {(currentConversation.clientName ?? 'C').charAt(0)}
                 </div>
                 <div>
@@ -314,7 +320,7 @@ export default function ChatPage() {
               ) : (
                 <MessageList
                   messages={messages}
-                  currentUserId={user?.id ?? 'me'}
+                  currentUserId={user?.artistId ?? user?.id ?? 'me'}
                   isTyping={isTyping}
                   isLoading={false}
                 />
@@ -330,8 +336,8 @@ export default function ChatPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <div className="h-20 w-20 rounded-full bg-[#FF6A00]/10 flex items-center justify-center mx-auto mb-4">
-                  <svg className="h-10 w-10 text-[#FF6A00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="h-20 w-20 rounded-full bg-[#FF6B35]/10 flex items-center justify-center mx-auto mb-4">
+                  <svg className="h-10 w-10 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                 </div>

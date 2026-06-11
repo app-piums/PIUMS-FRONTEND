@@ -22,6 +22,7 @@ export class BookingClient {
   async getArtistStats(artistId: string): Promise<ArtistBookingStats | null> {
     try {
       const response = await fetch(`${this.baseUrl}/api/bookings/stats?artistId=${artistId}`, {
+        signal: AbortSignal.timeout(10_000),
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

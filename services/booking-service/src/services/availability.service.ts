@@ -168,7 +168,7 @@ export const getMonthlyCalendar = async (
   const occupiedDatesSet = new Set<string>();
   const blockedDatesSet = new Set<string>();
 
-  reservations.forEach((res) => {
+  reservations.forEach((res: any) => {
     const current = new Date(res.startAt);
     const end = new Date(res.endAt);
     while (current <= end) {
@@ -177,7 +177,7 @@ export const getMonthlyCalendar = async (
     }
   });
 
-  blockedSlots.forEach((slot) => {
+  blockedSlots.forEach((slot: any) => {
     const current = new Date(slot.startTime);
     const end = new Date(slot.endTime);
     while (current <= end) {

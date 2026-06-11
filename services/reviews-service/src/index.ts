@@ -8,6 +8,7 @@ import { apiLimiter } from "./middleware/rateLimiter";
 import { logger } from "./utils/logger";
 
 const app = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 
 // CORS
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:3000"];
@@ -22,6 +23,9 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Health check first — exempt from rate limiting (kube probes would exhaust the limit)
+app.use("/health", healthRoutes);
+
 // Rate limiting general
 app.use(apiLimiter);
 
@@ -35,15 +39,14 @@ app.use((req, _res, next) => {
 });
 
 // Routes
-app.use("/health", healthRoutes);
-app.use("/api/reviews", reviewRoutes);
+app.use("/api", reviewRoutes);
 
 // Error handling (debe ir al final)
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4008;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Reviews Service running on port ${PORT}`, "SERVER", {
     port: PORT,
     nodeEnv: process.env.NODE_ENV || "development",
@@ -53,10 +56,14 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on("SIGTERM", () => {
   logger.info("SIGTERM recibido, cerrando servidor...", "SERVER");
-  process.exit(0);
+  server.close(() => process.exit(0));
 });
 
 process.on("SIGINT", () => {
   logger.info("SIGINT recibido, cerrando servidor...", "SERVER");
-  process.exit(0);
+  server.close(() => process.exit(0));
+});
+
+process.on("unhandledRejection", (reason: any) => {
+  logger.error("Unhandled promise rejection", "SERVER", { reason: reason?.message });
 });

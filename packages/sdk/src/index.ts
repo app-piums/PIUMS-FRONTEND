@@ -2,12 +2,16 @@
 export interface Artist {
   id: string;
   nombre: string;
+  artistName?: string; // alias legacy usado por algunos endpoints (dashboard/recomendados)
   slug?: string;
   coverPhoto?: string;
   email?: string;
   categoria?: string;
   ciudad?: string;
   city?: string;
+  country?: string;
+  createdAt?: string;
+  experienceYears?: number; // alias legacy de yearsExperience
   rating?: number;
   precioDesde?: number;
   imagenPerfil?: string;
@@ -19,9 +23,9 @@ export interface Artist {
   bio?: string;
   reviewsCount?: number;
   bookingsCount?: number;
-  experienceYears?: number;
+  yearsExperience?: number;
   cityId?: string;
-  coverageRadius?: number;
+  coverageRadius?: number | null;
   mainServicePrice?: number;
   mainServiceName?: string;
   matchedService?: {
@@ -39,7 +43,11 @@ export interface PortfolioItem {
   artistId: string;
   title: string;
   description?: string;
-  imageUrl: string;
+  type?: string;
+  url?: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  category?: string;
   order: number;
   createdAt: string;
 }
@@ -62,7 +70,7 @@ export interface ArtistProfile extends Artist {
   category?: string;
   specialties?: string[];
   cityId?: string;
-  experienceYears?: number;
+  yearsExperience?: number;
   reviewsCount?: number;
   bookingsCount?: number;
   isVerified?: boolean;
@@ -72,13 +80,21 @@ export interface ArtistProfile extends Artist {
   baseLocationLabel?: string;
   baseLocationLat?: number;
   baseLocationLng?: number;
-  coverageRadius?: number;     // km incluidos sin costo de traslado
+  coverageRadius?: number | null;     // km incluidos sin costo de traslado
   hourlyRateMin?: number;      // precio mínimo por hora en centavos
   hourlyRateMax?: number;      // precio máximo por hora en centavos
   requiresDeposit?: boolean;
   depositPercentage?: number;
+  allowSameDayBooking?: boolean;
+  shadowBannedAt?: string;
   portfolio?: PortfolioItem[];
   certifications?: Certification[];
+  telefono?: string;
+  instagram?: string;
+  facebook?: string;
+  youtube?: string;
+  tiktok?: string;
+  website?: string;
 }
 
 export interface ServiceAddon {
@@ -109,6 +125,7 @@ export interface Service {
   isActive?: boolean;      // legacy
   status?: string;         // ACTIVE | INACTIVE | ARCHIVED
   isAvailable?: boolean;
+  isOnSale?: boolean;
   thumbnail?: string;
   images?: string[];
   addons?: ServiceAddon[];
@@ -120,6 +137,7 @@ export interface Service {
   viewCount?: number;
   minGuests?: number;
   maxGuests?: number;
+  requiresProductDelivery?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -138,6 +156,7 @@ export interface CreateServicePayload {
   whatIsIncluded?: string[];
   minGuests?: number;
   maxGuests?: number;
+  requiresProductDelivery?: boolean;
 }
 
 export interface UpdateServicePayload {
@@ -152,9 +171,11 @@ export interface UpdateServicePayload {
   durationMin?: number;
   durationMax?: number;
   status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  isOnSale?: boolean;
   whatIsIncluded?: string[];
   minGuests?: number;
   maxGuests?: number;
+  requiresProductDelivery?: boolean;
 }
 
 export interface ServiceCategory {
@@ -190,20 +211,33 @@ export interface Booking {
   status: string;
   servicePrice: number;
   addonsPrice: number;
+  travelPrice?: number;
   totalPrice: number;
   currency: string;
-  depositRequired: boolean;
-  depositAmount?: number;
-  depositPaidAt?: string;
+  anticipoRequired: boolean;
+  anticipoAmount?: number;
+  anticipoPaidAt?: string;
+  amount?: number;
   paymentStatus: string;
+  eventId?: string;
   selectedAddons?: string[];
   clientNotes?: string;
   artistNotes?: string;
   cancellationReason?: string;
   cancelReason?: string;
   reviewId?: string | null;
-  serviceName?: string;   // name of the booked service
-  artistName?: string;    // name of the artist
+  serviceName?: string;
+  artistName?: string;
+  noShowAt?: string;
+  noShowReason?: string;
+  clientLat?: number;
+  clientLng?: number;
+  distanceKm?: number;
+  sameDayBookingApplied?: boolean;
+  minAdvanceHours?: number;
+  couponCode?: string;
+  couponDiscountAmount?: number;
+  dayOfferDiscountAmount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -217,6 +251,8 @@ export interface CreateBookingPayload {
   location?: string;
   locationLat?: number;
   locationLng?: number;
+  clientLat?: number;
+  clientLng?: number;
   selectedAddons?: string[];
   clientNotes?: string;
   eventId?: string;
@@ -238,6 +274,7 @@ export interface PriceQuote {
   subtotalCents: number;
   totalCents: number;
   depositRequiredCents?: number;
+  offerLabel?: string;
   breakdown: {
     baseCents: number;
     addonsCents: number;
@@ -254,6 +291,7 @@ export interface CalculateServicePricePayload {
   locationLat?: number;
   locationLng?: number;
   discountCode?: string;
+  scheduledDate?: string; // "YYYY-MM-DD"
 }
 
 export interface SearchResults {
@@ -287,6 +325,10 @@ export interface SmartSearchResults {
 
 export interface SearchParams {
   query?: string;
+  // Canonical names (match artists-service query params)
+  category?: string;
+  cityId?: string;
+  // Legacy Spanish names kept for backwards compatibility
   categoria?: string;
   ciudad?: string;
   precioMin?: number;
@@ -301,6 +343,7 @@ export interface GetArtistsParams {
   limit?: number;
   category?: string;
   city?: string;
+  state?: string;
   q?: string;
   minGuests?: number;
 }
@@ -309,8 +352,30 @@ export interface CalendarData {
   artistId: string;
   year: number;
   month: number;
-  occupiedDates: string[]; // Array de fechas YYYY-MM-DD
-  blockedDates: string[];  // Array de fechas YYYY-MM-DD
+  occupiedDates: string[];
+  blockedDates: string[];
+}
+
+export type OfferDiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+
+export interface ServiceDayOffer {
+  id: string;
+  serviceId: string;
+  offerDate: string; // "YYYY-MM-DD"
+  discountType: OfferDiscountType;
+  discountValue: number;
+  maxDiscountCents?: number;
+  label?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateDayOfferPayload {
+  offerDate: string;
+  discountType: OfferDiscountType;
+  discountValue: number;
+  maxDiscountCents?: number;
+  label?: string;
 }
 
 export interface TimeSlot {
@@ -381,17 +446,26 @@ export interface CreateAbsencePayload {
   reason?: string;
 }
 
+export interface WeeklyAvailabilityRule {
+  dayOfWeek: 'LUNES' | 'MARTES' | 'MIERCOLES' | 'JUEVES' | 'VIERNES' | 'SABADO' | 'DOMINGO';
+  startTime: string; // HH:MM
+  endTime: string;   // HH:MM
+}
+
 // ==================== PAYMENT TYPES ====================
 
 export interface PaymentIntent {
   id: string;
   stripePaymentIntentId: string;
+  providerRef?: string;
   userId: string;
   bookingId?: string;
   amount: number;
   currency: string;
   status: string;
   clientSecret?: string;
+  redirectUrl?: string;
+  provider?: 'STRIPE' | 'TILOPAY';
   paymentMethods: string[];
   description?: string;
   metadata?: Record<string, any>;
@@ -403,6 +477,7 @@ export interface Payment {
   id: string;
   paymentIntentId: string;
   stripePaymentId: string;
+  providerPaymentId?: string;
   userId: string;
   bookingId?: string;
   amount: number;
@@ -417,6 +492,7 @@ export interface Refund {
   id: string;
   paymentId: string;
   stripeRefundId: string;
+  providerRefundId?: string;
   amount: number;
   currency: string;
   reason?: string;
@@ -443,6 +519,88 @@ export interface CreateRefundPayload {
   amount?: number;
   reason?: string;
   metadata?: Record<string, any>;
+}
+
+export interface SavedPaymentMethod {
+  id: string;
+  userId: string;
+  provider: 'STRIPE' | 'TILOPAY';
+  stripePaymentMethodId: string;
+  type: string;
+  cardBrand: string | null;
+  cardLast4: string | null;
+  cardExpMonth: number | null;
+  cardExpYear: number | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==================== CREDIT TYPES ====================
+
+export type CreditStatus = 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+
+export interface Credit {
+  id: string;
+  userId: string;
+  bookingId?: string;
+  amount: number;
+  currency: string;
+  status: CreditStatus;
+  reason: string;
+  expiresAt: string;
+  usedAt?: string;
+  usedInBookingId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MyCreditsResponse {
+  credits: Credit[];
+  totalAmount: number;
+  currency: string;
+}
+
+// ==================== COMMISSION TYPES ====================
+
+export type CommissionRuleType = 'RATE_OVERRIDE' | 'FIXED_PENALTY';
+
+export interface CommissionRule {
+  id: string;
+  artistId: string;
+  type: CommissionRuleType;
+  rate?: number;
+  fixedAmount?: number;
+  currency: string;
+  reason: string;
+  startDate: string;
+  endDate?: string;
+  isActive: boolean;
+  createdByAdminId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==================== PAYOUT TYPES ====================
+
+export interface Payout {
+  id: string;
+  artistId: string;
+  bookingId?: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payoutType?: string;
+  description?: string;
+  commissionRate?: number;
+  platformFee?: number;
+  netAmount?: number;
+  transferReference?: string;
+  completedByAdmin?: string;
+  completedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ==================== REVIEW TYPES ====================
@@ -658,6 +816,27 @@ export interface AdminReportsResponse {
   limit: number;
 }
 
+export interface SavedCoupon {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  discountValue: number;
+  currency: string;
+  expiresAt?: string;
+  minimumAmount?: number;
+  targetType: string;
+}
+
+export interface CouponValidation {
+  valid: boolean;
+  discount: number;
+  couponId?: string;
+  coupon?: SavedCoupon;
+  error?: string;
+}
+
 class PiumsSDK {
   private baseUrl: string;
   private authToken: string | null = null;
@@ -725,18 +904,20 @@ class PiumsSDK {
   async searchArtists(params?: SearchParams): Promise<SearchResults> {
     try {
       const queryParams = new URLSearchParams();
-      if (params?.query) queryParams.append('q', params.query);
-      if (params?.categoria) queryParams.append('categoria', params.categoria);
-      if (params?.ciudad) queryParams.append('ciudad', params.ciudad);
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.query)    queryParams.append('q',        params.query);
+      if ((params as any)?.categoria) queryParams.append('category', (params as any).categoria);
+      else if (params?.category) queryParams.append('category', params.category);
+      if ((params as any)?.ciudad)    queryParams.append('city',     (params as any).ciudad);
+      else if (params?.cityId)   queryParams.append('city',     params.cityId);
+      if (params?.page)     queryParams.append('page',     params.page.toString());
+      if (params?.limit)    queryParams.append('limit',    params.limit.toString());
 
       const response = await fetch(`${this.baseUrl}/artists/search?${queryParams.toString()}`);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       if (data.pagination) {
         return {
@@ -765,7 +946,9 @@ class PiumsSDK {
       if (params?.limit) queryParams.append('limit', params.limit.toString());
       if (params?.category) queryParams.append('category', params.category);
       if (params?.city) queryParams.append('city', params.city);
+      if (params?.state) queryParams.append('state', params.state);
       if (params?.q) queryParams.append('query', params.q);
+      if (params?.minGuests != null) queryParams.append('minGuests', params.minGuests.toString());
 
       const response = await fetch(`${this.baseUrl}/search/artists?${queryParams.toString()}`);
 
@@ -860,16 +1043,21 @@ class PiumsSDK {
     }
   }
 
-  async getArtistServices(artistId: string): Promise<Service[]> {
+  async getArtistServices(_artistId: string): Promise<Service[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/catalog/services?artistId=${artistId}`);
-      
+      // Use /mine endpoint so the artist sees ALL their services (active + paused/draft),
+      // not the public search endpoint which only returns status=ACTIVE.
+      const response = await fetch(
+        `${this.baseUrl}/catalog/services/mine`,
+        this.withAuth({ credentials: 'include' }),
+      );
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      return result.data || result.services || [];
+      return result.services || result.data || (Array.isArray(result) ? result : []);
     } catch (error) {
       console.error('Error fetching artist services:', error);
       return [];
@@ -956,6 +1144,24 @@ class PiumsSDK {
     }
   }
 
+  async toggleServiceSale(id: string, artistId: string): Promise<Service> {
+    const response = await fetch(
+      `${this.baseUrl}/catalog/services/${id}/toggle-sale`,
+      this.withAuth({
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ artistId }),
+      })
+    );
+    if (!response.ok) {
+      let errMsg = `HTTP error! status: ${response.status}`;
+      try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+      throw new Error(errMsg);
+    }
+    return response.json();
+  }
+
   async toggleServiceStatus(id: string, artistId: string): Promise<Service> {
     const response = await fetch(
       `${this.baseUrl}/catalog/services/${id}/toggle-status`,
@@ -976,7 +1182,7 @@ class PiumsSDK {
 
   async getArtistReviews(artistId: string, page: number = 1, limit: number = 10): Promise<{ reviews: Review[]; total: number; page: number; totalPages: number }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews?artistId=${artistId}&page=${page}&limit=${limit}&sortBy=recent`);
+      const response = await fetch(`${this.baseUrl}/reviews?artistId=${artistId}&page=${page}&limit=${limit}&sortBy=recent`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1015,6 +1221,94 @@ class PiumsSDK {
     } catch (_error) {
       return null;
     }
+  }
+
+  async getPublicDayOffers(serviceId: string): Promise<ServiceDayOffer[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/catalog/services/${serviceId}/day-offers/public`);
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async listDayOffers(serviceId: string, artistId: string): Promise<ServiceDayOffer[]> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/catalog/services/${serviceId}/day-offers?artistId=${artistId}`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async createDayOffer(serviceId: string, payload: CreateDayOfferPayload & { artistId: string }): Promise<ServiceDayOffer> {
+    const res = await fetch(
+      `${this.baseUrl}/catalog/services/${serviceId}/day-offers`,
+      this.withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      })
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async toggleDayOffer(serviceId: string, offerId: string, isActive: boolean, artistId: string): Promise<ServiceDayOffer> {
+    const res = await fetch(
+      `${this.baseUrl}/catalog/services/${serviceId}/day-offers/${offerId}`,
+      this.withAuth({
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isActive, artistId }),
+      })
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async deleteDayOffer(serviceId: string, offerId: string, artistId: string): Promise<void> {
+    const res = await fetch(
+      `${this.baseUrl}/catalog/services/${serviceId}/day-offers/${offerId}?artistId=${artistId}`,
+      this.withAuth({ method: 'DELETE', credentials: 'include' })
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `HTTP ${res.status}`);
+    }
+  }
+
+  async getCalendarStatus(): Promise<{ enabled: boolean }> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/auth/google-calendar/status`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!res.ok) return { enabled: false };
+      return res.json();
+    } catch {
+      return { enabled: false };
+    }
+  }
+
+  async disconnectGoogleCalendar(): Promise<void> {
+    await fetch(
+      `${this.baseUrl}/auth/google-calendar/disconnect`,
+      this.withAuth({ method: 'POST', credentials: 'include' })
+    );
   }
 
   /**
@@ -1258,6 +1552,42 @@ class PiumsSDK {
   }
 
   /**
+   * Obtiene la disponibilidad semanal recurrente del artista autenticado
+   */
+  async getMyWeeklyAvailability(): Promise<{ availability: WeeklyAvailabilityRule[] }> {
+    const response = await fetch(
+      `${this.baseUrl}/artists/dashboard/me/availability`,
+      this.withAuth({ credentials: 'include' })
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as any).message || `HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Guarda la disponibilidad semanal recurrente del artista autenticado.
+   * Reemplaza completamente los horarios existentes.
+   */
+  async setMyWeeklyAvailability(availability: WeeklyAvailabilityRule[]): Promise<{ availability: WeeklyAvailabilityRule[] }> {
+    const response = await fetch(
+      `${this.baseUrl}/artists/dashboard/me/availability`,
+      this.withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ availability }),
+      })
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as any).message || `HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  /**
    * Actualiza el país detectado por GPS del artista.
    * Pasar null cuando el artista está de vuelta en su país de origen.
    */
@@ -1346,6 +1676,8 @@ class PiumsSDK {
     endDate?: string;
     page?: number;
     limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
   }): Promise<{ bookings: Booking[]; total: number; page: number; totalPages: number }> {
     try {
       const params = new URLSearchParams();
@@ -1355,6 +1687,8 @@ class PiumsSDK {
       if (filters?.endDate) params.append('endDate', filters.endDate);
       if (filters?.page) params.append('page', filters.page.toString());
       if (filters?.limit) params.append('limit', filters.limit.toString());
+      if (filters?.sortBy) params.append('sortBy', filters.sortBy);
+      if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
 
       const queryString = params.toString();
       const url = `${this.baseUrl}/bookings${queryString ? `?${queryString}` : ''}`;
@@ -1405,6 +1739,48 @@ class PiumsSDK {
       return await response.json();
     } catch (error) {
       console.error('Error cancelling booking:', error);
+      throw error;
+    }
+  }
+
+  async reportNoShow(bookingId: string, reason?: string): Promise<{ success: boolean; booking: Booking; dispute: any }> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/bookings/${bookingId}/no-show`,
+        this.withAuth({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ reason }),
+        })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error reporting no-show:', error);
+      throw error;
+    }
+  }
+
+  async getMyCredits(): Promise<MyCreditsResponse> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/credits/my`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      const data = await response.json();
+      return data.data ?? data;
+    } catch (error) {
+      console.error('Error fetching credits:', error);
       throw error;
     }
   }
@@ -1503,6 +1879,134 @@ class PiumsSDK {
   }
 
   /**
+   * Inicia un checkout con el proveedor de pago apropiado (Tilopay o Stripe según país)
+   */
+  async initCheckout(
+    bookingId: string,
+    amount: number,
+    currency: string,
+    countryCode?: string,
+    description?: string,
+    captureMode?: 'manual' | 'automatic',
+  ): Promise<PaymentIntent> {
+    try {
+      const response = await fetch(`${this.baseUrl}/payments/checkout`,
+        this.withAuth({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId, amount, currency, countryCode, description, captureMode }),
+        })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error initiating checkout:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Confirma el resultado de un pago Tilopay tras el redirect
+   */
+  async confirmTilopayRedirect(params: {
+    bookingId: string;
+    responseCode: string;
+    orderNumber: string;
+    amount: string;
+    auth?: string;
+    currency?: string;
+    orderHash?: string;
+  }): Promise<{ success: boolean; responseCode: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/payments/tilopay/confirm`,
+        this.withAuth({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error confirming Tilopay redirect:', error);
+      throw error;
+    }
+  }
+
+  // ==================== SAVED PAYMENT METHODS ====================
+
+  /**
+   * Obtener el método de pago predeterminado del usuario (tarjeta guardada)
+   */
+  async getDefaultPaymentMethod(): Promise<SavedPaymentMethod | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/payments/methods/default`,
+        this.withAuth({ method: 'GET' })
+      );
+      if (!response.ok) return null;
+      const data = await response.json() as any;
+      return data.method || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Guardar token de proveedor como tarjeta predeterminada.
+   * Llamar desde la página de confirmación tras un pago Tilopay exitoso.
+   */
+  async saveProviderToken(params: {
+    provider: 'TILOPAY' | 'STRIPE';
+    token: string;
+    cardBrand?: string;
+    cardLast4?: string;
+    cardExpMonth?: number;
+    cardExpYear?: number;
+  }): Promise<SavedPaymentMethod | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/payments/methods/save-token`,
+        this.withAuth({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        })
+      );
+      if (!response.ok) return null;
+      const data = await response.json() as any;
+      return data.method || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * One-click checkout con tarjeta guardada
+   */
+  async chargeWithSavedCard(methodId: string, bookingId: string, amount: number, currency: string): Promise<{ success: boolean; orderNumber: string; provider: string }> {
+    const response = await fetch(`${this.baseUrl}/payments/methods/${methodId}/charge`,
+      this.withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, amount, currency }),
+      })
+    );
+    if (!response.ok) {
+      let errMsg = `HTTP error! status: ${response.status}`;
+      try { const e = await response.json() as any; errMsg = e.message || errMsg; } catch { /* not JSON */ }
+      throw new Error(errMsg);
+    }
+    return await response.json();
+  }
+
+  /**
    * Obtiene un pago por ID
    * @param paymentId ID del pago
    */
@@ -1586,7 +2090,7 @@ class PiumsSDK {
    */
   async createReview(payload: CreateReviewPayload): Promise<ReviewDetailed> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews`, this.withAuth({
+      const response = await fetch(`${this.baseUrl}/reviews`, this.withAuth({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1636,7 +2140,7 @@ class PiumsSDK {
       if (filters?.page) queryParams.append('page', filters.page.toString());
       if (filters?.limit) queryParams.append('limit', filters.limit.toString());
 
-      const response = await fetch(`${this.baseUrl}/reviews/reviews?${queryParams.toString()}`);
+      const response = await fetch(`${this.baseUrl}/reviews?${queryParams.toString()}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1655,7 +2159,7 @@ class PiumsSDK {
    */
   async getReviewById(reviewId: string): Promise<ReviewDetailed | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}`);
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -1678,7 +2182,7 @@ class PiumsSDK {
    */
   async updateReview(reviewId: string, payload: UpdateReviewPayload): Promise<ReviewDetailed> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -1706,7 +2210,7 @@ class PiumsSDK {
    */
   async deleteReview(reviewId: string): Promise<{ message: string; review: ReviewDetailed }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -1731,7 +2235,7 @@ class PiumsSDK {
    */
   async markHelpful(reviewId: string, isHelpful: boolean): Promise<{ success: boolean; helpfulCount: number }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}/helpful`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}/helpful`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1760,7 +2264,7 @@ class PiumsSDK {
    */
   async reportReview(reviewId: string, payload: ReportReviewPayload): Promise<{ message: string; reportId: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}/report`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1789,7 +2293,7 @@ class PiumsSDK {
    */
   async respondToReview(reviewId: string, message: string): Promise<ReviewResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/reviews/reviews/${reviewId}/respond`, {
+      const response = await fetch(`${this.baseUrl}/reviews/${reviewId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1926,6 +2430,68 @@ class PiumsSDK {
   }
 
   /**
+   * Obtiene los payouts (cobros) del artista autenticado
+   */
+  async getMyPayouts(params?: { status?: string; page?: number; limit?: number }): Promise<{
+    payouts: Payout[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    try {
+      const qs = new URLSearchParams(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v !== undefined && v !== '')
+          .map(([k, v]) => [k, String(v)])
+      ).toString();
+      const response = await fetch(
+        `${this.baseUrl}/artists/dashboard/me/payouts${qs ? `?${qs}` : ''}`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      const data = await response.json();
+      return (data.data ?? data) as { payouts: Payout[]; total: number; page: number; totalPages: number };
+    } catch (error) {
+      console.error('Error fetching payouts:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene las estadísticas de ganancias del artista autenticado
+   */
+  async getMyPayoutStats(): Promise<{
+    totalEarnings: number;
+    pendingAmount: number;
+    completedAmount: number;
+    currency: string;
+    totalPayouts: number;
+    pendingCount: number;
+    completedCount: number;
+  }> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/artists/dashboard/me/payouts/stats`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      const data = await response.json();
+      return (data.data ?? data);
+    } catch (error) {
+      console.error('Error fetching payout stats:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Obtiene las reservas recibidas por el artista
    * @param filters Filtros de búsqueda
    */
@@ -2021,13 +2587,15 @@ class PiumsSDK {
    * Marca una reserva como completada (solo artistas)
    * @param bookingId ID de la reserva
    */
-  async completeBooking(bookingId: string): Promise<{ message: string; bookingId: string }> {
+  async completeBooking(bookingId: string, productDeliveryUrl?: string): Promise<{ message: string; bookingId: string }> {
     try {
+      const body = productDeliveryUrl ? JSON.stringify({ productDeliveryUrl }) : undefined;
       const response = await fetch(
         `${this.baseUrl}/artists/dashboard/me/bookings/${bookingId}/complete`,
         this.withAuth({
           method: 'PATCH',
           credentials: 'include',
+          ...(body ? { headers: { 'Content-Type': 'application/json' }, body } : {}),
         })
       );
 
@@ -2040,6 +2608,31 @@ class PiumsSDK {
       return await response.json();
     } catch (error) {
       console.error('Error completing booking:', error);
+      throw error;
+    }
+  }
+
+  async verifyAttendanceCode(bookingId: string, code: string): Promise<{ message: string; booking: any }> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/bookings/${bookingId}/verify-attendance`,
+        this.withAuth({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ code }),
+        })
+      );
+
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error verifying attendance code:', error);
       throw error;
     }
   }
@@ -2283,6 +2876,59 @@ class PiumsSDK {
       return await response.json();
     } catch (error) {
       console.error('Error fetching unread count:', error);
+      throw error;
+    }
+  }
+
+  // ==================== NOTIFICATION METHODS ====================
+
+  /**
+   * Obtiene las notificaciones del usuario autenticado
+   */
+  async getNotifications(filters?: { status?: string; page?: number; limit?: number }): Promise<{ notifications: any[]; total: number; page: number; totalPages: number }> {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
+      const qs = params.toString();
+      const response = await fetch(
+        `${this.baseUrl}/notifications${qs ? `?${qs}` : ''}`,
+        this.withAuth({ credentials: 'include' })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Marca las notificaciones indicadas como leídas
+   */
+  async markNotificationsAsRead(notificationIds: string[]): Promise<void> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/notifications/read`,
+        this.withAuth({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ notificationIds }),
+        })
+      );
+      if (!response.ok) {
+        let errMsg = `HTTP error! status: ${response.status}`;
+        try { const e = await response.json(); errMsg = (e as any).message || errMsg; } catch { /* not JSON */ }
+        throw new Error(errMsg);
+      }
+    } catch (error) {
+      console.error('Error marking notifications as read:', error);
       throw error;
     }
   }
@@ -2695,6 +3341,507 @@ class PiumsSDK {
     const data = await response.json();
     return data.data;
   }
+
+  // ── Analytics / Funnel ────────────────────────────────────────────────────
+
+  async trackFunnelEvent(params: {
+    sessionId: string;
+    step: string;
+    action: 'enter' | 'complete' | 'abandon';
+    userId?: string;
+    bookingId?: string;
+    artistId?: string;
+    serviceId?: string;
+  }): Promise<void> {
+    fetch(`${this.baseUrl}/analytics/funnel`,
+      this.withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      })
+    ).catch(() => {}); // fire-and-forget, never throw
+  }
+
+  // ── Coupons ───────────────────────────────────────────────────────────────
+
+  async getMyCoupons(): Promise<SavedCoupon[]> {
+    const res = await fetch(`${this.baseUrl}/coupons/my`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return [];
+    return (await res.json() as any).coupons || [];
+  }
+
+  async getArtistCoupons(): Promise<SavedCoupon[]> {
+    const res = await fetch(`${this.baseUrl}/coupons/artist`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return [];
+    return (await res.json() as any).coupons || [];
+  }
+
+  async validateCoupon(code: string, bookingTotal: number, artistId?: string, serviceId?: string): Promise<CouponValidation> {
+    const res = await fetch(`${this.baseUrl}/coupons/validate`,
+      this.withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, bookingTotal, artistId, serviceId }),
+      })
+    );
+    if (!res.ok) return { valid: false, discount: 0, error: 'Cupón no válido' };
+    return await res.json();
+  }
+
+  // ==================== TICKET EVENTS ====================
+
+  async listTicketEvents(params?: { page?: number; limit?: number }): Promise<{ events: TicketEvent[]; total: number }> {
+    const qs = params ? `?${new URLSearchParams(Object.entries(params).filter(([,v]) => v != null).map(([k,v]) => [k, String(v)]) as [string,string][]).toString()}` : '';
+    const res = await fetch(`${this.baseUrl}/ticket-events${qs}`, { method: 'GET' });
+    if (!res.ok) return { events: [], total: 0 };
+    return res.json();
+  }
+
+  async getTicketEvent(id: string): Promise<TicketEvent> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${id}`, { method: 'GET' });
+    if (!res.ok) throw new Error('Evento no encontrado');
+    return res.json();
+  }
+
+  async getMyTicketEvents(): Promise<TicketEvent[]> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/by-artist/me`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  async createTicketEvent(payload: CreateTicketEventPayload): Promise<TicketEvent> {
+    const res = await fetch(`${this.baseUrl}/ticket-events`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async updateTicketEvent(id: string, payload: Partial<CreateTicketEventPayload> & { status?: TicketEventStatus }): Promise<TicketEvent> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${id}`, this.withAuth({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async addTicketTier(eventId: string, payload: CreateTicketTierPayload): Promise<TicketTier> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/tiers`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async deleteTicketTier(eventId: string, tierId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/tiers/${tierId}`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) throw new Error(await res.text());
+  }
+
+  async initTicketPurchase(eventId: string, data: { tierId: string; quantity?: number; couponCode?: string; returnUrl?: string }): Promise<{ purchase: TicketPurchase; redirectUrl: string | null }> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/purchase`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async getMyTicketPurchases(): Promise<TicketPurchase[]> {
+    const res = await fetch(`${this.baseUrl}/ticket-purchases/my`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  async getTicketPurchase(id: string): Promise<TicketPurchase> {
+    const res = await fetch(`${this.baseUrl}/ticket-purchases/${id}`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) throw new Error('Compra no encontrada');
+    return res.json();
+  }
+
+  async checkInTicket(eventId: string, code: string): Promise<TicketPurchase> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/check-in`, this.withAuth({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async getEventAttendance(eventId: string): Promise<{ paid: number; checkedIn: number; attendees: TicketPurchase[] }> {
+    const res = await fetch(`${this.baseUrl}/ticket-events/${eventId}/attendance`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { paid: 0, checkedIn: 0, attendees: [] };
+    return res.json();
+  }
+
+  // ==================== COLLABORATORS ====================
+
+  async inviteCollaborator(bookingId: string, data: { artistId: string; role?: string; notes?: string }): Promise<{ collaborator: BookingCollaborator }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/collaborators`, this.withAuth({ method: 'POST', body: JSON.stringify(data) }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error invitando colaborador'); }
+    return res.json();
+  }
+
+  async getBookingCollaborators(bookingId: string): Promise<{ collaborators: BookingCollaborator[] }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/collaborators`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { collaborators: [] };
+    return res.json();
+  }
+
+  async respondToCollaboration(collaboratorId: string, accept: boolean): Promise<{ collaborator: BookingCollaborator }> {
+    const res = await fetch(`${this.baseUrl}/collaborators/${collaboratorId}/respond`, this.withAuth({ method: 'POST', body: JSON.stringify({ accept }) }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error respondiendo'); }
+    return res.json();
+  }
+
+  async cancelCollaborator(bookingId: string, artistId: string): Promise<{ collaborator: BookingCollaborator }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/collaborators/${artistId}`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error cancelando colaborador'); }
+    return res.json();
+  }
+
+  async getMyCollaborations(): Promise<{ collaborations: BookingCollaborator[] }> {
+    const res = await fetch(`${this.baseUrl}/artists/me/collaborations`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { collaborations: [] };
+    return res.json();
+  }
+
+  // ==================== GROUP CHAT ====================
+
+  async getGroupConversations(): Promise<{ groups: GroupConversation[] }> {
+    const res = await fetch(`${this.baseUrl}/chat/group-conversations`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) return { groups: [] };
+    return res.json();
+  }
+
+  async getGroupConversation(groupId: string): Promise<{ group: GroupConversation }> {
+    const res = await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}`, this.withAuth({ method: 'GET' }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error cargando grupo'); }
+    return res.json();
+  }
+
+  async sendGroupMessage(groupId: string, content: string, type?: string): Promise<{ message: GroupMessage }> {
+    const res = await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}/messages`, this.withAuth({ method: 'POST', body: JSON.stringify({ content, type }) }));
+    if (!res.ok) { const e: any = await res.json(); throw new Error(e.message || 'Error enviando mensaje'); }
+    return res.json();
+  }
+
+  async markGroupAsRead(groupId: string): Promise<void> {
+    await fetch(`${this.baseUrl}/chat/group-conversations/${groupId}/read`, this.withAuth({ method: 'PATCH' }));
+  }
+
+  // ==================== POSTULACIONES ====================
+
+  async createPosting(data: {
+    title: string;
+    description: string;
+    role: string;
+    category?: string;
+    eventDate?: string;
+    cityId?: string;
+    budgetMin?: number;
+    budgetMax?: number;
+    currency?: string;
+  }): Promise<{ posting: ArtistPosting }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings`, this.withAuth({ method: 'POST', body: JSON.stringify(data) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error creando postulación'); }
+    return res.json();
+  }
+
+  async getPostings(params?: {
+    status?: string;
+    role?: string;
+    category?: string;
+    cityId?: string;
+    artistId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ postings: ArtistPosting[]; total: number; page: number; limit: number }> {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.role) q.set('role', params.role);
+    if (params?.category) q.set('category', params.category);
+    if (params?.cityId) q.set('cityId', params.cityId);
+    if (params?.artistId) q.set('artistId', params.artistId);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    const res = await fetch(`${this.baseUrl}/catalog/postings?${q}`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando postulaciones');
+    return res.json();
+  }
+
+  async getPosting(id: string): Promise<{ posting: ArtistPosting }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${id}`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando postulación');
+    return res.json();
+  }
+
+  async getMyPostings(): Promise<{ postings: ArtistPosting[] }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/mine`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando mis postulaciones');
+    return res.json();
+  }
+
+  async updatePosting(id: string, data: Partial<{
+    title: string;
+    description: string;
+    role: string;
+    category: string;
+    eventDate: string;
+    cityId: string;
+    budgetMin: number;
+    budgetMax: number;
+    status: string;
+  }>): Promise<{ posting: ArtistPosting }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${id}`, this.withAuth({ method: 'PATCH', body: JSON.stringify(data) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error actualizando postulación'); }
+    return res.json();
+  }
+
+  async deletePosting(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${id}`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error eliminando postulación'); }
+    return res.json();
+  }
+
+  async applyToPosting(postingId: string, data: { message: string; portfolioLinks?: string[] }): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${postingId}/apply`, this.withAuth({ method: 'POST', body: JSON.stringify(data) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error aplicando a postulación'); }
+    return res.json();
+  }
+
+  async getPostingApplications(postingId: string): Promise<{ applications: PostingApplication[] }> {
+    const res = await fetch(`${this.baseUrl}/catalog/postings/${postingId}/applications`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando aplicaciones');
+    return res.json();
+  }
+
+  async markApplicationReviewed(appId: string): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/review`, this.withAuth({ method: 'PATCH' }));
+    if (!res.ok) return res.json();
+    return res.json();
+  }
+
+  async respondToApplication(appId: string, accept: boolean): Promise<{ application: PostingApplication & { chatGroupId?: string } }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/respond`, this.withAuth({ method: 'PATCH', body: JSON.stringify({ accept }) }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error respondiendo aplicación'); }
+    return res.json();
+  }
+
+  async withdrawApplication(appId: string): Promise<{ application: PostingApplication }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/${appId}/withdraw`, this.withAuth({ method: 'DELETE' }));
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || 'Error retirando aplicación'); }
+    return res.json();
+  }
+
+  async getMyApplications(): Promise<{ applications: PostingApplication[] }> {
+    const res = await fetch(`${this.baseUrl}/catalog/applications/mine`, this.withAuth({}));
+    if (!res.ok) throw new Error('Error cargando mis aplicaciones');
+    return res.json();
+  }
+
+  // ==================== REEMPLAZO DE EMERGENCIA ====================
+
+  async getReplacementSearch(bookingId: string): Promise<{
+    id: string; bookingId: string; clientId: string; category: string | null;
+    city: string | null; budgetCents: number; scheduledDate: string;
+    durationMinutes: number; status: string; matchedServiceIds: string[];
+    matchedArtistIds: string[]; expiresAt: string; createdAt: string;
+  } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/replacement`, this.withAuth({}));
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async acceptReplacement(bookingId: string): Promise<{ message: string }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/replacement/accept`, this.withAuth({ method: 'POST' }));
+    if (!res.ok) { const e: any = await res.json().catch(() => ({})); throw new Error(e.message || 'Error'); }
+    return res.json();
+  }
+
+  async declineReplacement(bookingId: string): Promise<{ message: string }> {
+    const res = await fetch(`${this.baseUrl}/bookings/${bookingId}/replacement/decline`, this.withAuth({ method: 'POST' }));
+    if (!res.ok) { const e: any = await res.json().catch(() => ({})); throw new Error(e.message || 'Error'); }
+    return res.json();
+  }
+}
+
+// ==================== COLLABORATOR & GROUP CHAT TYPES ====================
+
+export type CollaboratorStatus = 'INVITED' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+
+export interface BookingCollaborator {
+  id: string;
+  bookingId: string;
+  artistId: string;
+  invitedBy: string;
+  role?: string;
+  status: CollaboratorStatus;
+  notes?: string;
+  invitedAt: string;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  artistName?: string;
+  artistAvatar?: string;
+}
+
+export interface GroupParticipant {
+  id: string;
+  groupId: string;
+  userId: string;
+  unreadCount: number;
+  joinedAt: string;
+  // Enriched
+  artistName?: string;
+  artistAvatar?: string;
+}
+
+export interface GroupMessage {
+  id: string;
+  groupId: string;
+  senderId: string;
+  content: string;
+  type: string;
+  status: string;
+  deletedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupConversation {
+  id: string;
+  bookingId?: string;
+  eventId?: string;
+  name?: string;
+  createdBy: string;
+  status: string;
+  participants: GroupParticipant[];
+  messages?: GroupMessage[];
+  lastMessageAt?: string;
+  lastMessagePreview?: string;
+  unreadCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==================== POSTULACIONES TYPES ====================
+
+export type PostingStatus = 'OPEN' | 'CLOSED' | 'FILLED' | 'CANCELLED';
+export type ApplicationStatus = 'PENDING' | 'REVIEWED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN';
+
+export interface ArtistPosting {
+  id: string;
+  artistId: string;
+  title: string;
+  description: string;
+  role: string;
+  category?: string;
+  eventDate?: string;
+  cityId?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  currency: string;
+  status: PostingStatus;
+  applicationCount: number;
+  closedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  applications?: PostingApplication[];
+}
+
+export interface PostingApplication {
+  id: string;
+  postingId: string;
+  artistId: string;
+  message: string;
+  portfolioLinks: string[];
+  status: ApplicationStatus;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  artistName?: string;
+  artistAvatar?: string;
+  artistCategory?: string;
+  posting?: Partial<ArtistPosting>;
+}
+
+// ==================== TICKET EVENTS TYPES ====================
+
+export type TicketEventStatus = 'BORRADOR' | 'PUBLICADO' | 'AGOTADO' | 'CANCELADO' | 'FINALIZADO';
+export type TicketPurchaseStatus = 'PENDIENTE' | 'PAGADO' | 'USADO' | 'REEMBOLSADO' | 'EXPIRADO';
+
+export interface TicketTier {
+  id: string;
+  ticketEventId: string;
+  name: string;
+  description?: string;
+  priceCents: number;
+  currency: string;
+  totalQty: number;
+  soldQty: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketEvent {
+  id: string;
+  code: string;
+  artistId: string;
+  name: string;
+  description?: string;
+  venue: string;
+  address: string;
+  locationLat?: number;
+  locationLng?: number;
+  eventDate: string;
+  doorsOpen?: string;
+  imageUrl?: string;
+  maxCapacity: number;
+  status: TicketEventStatus;
+  tiers: TicketTier[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketPurchase {
+  id: string;
+  code: string;
+  ticketEventId: string;
+  tierId: string;
+  buyerId: string;
+  buyerEmail: string;
+  buyerName: string;
+  quantity: number;
+  subtotalCents: number;
+  discountCents: number;
+  totalCents: number;
+  currency: string;
+  couponCode?: string;
+  status: TicketPurchaseStatus;
+  paidAt?: string;
+  checkedInAt?: string;
+  ticketEvent?: Partial<TicketEvent>;
+  tier?: Partial<TicketTier>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTicketEventPayload {
+  name: string;
+  description?: string;
+  venue: string;
+  address: string;
+  locationLat?: number;
+  locationLng?: number;
+  eventDate: string;
+  doorsOpen?: string;
+  imageUrl?: string;
+  maxCapacity: number;
+}
+
+export interface CreateTicketTierPayload {
+  name: string;
+  description?: string;
+  priceCents: number;
+  currency?: string;
+  totalQty: number;
 }
 
 export const sdk = new PiumsSDK();

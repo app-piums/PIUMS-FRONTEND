@@ -1,12 +1,17 @@
 import { Request, Response, NextFunction } from "express";
 import { payoutService } from "../services/payout.service";
-import { PayoutStatus, PayoutType } from "@prisma/client";
+import { PayoutStatus, PayoutType } from "../types/prisma-enums";
 
 export class PayoutController {
   // ==================== CREATE PAYOUT ====================
 
   async createPayout(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden crear payouts manualmente" });
+      }
+
       const {
         artistId,
         bookingId,
@@ -50,6 +55,11 @@ export class PayoutController {
 
   async processPayout(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden procesar payouts" });
+      }
+
       const id = req.params['id'] as string;
 
       const payout = await payoutService.processPayout(id);
@@ -58,8 +68,9 @@ export class PayoutController {
         message: "Payout procesado exitosamente",
         payout,
       });
+      return;
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -113,6 +124,11 @@ export class PayoutController {
 
   async getArtistPayouts(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden consultar payouts de otros artistas" });
+      }
+
       const artistId = req.params['artistId'] as string;
       const { status, fromDate, toDate } = req.query;
 
@@ -123,8 +139,9 @@ export class PayoutController {
       });
 
       res.json(result);
+      return;
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -174,31 +191,26 @@ export class PayoutController {
 
   async getArtistPayoutStats(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = (req as any).user;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Solo los administradores pueden consultar estadísticas de payouts de otros artistas" });
+      }
+
       const artistId = req.params['artistId'] as string;
 
       const stats = await payoutService.getArtistPayoutStats(artistId);
 
       res.json(stats);
+      return;
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
   // ==================== SYNC STATUS ====================
 
-  async syncPayoutStatus(req: Request, res: Response, next: NextFunction) {
-    try {
-      const id = req.params['id'] as string;
-
-      const payout = await payoutService.syncPayoutStatus(id);
-
-      res.json({
-        message: "Estado sincronizado",
-        payout,
-      });
-    } catch (error) {
-      next(error);
-    }
+  async syncPayoutStatus(_req: Request, res: Response, _next: NextFunction) {
+    res.status(410).json({ message: "Stripe Connect removido — sincronización no disponible" });
   }
 }
 

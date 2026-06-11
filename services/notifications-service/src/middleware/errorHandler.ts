@@ -45,9 +45,8 @@ export const errorHandler = (
   }
 
   // Unexpected errors
-  console.error('Unexpected error:', err);
+  logger.error('Unexpected error', 'ERROR_HANDLER', { error: typeof err === 'string' ? err : err?.message });
   return res.status(500).json({
     error: 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { details: err.message }),
   });
 };

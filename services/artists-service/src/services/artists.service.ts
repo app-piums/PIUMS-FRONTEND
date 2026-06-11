@@ -1,8 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
+import { triggerArtistReindex } from "../utils/searchReindex";
+import { ModerationClient } from "../clients/moderation.client";
 
 const prisma = new PrismaClient();
+const moderationClient = new ModerationClient();
 
 // Algunos clientes siguen enviando campos legacy en español.
 // Normalizamos esos payloads para que Prisma reciba los nombres correctos.
@@ -50,6 +53,31 @@ export class ArtistsService {
 
       const normalizedData = normalizeArtistPayload(data);
 
+      // Moderar bio y nombre del artista antes de crear
+      const createTexts = [
+        { field: 'nombre', value: normalizedData.nombre, contentType: 'USERNAME' as const },
+        { field: 'bio', value: normalizedData.bio, contentType: 'ARTIST_BIO' as const },
+      ];
+      for (const { field, value, contentType } of createTexts) {
+        if (!value || typeof value !== 'string') continue;
+        const modResult = await moderationClient.check({
+          userId: data.authId || 'unknown',
+          contentType,
+          content: value,
+          service: 'artists-service',
+        });
+        if (
+          modResult.action === 'REJECT' ||
+          modResult.action === 'STRIKE' ||
+          modResult.action === 'MANUAL_REVIEW'
+        ) {
+          throw new AppError(400, modResult.rejectMessage);
+        }
+        if (modResult.action === 'CENSOR') {
+          normalizedData[field] = modResult.censored ?? value;
+        }
+      }
+
       const artist = await prisma.artist.create({
         data: {
           ...normalizedData,
@@ -64,6 +92,13 @@ export class ArtistsService {
       });
 
       logger.info("Artista creado", "ARTISTS_SERVICE", { artistId: artist.id, email: artist.email });
+      triggerArtistReindex(artist.id);
+      this.alertAdmins('admin:alert', {
+        type: 'artist_pending',
+        title: 'Nuevo artista pendiente',
+        message: `${artist.nombre || artist.email} está esperando verificación`,
+        actionUrl: '/artists',
+      });
       return artist;
     } catch (error) {
       logger.error("Error creando artista", "ARTISTS_SERVICE", { error });
@@ -131,6 +166,31 @@ export class ArtistsService {
 
       const normalizedData = normalizeArtistPayload(data);
 
+      // Moderar bio y nombre del artista
+      const artistTexts = [
+        { field: 'nombre', value: normalizedData.nombre, contentType: 'USERNAME' as const },
+        { field: 'bio', value: normalizedData.bio, contentType: 'ARTIST_BIO' as const },
+      ];
+      for (const { field, value, contentType } of artistTexts) {
+        if (!value || typeof value !== 'string') continue;
+        const modResult = await moderationClient.check({
+          userId: normalizedData.authId || id,
+          contentType,
+          content: value,
+          service: 'artists-service',
+        });
+        if (
+          modResult.action === 'REJECT' ||
+          modResult.action === 'STRIKE' ||
+          modResult.action === 'MANUAL_REVIEW'
+        ) {
+          throw new AppError(400, modResult.rejectMessage);
+        }
+        if (modResult.action === 'CENSOR') {
+          normalizedData[field] = modResult.censored ?? value;
+        }
+      }
+
       // Validar pricing si se actualiza
       if (normalizedData.hourlyRateMin !== undefined && normalizedData.hourlyRateMax !== undefined) {
         const min = normalizedData.hourlyRateMin ?? existing.hourlyRateMin;
@@ -155,6 +215,17 @@ export class ArtistsService {
       });
 
       logger.info("Artista actualizado", "ARTISTS_SERVICE", { artistId: id });
+      triggerArtistReindex(id);
+
+      // Auto-geocode: si se actualizó baseLocationLabel sin lat/lng, derivar coords de Nominatim
+      if (
+        normalizedData.baseLocationLabel &&
+        !normalizedData.baseLocationLat &&
+        !normalizedData.baseLocationLng
+      ) {
+        geocodeAndSaveArtistLocation(id, normalizedData.baseLocationLabel as string).catch(() => {});
+      }
+
       return artist;
     } catch (error) {
       logger.error("Error actualizando artista", "ARTISTS_SERVICE", { error });
@@ -204,6 +275,7 @@ export class ArtistsService {
     const where: any = {
       isActive: true,
       deletedAt: null,
+      category: { not: 'OTRO' },
     };
 
     if (q) {
@@ -216,14 +288,11 @@ export class ArtistsService {
         { city:       { contains: normalizedQ, mode: 'insensitive' } },
       ];
     }
-    if (category) where.category = category;
+    if (category && category !== 'OTRO') where.category = category;
     if (city) where.city = { contains: city, mode: "insensitive" };
     if (country) where.country = { contains: country, mode: "insensitive" };
     if (minRating) where.rating = { gte: minRating };
     if (verificationStatus) where.verificationStatus = verificationStatus;
-
-    // TODO: Implementar búsqueda por geolocalización con Prisma Raw Query
-    // Por ahora, solo filtramos por ciudad/país
 
     const skip = (page - 1) * limit;
 
@@ -246,13 +315,35 @@ export class ArtistsService {
       prisma.artist.count({ where }),
     ]);
 
+    // Geo-filter: if lat/lng provided, keep only artists who cover the event location.
+    // Artists with coverageRadius = null are national — always included.
+    // Artists without base coordinates are also included (can't determine coverage).
+    let filteredArtists = artists;
+    let filteredTotal = total;
+
+    if (lat !== undefined && lng !== undefined) {
+      const RAD = Math.PI / 180;
+      filteredArtists = artists.filter((a: { coverageRadius: number | null; baseLocationLat: number | null; baseLocationLng: number | null }) => {
+        if (a.coverageRadius === null) return true; // national coverage
+        if (!a.baseLocationLat || !a.baseLocationLng) return true; // no base coords on file
+        const dLat = (a.baseLocationLat - lat) * RAD;
+        const dLng = (a.baseLocationLng - lng) * RAD;
+        const sin2 =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat * RAD) * Math.cos(a.baseLocationLat * RAD) * Math.sin(dLng / 2) ** 2;
+        const distKm = 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(sin2)));
+        return distKm <= a.coverageRadius;
+      });
+      filteredTotal = filteredArtists.length;
+    }
+
     return {
-      artists,
+      artists: filteredArtists,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: filteredTotal,
+        totalPages: Math.ceil(filteredTotal / limit),
       },
     };
   }
@@ -432,5 +523,41 @@ export class ArtistsService {
     });
 
     return availability;
+  }
+
+  private alertAdmins(event: string, data: Record<string, any>) {
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const secret = process.env.INTERNAL_SERVICE_SECRET;
+    if (!chatUrl || !secret) return;
+
+    fetch(`${chatUrl}/internal/notify-admins`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ event, data }),
+    }).catch(() => { /* non-critical */ });
+  }
+}
+
+async function geocodeAndSaveArtistLocation(artistId: string, label: string): Promise<void> {
+  try {
+    const encoded = encodeURIComponent(label);
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1`,
+      { headers: { 'User-Agent': 'PiumsPlatform/1.0 (soporte@piums.io)' } }
+    );
+    if (!res.ok) return;
+    const results = await res.json() as Array<{ lat: string; lon: string }>;
+    if (!results.length) return;
+    const { lat, lon } = results[0];
+    await prisma.artist.update({
+      where: { id: artistId },
+      data: {
+        baseLocationLat: parseFloat(lat),
+        baseLocationLng: parseFloat(lon),
+      },
+    });
+    logger.info('Base location geocodificada via Nominatim', 'ARTISTS_SERVICE', { artistId, label, lat, lon });
+  } catch {
+    // non-critical
   }
 }

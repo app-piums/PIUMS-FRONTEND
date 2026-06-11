@@ -121,6 +121,7 @@ model Service {
   status      ServiceStatus    @default(ACTIVE)
   isAvailable Boolean          @default(true)
   isFeatured  Boolean          @default(false)
+  isOnSale    Boolean          @default(false)
   
   // Qué incluye el servicio
   whatIsIncluded      String[]         // Lista de ítems incluidos (ej: "Equipo de sonido", "Micrófono")
@@ -130,6 +131,7 @@ model Service {
   depositAmount       Int?     // Monto fijo del depósito en centavos
   depositPercentage   Int?     // O porcentaje del precio
   requiresConsultation Boolean @default(false)
+  requiresProductDelivery Boolean @default(false) // Fotógrafos, videógrafos: asistencia y entrega son eventos separados
   
   // Políticas
   cancellationPolicy  String?  @db.Text
@@ -149,9 +151,11 @@ model Service {
   viewCount   Int      @default(0)
   bookingCount Int     @default(0)
   
+  dayOffers   ServiceDayOffer[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   @@unique([artistId, slug])
   @@index([artistId])
   @@index([categoryId])
@@ -378,6 +382,98 @@ model City {
   @@index([latitude, longitude])
   @@index([isActive, isPopular])
   @@map("cities")
+}
+
+// ============================================================================
+// Service Day Offers - Descuentos especiales por dia
+// ============================================================================
+
+enum OfferDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model ServiceDayOffer {
+  id               String          @id @default(uuid())
+  serviceId        String
+  service          Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  offerDate        DateTime        @db.Date
+  discountType     OfferDiscountType
+  discountValue    Int
+  maxDiscountCents Int?
+  label            String?
+  isActive         Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([serviceId, offerDate])
+  @@index([serviceId])
+  @@index([offerDate])
+  @@map("service_day_offers")
+}
+
+// ============================================================================
+// Artist Postings - Sistema de postulaciones (busco guitarrista, etc.)
+// ============================================================================
+
+enum PostingStatus {
+  OPEN
+  CLOSED
+  FILLED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model ArtistPosting {
+  id               String        @id @default(uuid())
+  artistId         String
+  title            String
+  description      String        @db.Text
+  role             String
+  category         String?
+  eventDate        DateTime?
+  cityId           String?
+  budgetMin        Int?
+  budgetMax        Int?
+  currency         String        @default("GTQ")
+  status           PostingStatus @default(OPEN)
+  applicationCount Int           @default(0)
+  closedAt         DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  applications PostingApplication[]
+
+  @@index([artistId])
+  @@index([status])
+  @@index([eventDate])
+  @@index([role])
+  @@map("artist_postings")
+}
+
+model PostingApplication {
+  id             String            @id @default(uuid())
+  postingId      String
+  posting        ArtistPosting     @relation(fields: [postingId], references: [id], onDelete: Cascade)
+  artistId       String
+  message        String            @db.Text
+  portfolioLinks String[]
+  status         ApplicationStatus @default(PENDING)
+  respondedAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([postingId, artistId])
+  @@index([postingId])
+  @@index([artistId])
+  @@map("posting_applications")
 }
 
 // ============================================================================

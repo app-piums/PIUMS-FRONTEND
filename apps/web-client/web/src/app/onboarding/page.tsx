@@ -4,6 +4,38 @@ import Image from 'next/image';
 import React, { useState } from 'react';
 import { ThemeToggle } from '@/contexts/ThemeContext';
 
+/* ─── Document types ─────────────────────────────────────────────────────── */
+type DocumentType = 'DPI' | 'PASSPORT' | 'RESIDENCE_CARD';
+
+const DOCUMENT_LABELS: Record<DocumentType, string> = {
+  DPI: 'DPI (Documento Personal de Identificación)',
+  PASSPORT: 'Pasaporte',
+  RESIDENCE_CARD: 'Tarjeta de Residencia',
+};
+
+async function uploadDocFile(
+  file: File,
+  folder: 'front' | 'back' | 'selfie',
+  setUploading: (v: boolean) => void,
+  setUrl: (u: string) => void,
+  setPreview: (p: string) => void,
+) {
+  setUploading(true);
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`/api/users/documents/upload?folder=${folder}`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error('Error al subir imagen');
+    const data = await res.json();
+    setUrl(data.url);
+    setPreview(URL.createObjectURL(file));
+  } catch {
+    // silencioso — el usuario puede reintentar
+  } finally {
+    setUploading(false);
+  }
+}
+
 /* ─── Categorías de interés ─────────────────────────────────────────────── */
 const CATEGORIES = [
   { id: 'live-music',      label: 'Música en Vivo',       subtitle: 'Bandas, solistas, acústico',           icon: MicIcon      },
@@ -38,7 +70,7 @@ const SUBCATEGORIES: Record<string, { sectionLabel: string; tags: string[] }> = 
 
 /* ─── Componente principal ───────────────────────────────────────────────── */
 export default function ClientOnboardingPage() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedTags, setSelectedTags] = useState<Record<string, Set<string>>>({});
 
@@ -78,6 +110,22 @@ export default function ClientOnboardingPage() {
     }));
     // Marcar onboarding como completado en cookie para el middleware
     document.cookie = 'onboarding_completed=true; path=/; max-age=31536000; SameSite=strict';
+    // Persistir preferencias e intereses en el backend
+    try {
+      await fetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          onboardingCategories: [...selectedCategories],
+          onboardingTags: Object.fromEntries(
+            Object.entries(selectedTags).map(([k, v]) => [k, [...v]])
+          ),
+        }),
+      });
+    } catch {
+      // No bloquear la navegación si falla
+    }
     // Persistir fecha de onboarding en la base de datos
     try {
       await fetch('/api/auth/complete-onboarding', { method: 'PATCH', credentials: 'include' });
@@ -114,9 +162,16 @@ export default function ClientOnboardingPage() {
           categories={[...selectedCategories]}
           selectedTags={selectedTags}
           onToggleTag={toggleTag}
-          onFinish={handleFinish}
+          onFinish={() => setStep(4)}
           onBack={() => setStep(2)}
           onSkip={handleSkip}
+        />
+      )}
+      {step === 4 && (
+        <StepVerification
+          onFinish={handleFinish}
+          onBack={() => setStep(3)}
+          onSkip={handleFinish}
         />
       )}
     </div>
@@ -140,12 +195,12 @@ function StepWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => v
         <div className="max-w-5xl w-full flex gap-16 items-center">
           {/* Left */}
           <div className="flex-1 max-w-lg">
-            <span className="text-xs font-semibold tracking-widest text-[#FF6A00] uppercase mb-4 block">
+            <span className="text-xs font-semibold tracking-widest text-[#FF6B35] uppercase mb-4 block">
               Bienvenida · Paso 1
             </span>
             <h1 className="text-5xl font-extrabold text-gray-900 leading-tight mb-6">
               Bienvenido a{' '}
-              <span className="text-[#FF6A00]">PIUMS</span>
+              <span className="text-[#FF6B35]">PIUMS</span>
             </h1>
             <p className="text-gray-500 text-lg leading-relaxed mb-10">
               El ecosistema donde el talento creativo encuentra oportunidades.
@@ -155,7 +210,7 @@ function StepWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => v
             <div className="flex items-center gap-4 mb-12">
               <button
                 onClick={onStart}
-                className="inline-flex items-center gap-2 bg-[#FF6A00] hover:bg-[#e55e00] text-white font-semibold px-7 py-3.5 rounded-full transition-colors shadow-lg shadow-orange-200"
+                className="inline-flex items-center gap-2 bg-[#FF6B35] hover:bg-[#e55e00] text-white font-semibold px-7 py-3.5 rounded-full transition-colors shadow-lg shadow-orange-200"
               >
                 Comenzar
                 <ArrowRightIcon className="h-4 w-4" />
@@ -192,8 +247,10 @@ function StepWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => v
             <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden w-56 z-10">
               <div className="h-48 bg-gradient-to-br from-gray-800 to-gray-900 relative">
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                {/* Subtle guitar silhouette */}
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-white/20 text-7xl">🎸</div>
+                {/* Subtle music icon silhouette */}
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-white/20">
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </div>
               </div>
               <div className="p-4">
                 <p className="font-semibold text-gray-900 text-sm">Carlos M.</p>
@@ -206,7 +263,7 @@ function StepWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => v
             </div>
 
             {/* Secondary card — audio wave */}
-            <div className="absolute -top-4 right-4 bg-[#FF6A00] rounded-2xl w-16 h-16 flex items-center justify-center shadow-lg shadow-orange-300/50 z-20">
+            <div className="absolute -top-4 right-4 bg-[#FF6B35] rounded-2xl w-16 h-16 flex items-center justify-center shadow-lg shadow-orange-300/50 z-20">
               <SoundwaveIcon className="h-8 w-8 text-white" />
             </div>
 
@@ -224,8 +281,8 @@ function StepWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => v
 
       {/* Step dots */}
       <div className="flex justify-center gap-2 pb-8">
-        {[1, 2, 3].map(i => (
-          <div key={i} className={`rounded-full transition-all ${i === 1 ? 'w-6 h-2 bg-[#FF6A00]' : 'w-2 h-2 bg-gray-200'}`} />
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className={`rounded-full transition-all ${i === 1 ? 'w-6 h-2 bg-[#FF6B35]' : 'w-2 h-2 bg-gray-200'}`} />
         ))}
       </div>
     </div>
@@ -254,7 +311,7 @@ function StepInterests({
       <div className="flex items-center justify-between mb-8">
         <PiumsLogo />
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400 font-medium">{'Paso 2 de 3'}</span>
+          <span className="text-sm text-gray-400 font-medium">{'Paso 2 de 4'}</span>
           <button onClick={onBack} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
             <ChevronLeftIcon className="h-5 w-5" />
           </button>
@@ -263,7 +320,7 @@ function StepInterests({
 
       {/* Progress bar */}
       <div className="h-1 bg-gray-100 rounded-full mb-10 overflow-hidden">
-        <div className="h-full bg-[#FF6A00] rounded-full" style={{ width: '66%' }} />
+        <div className="h-full bg-[#FF6B35] rounded-full" style={{ width: '50%' }} />
       </div>
 
       <h2 className="text-3xl font-bold text-gray-900 mb-2">{'Cuéntanos qué te apasiona'}</h2>
@@ -281,16 +338,16 @@ function StepInterests({
               onClick={() => onToggle(id)}
               className={`relative flex flex-col items-start p-4 rounded-2xl border-2 text-left transition-all ${
                 active
-                  ? 'border-[#FF6A00] bg-[#FF6A00]/5'
+                  ? 'border-[#FF6B35] bg-[#FF6B35]/5'
                   : 'border-gray-100 bg-gray-50 hover:border-gray-200'
               }`}
             >
               {active && (
-                <span className="absolute top-2.5 right-2.5 h-5 w-5 rounded-full bg-[#FF6A00] flex items-center justify-center">
+                <span className="absolute top-2.5 right-2.5 h-5 w-5 rounded-full bg-[#FF6B35] flex items-center justify-center">
                   <CheckIcon className="h-3 w-3 text-white" />
                 </span>
               )}
-              <div className={`h-10 w-10 rounded-xl flex items-center justify-center mb-3 ${active ? 'bg-[#FF6A00]' : 'bg-white border border-gray-200'}`}>
+              <div className={`h-10 w-10 rounded-xl flex items-center justify-center mb-3 ${active ? 'bg-[#FF6B35]' : 'bg-white border border-gray-200'}`}>
                 <Icon className={`h-5 w-5 ${active ? 'text-white' : 'text-gray-500'}`} />
               </div>
               <span className="text-sm font-semibold text-gray-900">{label}</span>
@@ -304,7 +361,7 @@ function StepInterests({
       <button
         onClick={onContinue}
         disabled={selected.size === 0}
-        className="w-full py-3.5 rounded-full font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-[#FF6A00] hover:bg-[#e55e00] text-white shadow-lg shadow-orange-200/50"
+        className="w-full py-3.5 rounded-full font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-[#FF6B35] hover:bg-[#e55e00] text-white shadow-lg shadow-orange-200/50"
       >
         Continuar →
       </button>
@@ -317,8 +374,8 @@ function StepInterests({
 
       {/* Step dots */}
       <div className="flex justify-center gap-2 mt-8">
-        {[1, 2, 3].map(i => (
-          <div key={i} className={`rounded-full transition-all ${i === 2 ? 'w-6 h-2 bg-[#FF6A00]' : 'w-2 h-2 bg-gray-200'}`} />
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className={`rounded-full transition-all ${i === 2 ? 'w-6 h-2 bg-[#FF6B35]' : 'w-2 h-2 bg-gray-200'}`} />
         ))}
       </div>
     </div>
@@ -352,7 +409,7 @@ function StepRefine({
       <div className="flex items-center justify-between mb-8">
         <PiumsLogo />
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400 font-medium">{'Paso 3 de 3'}</span>
+          <span className="text-sm text-gray-400 font-medium">{'Paso 3 de 4'}</span>
           <button onClick={onBack} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
             <ChevronLeftIcon className="h-5 w-5" />
           </button>
@@ -361,7 +418,7 @@ function StepRefine({
 
       {/* Progress bar */}
       <div className="h-1 bg-gray-100 rounded-full mb-10 overflow-hidden">
-        <div className="h-full bg-[#FF6A00] rounded-full w-full" />
+        <div className="h-full bg-[#FF6B35] rounded-full" style={{ width: '75%' }} />
       </div>
 
       <h2 className="text-3xl font-bold text-gray-900 mb-2">{'Afina tus gustos.'}</h2>
@@ -383,7 +440,7 @@ function StepRefine({
               {/* Category header */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="h-8 w-8 rounded-xl bg-[#FF6A00]/10 flex items-center justify-center text-[#FF6A00]">
+                  <div className="h-8 w-8 rounded-xl bg-[#FF6B35]/10 flex items-center justify-center text-[#FF6B35]">
                     <Icon className="h-4 w-4" />
                   </div>
                   <div>
@@ -392,7 +449,7 @@ function StepRefine({
                   </div>
                 </div>
                 {activeCount > 0 && (
-                  <span className="text-xs font-semibold bg-[#FF6A00] text-white rounded-full px-2 py-0.5">
+                  <span className="text-xs font-semibold bg-[#FF6B35] text-white rounded-full px-2 py-0.5">
                     {activeCount}
                   </span>
                 )}
@@ -407,8 +464,8 @@ function StepRefine({
                       onClick={() => onToggleTag(catId, tag)}
                       className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${
                         active
-                          ? 'bg-[#FF6A00] border-[#FF6A00] text-white shadow-sm shadow-orange-200/60'
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-[#FF6A00] hover:text-[#FF6A00]'
+                          ? 'bg-[#FF6B35] border-[#FF6B35] text-white shadow-sm shadow-orange-200/60'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-[#FF6B35] hover:text-[#FF6B35]'
                       }`}
                     >
                       {tag}
@@ -424,9 +481,9 @@ function StepRefine({
       {/* CTA */}
       <button
         onClick={onFinish}
-        className="w-full py-3.5 rounded-full font-semibold text-sm bg-[#FF6A00] hover:bg-[#e55e00] text-white shadow-lg shadow-orange-200/50 transition-colors"
+        className="w-full py-3.5 rounded-full font-semibold text-sm bg-[#FF6B35] hover:bg-[#e55e00] text-white shadow-lg shadow-orange-200/50 transition-colors"
       >
-        Ir a mi Dashboard →
+        Continuar →
       </button>
       <button
         onClick={onSkip}
@@ -440,8 +497,242 @@ function StepRefine({
 
       {/* Step dots */}
       <div className="flex justify-center gap-2 mt-6">
-        {[1, 2, 3].map(i => (
-          <div key={i} className={`rounded-full transition-all ${i === 3 ? 'w-6 h-2 bg-[#FF6A00]' : 'w-2 h-2 bg-gray-200'}`} />
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className={`rounded-full transition-all ${i === 3 ? 'w-6 h-2 bg-[#FF6B35]' : 'w-2 h-2 bg-gray-200'}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   STEP 4 — Identity verification
+   ════════════════════════════════════════════════════════════════════════════ */
+
+function DocUploadBox({
+  label, hint, folder, uploading, preview, error, setUploading, setUrl, setPreview, optional,
+}: {
+  label: string; hint: string; folder: 'front' | 'back' | 'selfie';
+  uploading: boolean; preview: string; error?: string;
+  setUploading: (v: boolean) => void; setUrl: (u: string) => void;
+  setPreview: (p: string) => void; optional?: boolean;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}{' '}
+        {optional
+          ? <span className="text-xs text-gray-400">(opcional)</span>
+          : <span className="text-red-500">*</span>}
+      </label>
+      <p className="text-xs text-gray-400 mb-2">{hint}</p>
+      {preview ? (
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview} alt={label} className="w-full h-32 object-cover rounded-xl border border-gray-200" />
+          <button
+            type="button"
+            onClick={() => { setPreview(''); setUrl(''); }}
+            className="absolute top-2 right-2 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <label className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-5 transition-colors ${
+          error ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-[#FF6B35]/50 hover:bg-orange-50/30'
+        }`}>
+          {uploading
+            ? <svg className="h-5 w-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            : <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          }
+          <span className="text-xs text-gray-400">{uploading ? 'Subiendo…' : 'Haz clic o arrastra la imagen'}</span>
+          <input type="file" accept="image/*" className="sr-only" disabled={uploading}
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) uploadDocFile(file, folder, setUploading, setUrl, setPreview);
+            }}
+          />
+        </label>
+      )}
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function StepVerification({
+  onFinish,
+  onBack,
+  onSkip,
+}: {
+  onFinish: () => void;
+  onBack: () => void;
+  onSkip: () => void;
+}) {
+  const [documentType, setDocumentType] = useState<DocumentType>('DPI');
+  const [documentNumber, setDocumentNumber] = useState('');
+  const [documentFrontUrl, setDocumentFrontUrl] = useState('');
+  const [documentBackUrl, setDocumentBackUrl] = useState('');
+  const [documentSelfieUrl, setDocumentSelfieUrl] = useState('');
+  const [frontPreview, setFrontPreview] = useState('');
+  const [backPreview, setBackPreview] = useState('');
+  const [selfiePreview, setSelfiePreview] = useState('');
+  const [uploadingFront, setUploadingFront] = useState(false);
+  const [uploadingBack, setUploadingBack] = useState(false);
+  const [uploadingSelfie, setUploadingSelfie] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleVerify = async () => {
+    const errs: Record<string, string> = {};
+    if (!documentNumber.trim()) errs.documentNumber = 'Ingresa el número de documento';
+    if (!documentFrontUrl) errs.documentFront = 'Sube la foto del documento';
+    if (!documentSelfieUrl) errs.documentSelfie = 'Sube tu selfie con el documento';
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+
+    setSaving(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      await fetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          documentType,
+          documentNumber: documentNumber.trim(),
+          documentFrontUrl,
+          documentBackUrl: documentBackUrl || undefined,
+          documentSelfieUrl,
+        }),
+      });
+    } catch {
+      // no bloquear si falla — se puede completar luego desde el perfil
+    } finally {
+      setSaving(false);
+    }
+    onFinish();
+  };
+
+  return (
+    <div className="flex-1 flex flex-col px-6 py-8 max-w-2xl mx-auto w-full piums-fade-in">
+      {/* Top */}
+      <div className="flex items-center justify-between mb-8">
+        <PiumsLogo />
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-400 font-medium">Paso 4 de 4</span>
+          <button onClick={onBack} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
+            <ChevronLeftIcon className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1 bg-gray-100 rounded-full mb-10 overflow-hidden">
+        <div className="h-full bg-[#FF6B35] rounded-full w-full" />
+      </div>
+
+      <h2 className="text-3xl font-bold text-gray-900 mb-1">Verifica tu identidad</h2>
+      <p className="text-gray-400 mb-2 leading-relaxed">
+        Para proteger a nuestra comunidad necesitamos confirmar quién eres. Esta información es privada y solo la verá nuestro equipo.
+      </p>
+
+      <div className="mb-6 flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 p-3">
+        <svg className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <p className="text-xs text-amber-700">
+          Sin verificación de identidad no podrás completar reservas ni pagos en la plataforma.
+        </p>
+      </div>
+
+      <div className="space-y-5 mb-8">
+        {/* Tipo de documento */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Tipo de documento <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={documentType}
+            onChange={e => {
+              setDocumentType(e.target.value as DocumentType);
+              if (e.target.value !== 'DPI') { setDocumentBackUrl(''); setBackPreview(''); }
+            }}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/40 focus:border-[#FF6B35] text-sm"
+          >
+            {Object.entries(DOCUMENT_LABELS).map(([val, lbl]) => (
+              <option key={val} value={val}>{lbl}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Número */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Número de documento <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={documentNumber}
+            onChange={e => { setDocumentNumber(e.target.value); setErrors(p => ({ ...p, documentNumber: '' })); }}
+            placeholder={documentType === 'DPI' ? 'Ej: 1234567890101' : 'Ej: A12345678'}
+            className={`w-full px-4 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/40 focus:border-[#FF6B35] text-sm ${
+              errors.documentNumber ? 'border-red-400' : 'border-gray-300'
+            }`}
+          />
+          {errors.documentNumber && <p className="mt-1 text-xs text-red-600">{errors.documentNumber}</p>}
+        </div>
+
+        {/* Foto frontal */}
+        <DocUploadBox
+          label="Foto frontal del documento" hint="Foto clara del frente de tu DPI, pasaporte o tarjeta"
+          folder="front" uploading={uploadingFront} preview={frontPreview} error={errors.documentFront}
+          setUploading={setUploadingFront} setUrl={u => { setDocumentFrontUrl(u); setErrors(p => ({ ...p, documentFront: '' })); }} setPreview={setFrontPreview}
+        />
+
+        {/* Foto posterior — solo DPI */}
+        {documentType === 'DPI' && (
+          <DocUploadBox
+            label="Foto posterior del documento" hint="Foto clara del reverso de tu DPI"
+            folder="back" uploading={uploadingBack} preview={backPreview}
+            setUploading={setUploadingBack} setUrl={setDocumentBackUrl} setPreview={setBackPreview} optional
+          />
+        )}
+
+        {/* Selfie con documento */}
+        <DocUploadBox
+          label="Selfie sosteniendo el documento" hint="Foto tuya con el documento visible junto a tu rostro"
+          folder="selfie" uploading={uploadingSelfie} preview={selfiePreview} error={errors.documentSelfie}
+          setUploading={setUploadingSelfie} setUrl={u => { setDocumentSelfieUrl(u); setErrors(p => ({ ...p, documentSelfie: '' })); }} setPreview={setSelfiePreview}
+        />
+      </div>
+
+      {/* CTAs */}
+      <button
+        onClick={handleVerify}
+        disabled={saving}
+        className="w-full py-3.5 rounded-full font-semibold text-sm bg-[#FF6B35] hover:bg-[#e55e00] text-white shadow-lg shadow-orange-200/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {saving ? 'Guardando…' : 'Verificar mi identidad →'}
+      </button>
+      <button
+        onClick={onSkip}
+        className="mt-3 text-sm text-gray-400 hover:text-gray-600 text-center w-full transition-colors"
+      >
+        Omitir por ahora
+      </button>
+      <p className="mt-2 text-xs text-center text-gray-400">
+        Podrás completar la verificación desde tu perfil en cualquier momento.
+      </p>
+
+      {/* Step dots */}
+      <div className="flex justify-center gap-2 mt-6">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className={`rounded-full transition-all ${i === 4 ? 'w-6 h-2 bg-[#FF6B35]' : 'w-2 h-2 bg-gray-200'}`} />
         ))}
       </div>
     </div>

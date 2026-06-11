@@ -1,22 +1,31 @@
 import express, { Express } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 import healthRoutes from './routes/health.routes';
 import searchRoutes from './routes/search.routes';
+import { searchService } from './services/search.service';
 
 // Load environment variables
 dotenv.config();
 
 const app: Express = express();
+app.set('trust proxy', 1); // K8s ingress X-Forwarded-For
 const PORT = process.env.PORT || 4009;
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(helmet());
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
+app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Health check first — exempt from rate limiting (kube probes would exhaust the limit)
+app.use('/health', healthRoutes);
 
 // Rate limiting
 app.use(apiLimiter);
@@ -33,7 +42,6 @@ app.use((req, _res, next) => {
 });
 
 // Routes
-app.use('/health', healthRoutes);
 app.use('/api/search', searchRoutes);
 
 // 404 handler
@@ -49,6 +57,13 @@ app.use(errorHandler);
 // Start server
 const server = app.listen(PORT, () => {
   logger.info(`Search Service running on port ${PORT}`);
+
+  // Auto-reindex all artists on startup (fire-and-forget)
+  setTimeout(() => {
+    searchService.bulkIndexArtists().catch((err: Error) => {
+      logger.error(`Startup reindex failed: ${err.message}`);
+    });
+  }, 3000); // 3s delay so DB connections settle
 });
 
 // Graceful shutdown
@@ -66,6 +81,10 @@ process.on('SIGINT', () => {
     logger.info('HTTP server closed');
     process.exit(0);
   });
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error(`Unhandled promise rejection: ${reason?.message}`);
 });
 
 export default app;

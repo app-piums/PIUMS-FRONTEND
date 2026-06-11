@@ -2,10 +2,11 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { PageHelpButton } from '@/components/PageHelpButton';
-import Image from 'next/image';
+import { cImg } from '@/lib/cloudinaryImg';
 import { useRouter } from 'next/navigation';
 import { DashboardSidebar } from '@/components/artist/DashboardSidebar';
 import { sdk, ReviewDetailed } from '@piums/sdk';
+import { Star } from 'lucide-react';
 import { getErrorMessage, isUnauthorizedError, isArtistNotFoundError } from '@/lib/errors';
 import { ReportModal } from '@/components/ReportModal';
 import { toast } from '@/lib/toast';
@@ -39,9 +40,9 @@ export default function ArtistReviewsPage() {
         sortBy: 'recent',
       });
 
-      setReviews(result.reviews);
-      setTotal(result.total);
-      setTotalPages(result.totalPages);
+      setReviews(result.reviews ?? []);
+      setTotal(result.total ?? 0);
+      setTotalPages(result.totalPages ?? 1);
     } catch (err: unknown) {
       const message = getErrorMessage(err);
       console.error('Error loading reviews:', message);
@@ -104,9 +105,7 @@ export default function ArtistReviewsPage() {
     return (
       <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
-          <span key={star} className={star <= rating ? 'text-yellow-400' : 'text-gray-300'}>
-            ⭐
-          </span>
+          <Star key={star} size={16} className={star <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'} />
         ))}
       </div>
     );
@@ -188,14 +187,11 @@ export default function ArtistReviewsPage() {
                       {review.photos && review.photos.length > 0 && (
                         <div className="flex gap-2 mb-4">
                           {review.photos.map((photo) => (
-                            <Image
+                            <img
                               key={photo.id}
-                              src={photo.url}
+                              src={cImg(photo.url)}
                               alt={photo.caption || 'Foto de la reseña'}
-                              width={80}
-                              height={80}
                               className="w-20 h-20 object-cover rounded"
-                              sizes="80px"
                             />
                           ))}
                         </div>
@@ -268,7 +264,7 @@ export default function ArtistReviewsPage() {
                 </div>
               ) : (
                 <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
-                  <div className="text-6xl mb-4">⭐</div>
+                  <div className="mb-4 flex justify-center"><Star size={56} className="text-yellow-400" /></div>
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">
                     No tienes reviews todavía
                   </h3>

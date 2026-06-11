@@ -16,11 +16,11 @@ RUN pnpm install --no-frozen-lockfile
 # Copiar código fuente
 COPY . .
 
-# Compilar TypeScript si existe tsconfig.json
-RUN if [ -f "tsconfig.json" ]; then pnpm run build 2>/dev/null || npm run build 2>/dev/null || echo "No build script found"; fi
-
-# Generar Prisma Client si existe schema.prisma
+# Generar Prisma Client antes de compilar TypeScript
 RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
+
+# Compilar TypeScript
+RUN if [ -f "tsconfig.json" ]; then pnpm run build 2>/dev/null || npm run build 2>/dev/null || echo "No build script found"; fi
 
 # ============================================================================
 # Imagen final
@@ -36,6 +36,7 @@ RUN npm install -g pnpm
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/templates ./dist/templates
 COPY --from=builder /app/prisma ./prisma
 
 
@@ -50,4 +51,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4007/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Comando para iniciar
-CMD ["sh", "-c", "if [ -f 'prisma/schema.prisma' ]; then npx prisma db push; fi && node dist/index.js"]
+USER node
+CMD ["sh", "-c", "if [ -f 'prisma/schema.prisma' ]; then npx prisma migrate deploy; fi && node dist/index.js"]

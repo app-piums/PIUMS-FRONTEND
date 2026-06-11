@@ -76,6 +76,7 @@ services:
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
       BOOKING_SERVICE_URL: http://booking-service:4008
       SEARCH_SERVICE_URL: http://search-service:4009
+      CHAT_SERVICE_URL: http://chat-service:4010
     depends_on:
       - auth-service
       - users-service
@@ -86,6 +87,7 @@ services:
       - reviews-service
       - notifications-service
       - search-service
+      - chat-service
     networks:
       - piums-network
     restart: always
@@ -111,6 +113,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_auth
       JWT_SECRET: ${JWT_SECRET}
       REFRESH_SECRET: ${REFRESH_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -141,6 +144,7 @@ services:
       PORT: 4002
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_users
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
@@ -166,8 +170,11 @@ services:
       PORT: 4003
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_artists
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       BOOKING_SERVICE_URL: http://booking-service:4008
       PAYMENTS_SERVICE_URL: http://payments-service:4005
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
+      USERS_SERVICE_URL: http://users-service:4002
     depends_on:
       postgres:
         condition: service_healthy
@@ -190,6 +197,7 @@ services:
       PORT: 4004
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_catalog
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -212,9 +220,16 @@ services:
       PORT: 4008
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_bookings
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       CATALOG_SERVICE_URL: http://catalog-service:4004
       PAYMENTS_SERVICE_URL: http://payments-service:4005
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:4007
+      USERS_SERVICE_URL: http://users-service:4002
+      ARTISTS_SERVICE_URL: http://artists-service:4003
+      CHAT_SERVICE_URL: http://chat-service:4010
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -237,6 +252,7 @@ services:
       PORT: 4005
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_payments
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
@@ -262,6 +278,7 @@ services:
       PORT: 4006
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_reviews
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -284,12 +301,15 @@ services:
       PORT: 4007
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_notifications
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      ENABLE_EMAIL: "true"
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
     depends_on:
       postgres:
         condition: service_healthy
@@ -314,6 +334,7 @@ services:
       PORT: 4009
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_search
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       ARTISTS_SERVICE_URL: http://artists-service:4003
       CATALOG_SERVICE_URL: http://catalog-service:4004
       REVIEWS_SERVICE_URL: http://reviews-service:4006
@@ -339,7 +360,12 @@ services:
       PORT: 4010
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/piums_chat
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     depends_on:
       postgres:
         condition: service_healthy
@@ -362,9 +388,11 @@ services:
     image: ${DOCKER_REGISTRY:-ghcr.io/app-piums}/piums-web-client:${IMAGE_TAG:-latest}
     container_name: piums-web-client-prod
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       NODE_ENV: production
+      GATEWAY_INTERNAL_URL: http://gateway:3000
+      HTTPS_ENABLED: "true"
       NEXT_PUBLIC_API_URL: ${API_URL}/api
       NEXT_PUBLIC_APP_URL: ${CLIENT_APP_URL}
       NEXT_PUBLIC_CLIENT_URL: ${CLIENT_APP_URL}
@@ -392,6 +420,8 @@ services:
       - "3001:3001"
     environment:
       NODE_ENV: production
+      GATEWAY_INTERNAL_URL: http://gateway:3000
+      HTTPS_ENABLED: "true"
       NEXT_PUBLIC_API_URL: ${API_URL}/api
       NEXT_PUBLIC_APP_URL: ${ARTIST_APP_URL}
       NEXT_PUBLIC_CLIENT_URL: ${CLIENT_APP_URL}
@@ -412,6 +442,46 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  web-admin:
+    image: ${DOCKER_REGISTRY:-ghcr.io/app-piums}/piums-web-admin:${IMAGE_TAG:-latest}
+    container_name: piums-web-admin-prod
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: production
+      GATEWAY_INTERNAL_URL: http://gateway:3000
+      NEXT_PUBLIC_CHAT_SERVICE_URL: ${API_URL}
+    depends_on:
+      - gateway
+    networks:
+      - piums-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: piums-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - gateway
+      - web-client
+      - web-artist
+      - web-admin
+    networks:
+      - piums-network
+    restart: always
+
 # ============================================================================
 # Networks
 # ============================================================================
@@ -428,4 +498,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  nginx_logs:
     driver: local

@@ -6,7 +6,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 interface EmailTemplate {
   to: string;
-  template: 'password-reset' | 'email-verification' | 'payment-confirmation' | 'review-request';
+  template: 'password-reset' | 'email-verification' | 'payment-confirmation' | 'review-request' | 'document-review-alert' | 'payout-disbursement';
   variables: Record<string, any>;
 }
 
@@ -136,16 +136,102 @@ export class NotificationsClient {
   }
 
   /**
+   * Avisa al equipo que un usuario subió sus documentos y necesitan revisión manual.
+   */
+  async notifyDocumentPendingReview(data: {
+    userId: string;
+    userName: string;
+    userEmail: string;
+    userRole: string;
+    documentType: string;
+    documentNumber: string;
+  }) {
+    const adminEmail = process.env.ADMIN_ALERT_EMAIL || 'soporte@piums.io';
+    const adminUrl = `${process.env.ADMIN_URL || 'http://localhost:3002'}/users/${data.userId}`;
+    try {
+      await this.sendEmail({
+        to: adminEmail,
+        template: 'document-review-alert',
+        variables: {
+          ...data,
+          adminUrl,
+          submittedAt: new Date().toLocaleString('es-GT', { timeZone: 'America/Guatemala' }),
+          currentYear: new Date().getFullYear(),
+        },
+      });
+      logger.info('Document review alert sent', 'NOTIFICATIONS_CLIENT', { userId: data.userId });
+    } catch (err: any) {
+      logger.warn('Failed to send document review alert', 'NOTIFICATIONS_CLIENT', { error: err.message });
+    }
+  }
+
+  async sendPayoutDisbursementEmail(data: {
+    artistEmail: string;
+    artistName: string;
+    bookingCode: string;
+    grossAmount: string;
+    platformFee: string;
+    netAmount: string;
+    currency: string;
+    commissionRate: string;
+    transferReference: string;
+    transferDate: string;
+    dashboardUrl: string;
+    helpUrl: string;
+  }) {
+    try {
+      await this.sendEmail({
+        to: data.artistEmail,
+        template: 'payout-disbursement',
+        variables: {
+          ...data,
+          currentYear: new Date().getFullYear(),
+        },
+      });
+      logger.info('Payout disbursement email sent', 'NOTIFICATIONS_CLIENT', { email: data.artistEmail });
+      return { success: true };
+    } catch (error: any) {
+      logger.warn('Could not send payout disbursement email', 'NOTIFICATIONS_CLIENT', { email: data.artistEmail, error: error.message });
+      return { success: false };
+    }
+  }
+
+  async sendWelcomeEmail(email: string, userName: string, role: 'cliente' | 'artista' | 'ambos') {
+    const isArtist = role === 'artista' || role === 'ambos';
+    const template = isArtist ? 'welcome-artist' : 'welcome-client';
+    try {
+      await this.sendEmail({
+        to: email,
+        template: template as any,
+        variables: {
+          userName,
+          clientAppUrl: process.env.CLIENT_APP_URL || 'http://localhost:3000',
+          artistAppUrl: process.env.ARTIST_APP_URL || 'http://localhost:3001',
+          pendingVerification: isArtist,
+          currentYear: new Date().getFullYear(),
+        },
+      });
+      logger.info('Welcome email sent', 'NOTIFICATIONS_CLIENT', { email, template });
+      return { success: true };
+    } catch (error: any) {
+      logger.warn('Could not send welcome email', 'NOTIFICATIONS_CLIENT', { email, error: error.message });
+      return { success: false };
+    }
+  }
+
+  /**
    * Método genérico para enviar emails al servicio de notificaciones
    */
   private async sendEmail(data: EmailTemplate) {
     try {
+      const internalSecret = process.env.INTERNAL_SERVICE_SECRET || '';
       const response = await axios.post(
         `${NOTIFICATIONS_SERVICE_URL}/api/notifications/send-template-email`,
         data,
         {
           headers: {
             'Content-Type': 'application/json',
+            'x-internal-secret': internalSecret,
           },
           timeout: 10000, // 10 segundos
         }

@@ -1,12 +1,16 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { AppError } from "./errorHandler";
+import { logger } from "../utils/logger";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  logger.error('FATAL: JWT_SECRET no definido en produccion', 'AUTH_MIDDLEWARE');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET || (() => { if (process.env.NODE_ENV === 'production') { throw new Error('JWT_SECRET es obligatorio en produccion'); } return 'dev-only-secret-not-for-production'; })();
 
 interface JwtPayload {
   id: string;
-  email: string;
   role: string;
 }
 
@@ -51,7 +55,7 @@ export const authenticateToken = (
 
 export const requireAdmin = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) => {
   if (!req.user || req.user.role !== 'admin') {
@@ -78,5 +82,28 @@ export const optionalAuth = (
   } catch (error) {
     // Si falla la verificación, continuar sin usuario
     next();
+  }
+};
+
+/**
+ * Middleware de revocación de sesión (PII-M6).
+ * Debe usarse DESPUÉS del middleware de autenticación en rutas sensibles.
+ * Verifica contra auth-service que el JTI del token siga activo.
+ * Falla abierto (fail-open) si auth-service no responde, para no
+ * bloquear operaciones cuando el servicio de auth está caído.
+ */
+export const requireActiveSession = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return next(new AppError(401, 'Token no proporcionado'));
+    const token = authHeader.substring(7);
+    const decoded = jwt.decode(token) as { jti?: string } | null;
+    if (!decoded?.jti) return next(); // token sin jti — omitir (legado)
+    const { isJtiActive } = await import('../utils/jtiVerifier');
+    const active = await isJtiActive(decoded.jti);
+    if (!active) return next(new AppError(401, 'Sesión revocada. Por favor inicia sesión nuevamente.'));
+    next();
+  } catch (err) {
+    next(err);
   }
 };
